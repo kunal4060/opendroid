@@ -1,15 +1,20 @@
 package com.opendroid.ai.ui.screens
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -24,10 +29,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -38,7 +48,9 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -84,6 +96,7 @@ fun ChatScreen(
     // happening here. See ChatViewModel.visibleAgentState.
     val visibleAgentState by viewModel.visibleAgentState.collectAsState()
     val chatError by viewModel.chatError.collectAsState()
+    val speakingMessageId by viewModel.speakingMessageId.collectAsState()
     // Id of whichever chat (if any) has a task actively running, regardless of which
     // chat is currently displayed - drives the chat-picker's "still running" indicator.
     val runningSessionId by viewModel.runningSessionId.collectAsState()
@@ -375,6 +388,7 @@ fun ChatScreen(
                             message = msg,
                             viewModel = viewModel,
                             context = context,
+                            speakingMessageId = speakingMessageId,
                             onEditRequested = { startEditingMessage(it) }
                         )
                     }
@@ -719,15 +733,22 @@ fun AgentStatusSubtitle(state: AgentState, runningElsewhere: Boolean = false) {
     )
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ChatBubble(
     message: ChatMessage,
     viewModel: ChatViewModel? = null,
     context: android.content.Context? = null,
+    speakingMessageId: String? = null,
     onEditRequested: ((ChatMessage) -> Unit)? = null
 ) {
     val isAgent = message.sender == ChatMessage.Sender.AGENT
     val alignment = if (isAgent) Alignment.Start else Alignment.End
+    // Message actions (A3): long-press on the bubble opens the action menu.
+    var showActions by remember { mutableStateOf(false) }
+    val clipboardManager = LocalClipboardManager.current
+    val localContext = LocalContext.current
+    val isBeingSpoken = speakingMessageId != null && speakingMessageId == message.id
     val bubbleColor = if (isAgent) {
         CardBackground
     } else {
@@ -776,9 +797,14 @@ fun ChatBubble(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = if (isAgent) Arrangement.Start else Arrangement.End
         ) {
+            Box {
             Column(
                 modifier = Modifier
                     .widthIn(max = 290.dp)
+                    .combinedClickable(
+                        onClick = {},
+                        onLongClick = { showActions = true }
+                    )
                     .clip(
                         RoundedCornerShape(
                             topStart = 18.dp,
@@ -857,6 +883,73 @@ fun ChatBubble(
                         color = TextSecondary
                     )
                 }
+            }
+
+            // Message actions (A3) — opened by long-pressing the bubble.
+            // Attached to the bubble container rather than the message text
+            // so it coexists with link clicks inside the markdown renderer.
+            DropdownMenu(
+                expanded = showActions,
+                onDismissRequest = { showActions = false },
+                modifier = Modifier.background(DarkSurface)
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Copy", color = TextPrimary, fontSize = 13.sp) },
+                    leadingIcon = {
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(18.dp))
+                    },
+                    onClick = {
+                        showActions = false
+                        clipboardManager.setText(AnnotatedString(message.text))
+                        // Android 13+ shows its own copy confirmation; a Toast
+                        // there would double up (same rule as CrashLogScreen).
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                            Toast.makeText(localContext, "Message copied", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                )
+                if (viewModel != null) {
+                    DropdownMenuItem(
+                        text = { Text(if (isBeingSpoken) "Stop reading" else "Read aloud", color = TextPrimary, fontSize = 13.sp) },
+                        leadingIcon = {
+                            Icon(
+                                if (isBeingSpoken) Icons.Default.Stop else Icons.Default.VolumeUp,
+                                contentDescription = null, tint = TextSecondary, modifier = Modifier.size(18.dp)
+                            )
+                        },
+                        onClick = {
+                            showActions = false
+                            if (isBeingSpoken) viewModel.stopSpeaking() else viewModel.speakMessage(message)
+                        }
+                    )
+                }
+                DropdownMenuItem(
+                    text = { Text("Share", color = TextPrimary, fontSize = 13.sp) },
+                    leadingIcon = {
+                        Icon(Icons.Default.Share, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(18.dp))
+                    },
+                    onClick = {
+                        showActions = false
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, message.text)
+                        }
+                        localContext.startActivity(Intent.createChooser(shareIntent, "Share message"))
+                    }
+                )
+                if (isAgent && viewModel != null && context != null) {
+                    DropdownMenuItem(
+                        text = { Text("Regenerate", color = TextPrimary, fontSize = 13.sp) },
+                        leadingIcon = {
+                            Icon(Icons.Default.Refresh, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(18.dp))
+                        },
+                        onClick = {
+                            showActions = false
+                            viewModel.regenerate(message.id, context)
+                        }
+                    )
+                }
+            }
             }
         }
     }

@@ -30,18 +30,42 @@ class TextToSpeechEngine(
 
     var onCompletionListener: (() -> Unit)? = null
 
+    // Additional completion observers, for callers that must not clobber the
+    // single [onCompletionListener] slot owned by OpenDroidService (chat
+    // read-aloud queues its chunks off these). Notified on the main thread,
+    // exactly like [onCompletionListener].
+    private val completionListeners = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
+
+    fun addCompletionListener(listener: () -> Unit) {
+        completionListeners.addIfAbsent(listener)
+    }
+
+    fun removeCompletionListener(listener: () -> Unit) {
+        completionListeners.remove(listener)
+    }
+
+    private fun notifyCompletion() {
+        onCompletionListener?.invoke()
+        completionListeners.forEach { listener -> runCatching { listener() } }
+    }
+
+    /** Registered listeners only — for paths where no speech actually played. */
+    private fun notifyCompletionListeners() {
+        completionListeners.forEach { listener -> runCatching { listener() } }
+    }
+
     init {
         tts = TextToSpeech(context, this)
         tts?.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {}
             override fun onDone(utteranceId: String?) {
                 mainHandler.post {
-                    onCompletionListener?.invoke()
+                    notifyCompletion()
                 }
             }
             override fun onError(utteranceId: String?) {
                 mainHandler.post {
-                    onCompletionListener?.invoke()
+                    notifyCompletion()
                 }
             }
         })
@@ -75,6 +99,15 @@ class TextToSpeechEngine(
             if (isInitialized) {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                     tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "opendroid_tts")
+                }
+            } else {
+                // Nothing will be spoken (engine not ready, no cloud voice):
+                // still release registered listeners so a read-aloud queue
+                // waiting on completion doesn't hang. The service's
+                // onCompletionListener is deliberately NOT fired — no speech
+                // happened, so no Speaking state needs resetting.
+                mainHandler.post {
+                    notifyCompletionListeners()
                 }
             }
         }
@@ -123,7 +156,7 @@ class TextToSpeechEngine(
                 prepare()
                 setOnCompletionListener {
                     mainHandler.post {
-                        onCompletionListener?.invoke()
+                        notifyCompletion()
                     }
                 }
                 start()

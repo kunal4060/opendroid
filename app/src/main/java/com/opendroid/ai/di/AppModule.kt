@@ -82,6 +82,22 @@ object AppModule {
             .build()
     }
 
+    /**
+     * The one TTS engine for the whole process. OpenDroidService used to
+     * construct its own; chat read-aloud (A3) needs the same engine — same
+     * ElevenLabs/local pipeline, same settings — so it is provided here as a
+     * singleton and injected into both. Being app-scoped, it is no longer
+     * destroyed with the service; it lives for the process lifetime.
+     */
+    @Provides
+    @Singleton
+    fun provideTextToSpeechEngine(
+        @ApplicationContext context: Context,
+        settingsRepository: com.opendroid.ai.data.repository.SettingsRepository
+    ): com.opendroid.ai.core.voice.TextToSpeechEngine {
+        return com.opendroid.ai.core.voice.TextToSpeechEngine(context, settingsRepository)
+    }
+
     @Provides
     @Singleton
     fun provideActionSequenceExecutor(

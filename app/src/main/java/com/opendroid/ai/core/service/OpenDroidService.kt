@@ -37,9 +37,13 @@ class OpenDroidService : Service() {
     @Inject
     lateinit var mcpServer: McpServer
 
+    // App-scoped singleton (AppModule) shared with chat read-aloud — this
+    // service no longer owns the engine's lifecycle.
+    @Inject
+    lateinit var textToSpeechEngine: TextToSpeechEngine
+
     private lateinit var wakeWordDetector: WakeWordDetector
     private lateinit var speechRecognitionEngine: SpeechRecognitionEngine
-    private lateinit var textToSpeechEngine: TextToSpeechEngine
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var showFloatingButton = false
@@ -64,10 +68,9 @@ class OpenDroidService : Service() {
     override fun onCreate() {
         super.onCreate()
         
-        // Initialize engines
+        // Initialize engines (the TTS engine is injected — see AppModule)
         wakeWordDetector = WakeWordDetector(this)
         speechRecognitionEngine = SpeechRecognitionEngine(this)
-        textToSpeechEngine = TextToSpeechEngine(this, settingsRepository)
 
         // Bind Agent Loop TTS
         agentLoop.onSpeakCallback = { text ->
@@ -241,7 +244,8 @@ class OpenDroidService : Service() {
         mcpServer.stop()
         wakeWordDetector.destroy()
         speechRecognitionEngine.destroy()
-        textToSpeechEngine.destroy()
+        // textToSpeechEngine is an app-scoped singleton shared with the chat
+        // UI (read-aloud) — deliberately not destroyed with this service.
     }
 
     private fun createNotificationChannel() {

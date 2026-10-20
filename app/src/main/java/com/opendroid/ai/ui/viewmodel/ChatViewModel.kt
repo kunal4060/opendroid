@@ -18,6 +18,7 @@ import com.opendroid.ai.data.repository.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
@@ -28,7 +29,8 @@ import javax.inject.Inject
 class ChatViewModel @Inject constructor(
     private val agentLoop: AgentLoop,
     private val conversationRepository: ConversationRepository,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val textToSpeechEngine: com.opendroid.ai.core.voice.TextToSpeechEngine
 ) : ViewModel() {
 
     val llmConfig: StateFlow<LLMConfig> = settingsRepository.llmConfig
@@ -81,6 +83,102 @@ class ChatViewModel @Inject constructor(
 
     fun dismissChatError() {
         agentLoop.dismissChatError()
+    }
+
+    // ── Read-aloud (message action) ─────────────────────────────────────
+    // The shared TTS engine flushes on every speak() call and platform TTS
+    // truncates very long utterances, so a reply is fed to it one
+    // sentence-chunk at a time: each chunk's completion (reported through
+    // the engine's registered-listener hook, which leaves the foreground
+    // service's own completion listener untouched) advances the queue.
+
+    /** Id of the message currently being read aloud, or null when idle. */
+    private val _speakingMessageId = MutableStateFlow<String?>(null)
+    val speakingMessageId: StateFlow<String?> = _speakingMessageId
+
+    private val speechQueue = ArrayDeque<String>()
+
+    // One stable instance so it can be removed again — an anonymous lambda
+    // created per call could never be unregistered.
+    private val speechCompletionListener: () -> Unit = { onSpeechChunkComplete() }
+
+    private fun onSpeechChunkComplete() {
+        if (_speakingMessageId.value == null) return
+        val next = speechQueue.removeFirstOrNull()
+        if (next != null) {
+            textToSpeechEngine.speak(next)
+        } else {
+            finishSpeaking()
+        }
+    }
+
+    private fun finishSpeaking() {
+        textToSpeechEngine.removeCompletionListener(speechCompletionListener)
+        _speakingMessageId.value = null
+    }
+
+    /**
+     * Reads [message] aloud through the existing TTS pipeline (ElevenLabs
+     * when configured, local TTS otherwise), with markdown stripped so the
+     * syntax isn't spoken. Tapping read-aloud on the message that is
+     * already speaking stops it instead.
+     */
+    fun speakMessage(message: ChatMessage) {
+        if (_speakingMessageId.value == message.id) {
+            stopSpeaking()
+            return
+        }
+        stopSpeaking()
+        val chunks = com.opendroid.ai.core.voice.SpeechText.chunkForSpeech(
+            com.opendroid.ai.core.voice.SpeechText.stripMarkdown(message.text)
+        )
+        if (chunks.isEmpty()) return
+        speechQueue.addAll(chunks.drop(1))
+        _speakingMessageId.value = message.id
+        textToSpeechEngine.addCompletionListener(speechCompletionListener)
+        textToSpeechEngine.speak(chunks.first())
+    }
+
+    /** Stops read-aloud and drops any queued chunks. */
+    fun stopSpeaking() {
+        // Unregister BEFORE stopping: a stopped utterance reports back as an
+        // error/completion, which must not advance a queue that is being
+        // torn down.
+        finishSpeaking()
+        speechQueue.clear()
+        textToSpeechEngine.stop()
+    }
+
+    /**
+     * Regenerates the agent reply [agentMessageId]: removes that reply and
+     * everything after it in the current session (the same rewind
+     * edit-and-resend performs), then re-runs the preceding user message
+     * through the agent via [AgentLoop.retryRequest] — the existing path
+     * that re-executes a persisted request without inserting a duplicate
+     * user bubble, so the replacement answer is a genuinely new provider
+     * response, never a copy of the old one.
+     */
+    fun regenerate(agentMessageId: String, context: Context) {
+        viewModelScope.launch {
+            val sessionId = sessions.value.firstOrNull { it.isCurrent }?.id
+                ?: conversationRepository.ensureCurrentSessionId()
+            val messages = conversationRepository.getMessages(sessionId).first()
+            val agentIndex = messages.indexOfFirst {
+                it.id == agentMessageId && it.sender == ChatMessage.Sender.AGENT
+            }
+            if (agentIndex < 0) return@launch
+            val userMessage = messages.subList(0, agentIndex)
+                .lastOrNull { it.sender == ChatMessage.Sender.USER } ?: return@launch
+            agentLoop.cancelCurrentTask()
+            conversationRepository.deleteMessageAndAfter(sessionId, agentMessageId)
+            _taskSessionId.value = sessionId
+            agentLoop.retryRequest(userMessage.id, sessionId, context)
+        }
+    }
+
+    override fun onCleared() {
+        stopSpeaking()
+        super.onCleared()
     }
 
     fun retryAfterChatError(context: Context) {
