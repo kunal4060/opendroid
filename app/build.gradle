@@ -253,6 +253,24 @@ dependencies {
     // Coil Image Loading
     implementation 'io.coil-kt:coil-compose:2.5.0'
 
+    // Markdown rendering of chat replies (A1) - mikepenz renderer: core +
+    // Material 3 bridge + Coil 2 image transformer + Highlights-based code
+    // highlighting. Pinned to 0.41.0: the 0.42+ lines declare minCompileSdk 37
+    // in their AAR metadata while this project compiles against SDK 36, and
+    // 0.41.0 is the newest line at minCompileSdk 36 (verified from the AAR
+    // metadata; its API surface was checked against the published sources and
+    // matches everything MarkdownMessage uses). The -coil2 module aligns Coil
+    // to 2.7.0 (its compile target); nothing in the app sources uses Coil
+    // directly, so the bump is inert.
+    implementation 'com.mikepenz:multiplatform-markdown-renderer:0.41.0'
+    implementation 'com.mikepenz:multiplatform-markdown-renderer-m3:0.41.0'
+    implementation 'com.mikepenz:multiplatform-markdown-renderer-coil2:0.41.0'
+    implementation 'com.mikepenz:multiplatform-markdown-renderer-code:0.41.0'
+    // Referenced directly by MarkdownMessage to theme syntax highlighting
+    // from the app palette instead of the system dark-mode flag (the -code
+    // module also brings it transitively).
+    implementation 'dev.snipme:highlights:1.1.0'
+
     // Lottie animations
     implementation 'com.airbnb.android:lottie-compose:6.3.0'
 

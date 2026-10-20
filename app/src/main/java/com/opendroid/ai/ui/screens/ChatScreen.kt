@@ -59,6 +59,7 @@ import com.opendroid.ai.data.models.effectiveGrantedActions
 import com.opendroid.ai.data.models.resolvedAutoMode
 import com.opendroid.ai.data.repository.ChatSession
 import com.opendroid.ai.ui.components.ContactPickerCard
+import com.opendroid.ai.ui.components.MarkdownMessage
 import com.opendroid.ai.ui.theme.*
 import com.opendroid.ai.ui.viewmodel.ChatViewModel
 import kotlinx.coroutines.delay
@@ -816,13 +817,20 @@ fun ChatBubble(
                     )
                 }
 
-                Text(
-                    text = message.text,
-                    fontSize = 14.sp,
-                    color = textColor,
-                    lineHeight = 20.sp
-                )
-                
+                if (isAgent) {
+                    // Agent replies render as Markdown (headings, lists, tables,
+                    // code blocks with copy buttons); user messages stay plain
+                    // text — they are user-typed, not documents.
+                    MarkdownMessage(text = message.text)
+                } else {
+                    Text(
+                        text = message.text,
+                        fontSize = 14.sp,
+                        color = textColor,
+                        lineHeight = 20.sp
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Row(
