@@ -47,10 +47,23 @@ data class McpServerDraft(
     val allowInsecureLocal: Boolean = false,
     val enabled: Boolean = true
 ) {
-    fun validationError(): String? = when {
+    /**
+     * [existingNames] are the names of all configured servers and
+     * [originalName] the name of the server being edited (null when
+     * adding). Servers are stored keyed by name, so saving under another
+     * server's name would upsert over — and silently destroy — that
+     * server's config; a collision with any name other than the edited
+     * server's own is rejected.
+     */
+    fun validationError(
+        existingNames: Set<String> = emptySet(),
+        originalName: String? = null
+    ): String? = when {
         name.isBlank() -> "Give the server a name"
         !url.startsWith("http://") && !url.startsWith("https://") ->
             "URL must start with http:// or https://"
+        name.trim() != originalName && name.trim() in existingNames ->
+            "A server named '${name.trim()}' already exists — choose a different name"
         else -> null
     }
 
@@ -143,8 +156,18 @@ class McpServersViewModel @Inject constructor(
     fun saveServer(originalName: String?, draft: McpServerDraft) {
         draft.validationError()?.let { _message.value = it; return }
         viewModelScope.launch {
+            val allConfigs = withContext(Dispatchers.IO) { configStore.list() }
+            // Authoritative duplicate-name check (the dialog validates too,
+            // but the store upserts by name — never let an Add, or a rename
+            // onto another server, overwrite that server's config).
+            val trimmedName = draft.name.trim()
+            if (allConfigs.any { it.name == trimmedName && it.name != originalName }) {
+                _message.value =
+                    "A server named '$trimmedName' already exists — choose a different name"
+                return@launch
+            }
             val existing = originalName?.let { name ->
-                withContext(Dispatchers.IO) { configStore.list().firstOrNull { it.name == name } }
+                allConfigs.firstOrNull { it.name == name }
             }
             val config = McpEndpointConfig(
                 name = draft.name.trim(),
