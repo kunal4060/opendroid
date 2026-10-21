@@ -113,10 +113,16 @@ class AutoReplyEngine @Inject constructor(
                 Log.d(TAG, "Scheduling auto-reply in ${config.replyDelayMinutes} min for ${notification.contactName}")
                 delay(delayMs)
 
-                // Re-check config (user might have disabled it during the wait)
+                // Re-check the FULL policy against fresh config (user might
+                // have changed it during the wait). Loop-2 Area2 #11: this
+                // used to re-check only globalEnabled, so a contact the user
+                // blacklisted, removed from the whitelist, or whose app they
+                // disabled during the (default 15-minute) delay still got
+                // the reply. shouldAutoReply covers all of it, globalEnabled
+                // included.
                 val freshConfig = settingsRepository.autoReplyConfig.first()
-                if (!freshConfig.globalEnabled) {
-                    Log.d(TAG, "Auto-reply disabled during wait period")
+                if (!shouldAutoReply(notification, freshConfig)) {
+                    Log.d(TAG, "Auto-reply policy no longer allows reply after wait period")
                     return@launch
                 }
 
