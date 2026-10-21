@@ -14,7 +14,13 @@ import com.opendroid.ai.data.models.PlanStep
  */
 object AutoApprovalPolicy {
 
-    fun shouldAutoApprove(mode: AutoMode, granted: Set<String>, plan: Plan): Boolean = when (mode) {
+    fun shouldAutoApprove(mode: AutoMode, granted: Set<String>, plan: Plan): Boolean {
+        // Audit-2 #8: a zero-step plan is a malformed planner result, never
+        // an approval — `none {}` over an empty step list is vacuously true
+        // in AUTO and YOLO returns true unconditionally, which used to let an
+        // empty plan "complete" instantly with a success summary.
+        if (plan.steps.isEmpty()) return false
+        return when (mode) {
         AutoMode.OFF -> false
         AutoMode.YOLO -> true
         AutoMode.AUTO -> plan.steps
@@ -22,6 +28,7 @@ object AutoApprovalPolicy {
                 step -> listOfNotNull(step.action.takeIf { it.isNotBlank() }, step.fallback.takeIf { it.isNotBlank() })
             }
             .none { ActionSchema.isNeverAutoApprove(it) || it !in granted }
+        }
     }
 
     /**
