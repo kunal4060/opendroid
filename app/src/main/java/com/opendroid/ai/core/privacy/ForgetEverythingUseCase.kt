@@ -18,12 +18,21 @@ import com.opendroid.ai.core.security.ProviderCredentialId
 import com.opendroid.ai.core.security.ProviderCredentialStore
 import com.opendroid.ai.core.security.SensitiveMemoryStore
 import com.opendroid.ai.core.security.SocialCredentialStore
+import com.opendroid.ai.core.external.ExternalAutomationStore
+import com.opendroid.ai.core.google.GoogleAccountStore
 import com.opendroid.ai.core.learning.LearnedActionStore
 import com.opendroid.ai.core.rag.RagIndexStore
+import com.opendroid.ai.core.schedule.ScheduledTaskScheduler
+import com.opendroid.ai.core.schedule.ScheduledTaskStore
+import com.opendroid.ai.core.security.AndroidAppLockStore
+import com.opendroid.ai.core.security.AppLockStore
 import com.opendroid.ai.core.security.UserProfileStore
+import com.opendroid.ai.core.research.AndroidResearchSettingsStore
 import com.opendroid.ai.core.service.McpConfigStore
 import com.opendroid.ai.core.service.OpenDroidService
 import com.opendroid.ai.core.settings.AndroidAppSettingsStore
+import com.opendroid.ai.core.usage.UsageRepository
+import com.opendroid.ai.core.widget.WidgetEventRecorder
 import com.opendroid.ai.data.db.OpenDroidDatabase
 import com.opendroid.ai.data.repository.PersonaRepository
 import com.opendroid.ai.data.repository.SettingsRepository
@@ -64,7 +73,13 @@ class ForgetEverythingUseCase @Inject constructor(
     private val socialCredentialStore: SocialCredentialStore,
     private val learnedActionStore: LearnedActionStore,
     private val researchSettingsStore: com.opendroid.ai.core.research.ResearchSettingsStore,
-    private val ragIndexStore: RagIndexStore
+    private val ragIndexStore: RagIndexStore,
+    private val appLockStore: AppLockStore,
+    private val scheduledTaskStore: ScheduledTaskStore,
+    private val scheduledTaskScheduler: ScheduledTaskScheduler,
+    private val usageRepository: UsageRepository,
+    private val externalAutomationStore: ExternalAutomationStore,
+    private val googleAccountStore: GoogleAccountStore
 ) {
 
     /** Runs the full wipe off the main thread and streams each finished step to [onStepFinished]. */
@@ -108,6 +123,12 @@ class ForgetEverythingUseCase @Inject constructor(
             clear = { quiesceBackgroundWork() }
         ),
         WipeTarget(
+            id = "scheduled-tasks",
+            title = "Scheduled tasks",
+            remainingDescription = "Your scheduled tasks are still stored on this device and may still run.",
+            clear = { clearScheduledTasks() }
+        ),
+        WipeTarget(
             id = "database",
             title = "Chats, memories, plans & history",
             remainingDescription =
@@ -139,11 +160,25 @@ class ForgetEverythingUseCase @Inject constructor(
             clear = { ragIndexStore.clearAll() }
         ),
         WipeTarget(
+            id = "usage-history",
+            title = "Usage history & model prices",
+            remainingDescription = "Your token/cost usage history and custom model prices are still stored on this device.",
+            clear = { usageRepository.clearAll() }
+        ),
+        WipeTarget(
             id = "sensitive-memory",
             title = "Sensitive memories",
             remainingDescription = "Your sensitive (Level 4) memories are still stored on this device.",
             clear = {
                 check(sensitiveMemoryStore.clearAll()) { "Sensitive memory store did not clear" }
+            }
+        ),
+        WipeTarget(
+            id = "app-lock",
+            title = "App lock & PIN",
+            remainingDescription = "Your app lock (including its PIN) is still set on this device.",
+            clear = {
+                check(appLockStore.clearAll()) { "App lock store did not clear" }
             }
         ),
         WipeTarget(
@@ -169,6 +204,22 @@ class ForgetEverythingUseCase @Inject constructor(
             }
         ),
         WipeTarget(
+            id = "external-automation",
+            title = "External automation token",
+            remainingDescription = "External apps can still control OpenDroid with your automation token.",
+            // The token record dies here; the enable flag and last-run record in
+            // the same file die with the whole file in the preference-files step.
+            clear = { externalAutomationStore.clearToken() }
+        ),
+        WipeTarget(
+            id = "google-account",
+            title = "Connected Google account",
+            remainingDescription = "Your Google account connection (Gmail & Calendar) is still stored on this device.",
+            clear = {
+                check(googleAccountStore.clearAll()) { "Google account store did not clear" }
+            }
+        ),
+        WipeTarget(
             id = "user-profile",
             title = "Your profile",
             remainingDescription = "Your name and date of birth are still stored on this device.",
@@ -176,6 +227,12 @@ class ForgetEverythingUseCase @Inject constructor(
                 val result = userProfileStore.resetForReentry()
                 check(result is ProfileStoreResult.Success) { "Profile store did not clear" }
             }
+        ),
+        WipeTarget(
+            id = "widget-meta",
+            title = "Widget data",
+            remainingDescription = "Some home-screen widget data is still stored on this device.",
+            clear = { WidgetEventRecorder.clearAll(context) }
         ),
         WipeTarget(
             id = "preference-files",
@@ -210,6 +267,18 @@ class ForgetEverythingUseCase @Inject constructor(
         val cancelState = workManager.cancelAllWork().result.get(CANCEL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         check(cancelState is Operation.State.SUCCESS) { "Cancelling background work did not complete" }
         workManager.pruneWork()
+    }
+
+    /**
+     * Disarms every scheduled task's alarm, then erases the schedule store.
+     * The order matters: clearing the store alone would leave already-registered
+     * AlarmManager alarms pointing at tasks that no longer exist, and the
+     * WorkManager cancellation in the background-work step cannot reach them.
+     * With the store empty, the boot/sweep re-arm paths find nothing to resurrect.
+     */
+    private suspend fun clearScheduledTasks() {
+        scheduledTaskStore.snapshot().forEach { task -> scheduledTaskScheduler.cancel(task.id) }
+        scheduledTaskStore.clearAll()
     }
 
     /**
@@ -279,7 +348,8 @@ class ForgetEverythingUseCase @Inject constructor(
     /**
      * Deletes the contents (not the directories themselves) of every app-private location
      * holding user content: downloaded on-device models and their local-import copies, the
-     * default workspace, saved pictures, and both caches (chat exports land in the cache).
+     * default workspace, saved pictures, the local copies of chat attachments and of images
+     * shared into the app, and both caches (chat exports land in the cache).
      * User-picked SAF folders outside app storage are the user's own files and are left alone;
      * only the stored pointer to them (in the erased preference files) is forgotten.
      */
@@ -288,6 +358,8 @@ class ForgetEverythingUseCase @Inject constructor(
         val roots = listOfNotNull(
             File(externalBase, "models"),
             File(context.filesDir, "litert_models"),
+            File(context.filesDir, "attachments"), // AttachmentProcessor local copies (B1)
+            File(context.filesDir, "shared_inbox"), // SharedImageStore inbox (C2)
             File(externalBase, "workspace"),
             context.getExternalFilesDir(Environment.DIRECTORY_PICTURES),
             context.cacheDir,
@@ -312,7 +384,7 @@ class ForgetEverythingUseCase @Inject constructor(
         const val CANCEL_TIMEOUT_SECONDS = 60L
 
         /**
-         * Every SharedPreferences file the app writes, in one inventory. The first six are the
+         * Every SharedPreferences file the app writes, in one inventory. The first ten are the
          * stores' own published names; the rest are named here because their owners keep the
          * constant private — each comment names the owner so this list can be audited against
          * a `getSharedPreferences` search.
@@ -324,6 +396,10 @@ class ForgetEverythingUseCase @Inject constructor(
             AndroidSocialCredentialStore.PREFERENCES_NAME,
             McpConfigStore.PREFERENCES,
             AndroidAppSettingsStore.PREFERENCES_NAME,
+            AndroidAppLockStore.PREFERENCES_NAME,
+            AndroidResearchSettingsStore.PREFERENCES_NAME,
+            ExternalAutomationStore.PREFERENCES_NAME,
+            GoogleAccountStore.PREFERENCES_NAME,
             "opendroid_prefs", // LegacyPlaintextPreferencesSource (legacy plaintext store)
             "permission_asked", // PermissionAskedStore
             "opendroid_storage_prefs", // StorageWorkspaceProvider
@@ -336,7 +412,10 @@ class ForgetEverythingUseCase @Inject constructor(
             AndroidUserProfileStore.KEY_ALIAS,
             AndroidSensitiveMemoryStore.KEY_ALIAS,
             AndroidSocialCredentialStore.KEY_ALIAS,
-            McpConfigStore.KEY_ALIAS
+            McpConfigStore.KEY_ALIAS,
+            AndroidAppLockStore.KEY_ALIAS,
+            AndroidResearchSettingsStore.KEY_ALIAS,
+            GoogleAccountStore.KEY_ALIAS
         )
     }
 }

@@ -83,6 +83,19 @@ class UsageRepository internal constructor(
         dataStore.edit { prefs -> prefs.remove(usageKey) }
     }
 
+    /**
+     * Removes every usage aggregate AND every rate override. The A6 wipe uses
+     * this rather than [resetUsage]: a forget-everything pass promises a
+     * genuine first-run state, and overrides are stored user data too. The
+     * dashboard's own reset button keeps [resetUsage]'s narrower semantics.
+     */
+    suspend fun clearAll() {
+        dataStore.edit { prefs ->
+            prefs.remove(usageKey)
+            prefs.remove(ratesKey)
+        }
+    }
+
     suspend fun setRateOverride(provider: String, model: String, rate: ModelRate) {
         val canonical = ProviderCatalog.canonicalName(provider)
         dataStore.edit { prefs ->
