@@ -28,6 +28,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -83,7 +86,8 @@ fun MemoryScreen(
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary,
                         fontSize = 20.sp,
-                        letterSpacing = 2.sp
+                        letterSpacing = 2.sp,
+                        modifier = Modifier.semantics { heading() }
                     )
                 },
                 actions = {
@@ -333,7 +337,32 @@ fun WorkingMemoryView(viewModel: MemoryViewModel) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
+                                    .padding(vertical = 4.dp)
+                                    // D8: the status glyphs (● ▶ ✖ ○) are
+                                    // meaningless to a screen reader — the
+                                    // merged stop speaks step, state and
+                                    // outcome in words instead.
+                                    .semantics(mergeDescendants = true) {
+                                        contentDescription = buildString {
+                                            append("Step ${index + 1}, ")
+                                            append(
+                                                when (step.status.name) {
+                                                    "COMPLETED" -> "completed"
+                                                    "RUNNING" -> "running"
+                                                    "FAILED" -> "failed"
+                                                    else -> "pending"
+                                                }
+                                            )
+                                            append(": ")
+                                            append(step.description)
+                                            if (!step.result.isNullOrBlank()) {
+                                                append(". Result: ${step.result}")
+                                            }
+                                            if (!step.error.isNullOrBlank()) {
+                                                append(". Error: ${step.error}")
+                                            }
+                                        }
+                                    },
                                 verticalAlignment = Alignment.Top
                             ) {
                                 Text(

@@ -196,9 +196,15 @@ fun MemoryGraphView(
             .clip(RoundedCornerShape(12.dp))
             .background(background)
             .semantics {
+                // Enriched summary (D8): per-tier counts from the same
+                // filtered node set the canvas draws; sensitive memories
+                // are counted but never named here (they render locked).
                 contentDescription =
-                    "Knowledge graph map: ${visible.nodes.size} memories across " +
-                        "Temporary, Long-Term, Learned Patterns and Sensitive levels. " +
+                    "Knowledge graph map: ${visible.nodes.size} memories — " +
+                        "Long-Term ${visible.nodes.count { it.tier == MemoryTier.LONG_TERM }}, " +
+                        "Learned Patterns ${visible.nodes.count { it.tier == MemoryTier.LEARNED_PATTERN }}, " +
+                        "Temporary ${visible.nodes.count { it.tier == MemoryTier.TEMPORARY }}, " +
+                        "Sensitive ${visible.nodes.count { it.tier == MemoryTier.SENSITIVE }} (shown locked). " +
                         "The List view shows the same memories in screen-reader friendly form."
             }
     ) {

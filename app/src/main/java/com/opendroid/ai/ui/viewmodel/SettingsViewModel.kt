@@ -782,6 +782,16 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** Persists the Reduce motion accessibility toggle (D8). */
+    fun updateReduceMotion(enabled: Boolean) {
+        _llmConfig.value = _llmConfig.value.copy(reduceMotion = enabled)
+        viewModelScope.launch {
+            settingsRepository.updateConfig { current ->
+                current.copy(reduceMotion = enabled)
+            }
+        }
+    }
+
     // ── On-Device Model Lifecycle Management ──
 
     val allModels = modelRepository.allModelsFlow.stateIn(

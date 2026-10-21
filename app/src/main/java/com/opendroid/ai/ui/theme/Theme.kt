@@ -80,6 +80,8 @@ fun OpenDroidTheme(
     isDarkTheme: Boolean = true,
     accentTheme: AccentTheme = AccentTheme.DEFAULT,
     useDynamicColor: Boolean = false,
+    /** User's Reduce motion toggle (D8); the system animator scale is OR-ed in below. */
+    reduceMotion: Boolean = false,
     content: @Composable () -> Unit
 ) {
     // Material You dynamic colour exists only on Android 12 (API 31)+; the
@@ -114,7 +116,17 @@ fun OpenDroidTheme(
         }
     }
 
-    CompositionLocalProvider(LocalOpenDroidColors provides palette) {
+    // D8: effective reduce-motion = the user's toggle OR the system
+    // animator scale being 0. Resolved here so every consumer of
+    // LocalReduceMotion (chat orb/dots/waveform, splash) honours both,
+    // including surfaces that never see the user's config (assistant
+    // session) for the system half.
+    val effectiveReduceMotion = reduceMotion || systemReduceMotionEnabled(context)
+
+    CompositionLocalProvider(
+        LocalOpenDroidColors provides palette,
+        LocalReduceMotion provides effectiveReduceMotion
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,

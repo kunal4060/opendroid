@@ -106,7 +106,8 @@ class MainActivity : FragmentActivity() {
             OpenDroidTheme(
                 isDarkTheme = config.isDarkMode,
                 accentTheme = AccentTheme.fromId(config.accentTheme),
-                useDynamicColor = config.useDynamicColor
+                useDynamicColor = config.useDynamicColor,
+                reduceMotion = config.reduceMotion
             ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),

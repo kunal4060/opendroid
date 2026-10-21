@@ -17,6 +17,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -66,7 +69,8 @@ fun LogsScreen(
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary,
                         fontSize = 20.sp,
-                        letterSpacing = 2.sp
+                        letterSpacing = 2.sp,
+                        modifier = Modifier.semantics { heading() }
                     )
                 },
                 actions = {
@@ -350,6 +354,13 @@ fun UnknownActionCard(error: UnknownActionEntity) {
             modifier = Modifier
                 .clickable { expanded = !expanded }
                 .padding(14.dp)
+                // D8: one merged stop per error entry — badge, time,
+                // attempted action, goal and (when expanded) the repair
+                // explanation read in order. No contentDescription is set
+                // on purpose: it would shadow the expanded detail.
+                .semantics(mergeDescendants = true) {
+                    stateDescription = if (expanded) "Expanded" else "Collapsed"
+                }
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
