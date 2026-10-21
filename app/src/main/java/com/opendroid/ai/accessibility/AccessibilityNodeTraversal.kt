@@ -48,28 +48,32 @@ class AccessibilityNodeTraversal @Inject constructor() {
     /**
      * Finds the first node matching [text] (or the nearest clickable ancestor,
      * for leaves that aren't themselves clickable) and performs ACTION_CLICK on it.
-     * Returns whether a click was dispatched.
+     * Returns whether a click was actually performed: the [AccessibilityNodeInfo.performAction]
+     * result is propagated, so a node that refuses the action (stale node, overlay)
+     * falls through to the next candidate instead of reporting a phantom click.
      */
     fun findAndClick(root: AccessibilityNodeInfo?, text: String): Boolean {
         if (root == null) return false
         val nodes = root.findAccessibilityNodeInfosByText(text)
         for (node in nodes) {
             if (node.isClickable) {
-                node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                val clicked = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                 node.recycle()
-                return true
+                if (clicked) return true
+                continue
             }
             var parent = node.parent
-            while (parent != null) {
+            var parentClicked = false
+            while (parent != null && !parentClicked) {
                 if (parent.isClickable) {
-                    parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    parent.recycle()
-                    node.recycle()
-                    return true
+                    parentClicked = parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                 }
-                parent = parent.parent
+                val next = if (parentClicked) null else parent.parent
+                parent.recycle()
+                parent = next
             }
             node.recycle()
+            if (parentClicked) return true
         }
         return false
     }
