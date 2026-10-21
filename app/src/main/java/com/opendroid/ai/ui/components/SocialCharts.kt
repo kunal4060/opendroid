@@ -149,6 +149,7 @@ fun DonutChart(
     modifier: Modifier = Modifier.size(100.dp)
 ) {
     val total = proportions.sum().coerceAtLeast(1f)
+    val fallbackColor = AppTheme.colors.textTertiary
 
     Canvas(modifier = modifier) {
         var startAngle = -90f
@@ -159,7 +160,7 @@ fun DonutChart(
 
         proportions.forEachIndexed { index, prop ->
             val sweepAngle = (prop / total) * 360f
-            val color = colors.getOrElse(index) { AppTheme.colors.textTertiary }
+            val color = colors.getOrElse(index) { fallbackColor }
             drawArc(
                 color = color,
                 startAngle = startAngle,
