@@ -157,25 +157,68 @@ class InformationActions @Inject constructor() {
         }
 
         private fun evaluateSimpleExpression(expr: String): Double {
-            // Very basic evaluator for +, -, *, /
-            return when {
-                expr.contains("+") -> {
-                    val parts = expr.split("+")
-                    parts[0].toDouble() + parts[1].toDouble()
+            // Real recursive-descent evaluation: chained operators keep
+            // their operands ("10-5-2" = 3, "2*3*4" = 24) with normal
+            // precedence, parentheses and unary signs. Non-finite results
+            // (e.g. "5/0" → Infinity) are rejected, not reported.
+            val parser = ExpressionParser(expr)
+            val value = parser.parseExpression()
+            parser.expectEnd()
+            if (!value.isFinite()) {
+                throw ArithmeticException("Calculation result is not a finite number")
+            }
+            return value
+        }
+
+        private class ExpressionParser(private val input: String) {
+            private var pos = 0
+
+            fun parseExpression(): Double {
+                var value = parseTerm()
+                while (pos < input.length && (input[pos] == '+' || input[pos] == '-')) {
+                    val op = input[pos++]
+                    val rhs = parseTerm()
+                    value = if (op == '+') value + rhs else value - rhs
                 }
-                expr.contains("-") -> {
-                    val parts = expr.split("-")
-                    parts[0].toDouble() - parts[1].toDouble()
+                return value
+            }
+
+            private fun parseTerm(): Double {
+                var value = parseFactor()
+                while (pos < input.length && (input[pos] == '*' || input[pos] == '/')) {
+                    val op = input[pos++]
+                    val rhs = parseFactor()
+                    value = if (op == '*') value * rhs else value / rhs
                 }
-                expr.contains("*") -> {
-                    val parts = expr.split("*")
-                    parts[0].toDouble() * parts[1].toDouble()
+                return value
+            }
+
+            private fun parseFactor(): Double {
+                if (pos < input.length && (input[pos] == '-' || input[pos] == '+')) {
+                    val sign = if (input[pos++] == '-') -1.0 else 1.0
+                    return sign * parseFactor()
                 }
-                expr.contains("/") -> {
-                    val parts = expr.split("/")
-                    parts[0].toDouble() / parts[1].toDouble()
+                if (pos < input.length && input[pos] == '(') {
+                    pos++
+                    val value = parseExpression()
+                    if (pos >= input.length || input[pos] != ')') {
+                        throw IllegalArgumentException("Missing closing parenthesis")
+                    }
+                    pos++
+                    return value
                 }
-                else -> expr.toDouble()
+                val start = pos
+                while (pos < input.length && (input[pos].isDigit() || input[pos] == '.')) pos++
+                if (start == pos) {
+                    throw IllegalArgumentException("Expected a number at position $pos")
+                }
+                return input.substring(start, pos).toDouble()
+            }
+
+            fun expectEnd() {
+                if (pos != input.length) {
+                    throw IllegalArgumentException("Unexpected character at position $pos")
+                }
             }
         }
     }
@@ -281,16 +324,53 @@ class InformationActions @Inject constructor() {
         override val name: String = "SUMMARIZE_URL"
         override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
             val url = params["url"] ?: return ActionResult(false, null, "url is missing")
+            // Actually fetch the page and return an extractive summary of
+            // its text — a plan step asking for a summary must receive one,
+            // not a browser window. Fetch/extraction failures fall back to
+            // opening the page as a non-success result.
+            val summary = try {
+                fetchPageSummary(url)
+            } catch (e: Exception) {
+                Log.e("SummarizeUrl", "Fetch failed: ${e.localizedMessage}")
+                null
+            }
+            if (!summary.isNullOrBlank()) {
+                return ActionResult(true, "Summary of $url:\n\n$summary", null)
+            }
             return try {
                 val intent = Intent(Intent.ACTION_VIEW, url.toUri()).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 context.startActivity(intent)
-                ActionResult(true, "Opening that page for you!", null)
+                ActionResult(false, "I couldn't fetch that page to summarise it, but I opened it for you.", "Page could not be fetched for summarisation", true)
             } catch (e: Exception) {
                 Log.e("SummarizeUrl", "URL failed: ${e.localizedMessage}")
-                ActionResult(false, null, "Couldn't open that link right now.")
+                ActionResult(false, null, "Couldn't summarise or open that link right now.")
             }
+        }
+
+        private fun fetchPageSummary(url: String): String? {
+            val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+            connection.connectTimeout = 5000
+            connection.readTimeout = 5000
+            connection.instanceFollowRedirects = true
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Android) OpenDroid")
+            val html = connection.inputStream.bufferedReader().use { it.readText() }
+            val text = html
+                .replace(Regex("(?is)<script.*?</script>"), " ")
+                .replace(Regex("(?is)<style.*?</style>"), " ")
+                .replace(Regex("(?is)<[^>]+>"), " ")
+                .replace(Regex("&[a-zA-Z#0-9]+;"), " ")
+                .replace(Regex("\\s+"), " ")
+                .trim()
+            if (text.length < 80) return null
+            // Extractive summary: the first few complete sentences.
+            val sentences = text.split(Regex("(?<=[.!?])\\s+"))
+                .map { it.trim() }
+                .filter { it.length > 30 }
+                .take(3)
+            val summary = if (sentences.isNotEmpty()) sentences.joinToString(" ") else text.take(600)
+            return summary.take(1200)
         }
     }
 

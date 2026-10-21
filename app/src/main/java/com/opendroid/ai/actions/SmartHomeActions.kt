@@ -2,14 +2,19 @@ package com.opendroid.ai.actions
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.util.Log
 import com.opendroid.ai.actions.base.Action
 import com.opendroid.ai.actions.base.ActionResult
-import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * Smart-home commands. OpenDroid has NO smart-home device integration: no
+ * API is contacted and no device state ever changes from these actions.
+ * They therefore never report success — the honest outcome is a hand-off
+ * to the Google Home app (user completes the command there), or a plain
+ * "not supported" failure when even that is unavailable.
+ */
 @Singleton
 class SmartHomeActions @Inject constructor() {
 
@@ -25,29 +30,11 @@ class SmartHomeActions @Inject constructor() {
         override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
             val device = params["device"] ?: "device"
             val action = params["action"] ?: "toggle"
-            val value = params["value"] ?: ""
-            return try {
-                // Try triggering Google Assistant with a voice trigger command
-                val query = URLEncoder.encode("turn $action $device $value", "UTF-8")
-                val intent = Intent(Intent.ACTION_WEB_SEARCH).apply {
-                    putExtra("query", "turn $action $device $value")
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                
-                // Also fallback to opening Google Home app
-                val homeIntent = context.packageManager.getLaunchIntentForPackage("com.google.android.apps.chromecast.app")
-                if (homeIntent != null) {
-                    homeIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    context.startActivity(homeIntent)
-                    ActionResult(true, "Got it — telling Google Home to $action the $device!", null)
-                } else {
-                    context.startActivity(intent)
-                    ActionResult(true, "Google Home isn't installed, so I searched for it instead.", null, true)
-                }
-            } catch (e: Exception) {
-                Log.e("SmartHome", "Action failed: ${e.localizedMessage}")
-                ActionResult(false, null, "Couldn't control that smart device right now.")
-            }
+            return handOffToGoogleHome(
+                context,
+                logTag = "SmartHome",
+                commandDescription = "$action the $device"
+            )
         }
     }
 
@@ -56,25 +43,12 @@ class SmartHomeActions @Inject constructor() {
         override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
             val room = params["room"] ?: "room"
             val on = params["on"]?.toBoolean() ?: true
-            val brightness = params["brightness"] ?: ""
-            val color = params["color"] ?: ""
-            return try {
-                val state = if (on) "on" else "off"
-                val command = "turn light $state in $room " + 
-                              (if (brightness.isNotEmpty()) "to $brightness percent " else "") +
-                              (if (color.isNotEmpty()) "color $color" else "")
-                              
-                val intent = Intent(Intent.ACTION_WEB_SEARCH).apply {
-                    putExtra("query", command)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(intent)
-                val stateWord = if (on) "on" else "off"
-                ActionResult(true, "Turning the $room light $stateWord!", null)
-            } catch (e: Exception) {
-                Log.e("ToggleLight", "Light failed: ${e.localizedMessage}")
-                ActionResult(false, null, "Couldn't control the light right now.")
-            }
+            val stateWord = if (on) "on" else "off"
+            return handOffToGoogleHome(
+                context,
+                logTag = "ToggleLight",
+                commandDescription = "turn the $room light $stateWord"
+            )
         }
     }
 
@@ -82,18 +56,11 @@ class SmartHomeActions @Inject constructor() {
         override val name: String = "SET_THERMOSTAT"
         override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
             val temp = params["temperature"] ?: return ActionResult(false, null, "temperature parameter is missing")
-            return try {
-                val command = "set thermostat temperature to $temp"
-                val intent = Intent(Intent.ACTION_WEB_SEARCH).apply {
-                    putExtra("query", command)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(intent)
-                ActionResult(true, "Setting thermostat to $temp!", null)
-            } catch (e: Exception) {
-                Log.e("SetThermostat", "Thermostat failed: ${e.localizedMessage}")
-                ActionResult(false, null, "Couldn't set the thermostat right now.")
-            }
+            return handOffToGoogleHome(
+                context,
+                logTag = "SetThermostat",
+                commandDescription = "set the thermostat to $temp"
+            )
         }
     }
 
@@ -101,17 +68,44 @@ class SmartHomeActions @Inject constructor() {
         override val name: String = "LOCK_DOOR"
         override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
             val location = params["location"] ?: "front door"
+            return handOffToGoogleHome(
+                context,
+                logTag = "LockDoor",
+                commandDescription = "lock the $location"
+            )
+        }
+    }
+
+    companion object {
+        /**
+         * Opens Google Home for the user to complete [commandDescription]
+         * themselves and reports a non-success user-action-required result;
+         * if Google Home isn't installed, reports an honest failure.
+         */
+        private fun handOffToGoogleHome(
+            context: Context,
+            logTag: String,
+            commandDescription: String
+        ): ActionResult {
             return try {
-                val command = "lock $location"
-                val intent = Intent(Intent.ACTION_WEB_SEARCH).apply {
-                    putExtra("query", command)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                val homeIntent = context.packageManager
+                    .getLaunchIntentForPackage("com.google.android.apps.chromecast.app")
+                if (homeIntent != null) {
+                    homeIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(homeIntent)
+                    ActionResult.UserActionRequired(
+                        "I can't control smart devices directly — no smart-home integration is set up. " +
+                            "I opened Google Home; please $commandDescription there."
+                    )
+                } else {
+                    ActionResult(
+                        false, null,
+                        "Smart-home control isn't supported (no device integration) and Google Home isn't installed, so I couldn't $commandDescription."
+                    )
                 }
-                context.startActivity(intent)
-                ActionResult(true, "Locking the $location!", null)
             } catch (e: Exception) {
-                Log.e("LockDoor", "Lock failed: ${e.localizedMessage}")
-                ActionResult(false, null, "Couldn't lock the door right now.")
+                Log.e(logTag, "Smart home hand-off failed: ${e.localizedMessage}")
+                ActionResult(false, null, "Couldn't open Google Home to $commandDescription.")
             }
         }
     }
