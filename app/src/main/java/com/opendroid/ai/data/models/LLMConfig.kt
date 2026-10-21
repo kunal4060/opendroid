@@ -51,6 +51,19 @@ data class LLMConfig(
     val multiAgentModeEnabled: Boolean = false,
     val showFloatingButton: Boolean = true,
     val isDarkMode: Boolean = true,
+    /**
+     * Accent preset id — an `AccentTheme` enum name (ui.theme). Stored as a
+     * plain string so a future preset rename can never break decoding of a
+     * saved config; unknown ids resolve to the default preset at read time
+     * (AccentTheme.fromId).
+     */
+    val accentTheme: String = "SIGNAL_GREEN",
+    /**
+     * Material You dynamic colour (Android 12+). When true, the wallpaper
+     * dynamic scheme overrides [accentTheme]; offered in Settings only where
+     * the platform supports it.
+     */
+    val useDynamicColor: Boolean = false,
     val lastModelFetch: Map<String, Long> = emptyMap(), // Provider -> last fetch timestamp
     val modelCache: Map<String, List<AIModel>> = emptyMap() // Provider -> cached AIModels list
 )

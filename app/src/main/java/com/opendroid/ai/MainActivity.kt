@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import com.opendroid.ai.core.service.OpenDroidService
 import com.opendroid.ai.data.repository.SettingsRepository
 import com.opendroid.ai.ui.OpenDroidNavigation
+import com.opendroid.ai.ui.theme.AccentTheme
 import com.opendroid.ai.ui.theme.AppTheme
 import com.opendroid.ai.ui.theme.OpenDroidTheme
 import com.opendroid.ai.ui.theme.enableOpenDroidEdgeToEdge
@@ -39,7 +40,11 @@ class MainActivity : ComponentActivity() {
                 initial = com.opendroid.ai.data.models.LLMConfig()
             )
 
-            OpenDroidTheme(isDarkTheme = config.isDarkMode) {
+            OpenDroidTheme(
+                isDarkTheme = config.isDarkMode,
+                accentTheme = AccentTheme.fromId(config.accentTheme),
+                useDynamicColor = config.useDynamicColor
+            ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = AppTheme.colors.background

@@ -18,15 +18,38 @@ data class OpenDroidColors(
     val borderColor: Color,
     val textPrimary: Color,
     val textSecondary: Color,
+    /**
+     * The primary accent (thin marks: icons, links, selected states), driven by
+     * the user's [AccentTheme] choice via [resolveOpenDroidColors]. The field
+     * keeps its historical name; with the default Signal Green preset it holds
+     * an actual green.
+     */
     val accentNeonGreen: Color,
-    /** Calmer green for large filled button surfaces (neon is for thin marks only). */
+    /** Calmer step of the accent for large filled button surfaces. */
     val accentGreenButton: Color,
+    /** Content colour drawn on top of [accentGreenButton] fills. */
+    val onAccent: Color,
+    /**
+     * Legacy secondary-accent tokens. Screens read these as "the accent"
+     * ([accentCyan] is the most-read colour token in the app), so the resolver
+     * aliases both to the chosen accent — one accent everywhere, and no screen
+     * keeps producing a competing hue the user did not pick.
+     */
     val accentPurple: Color,
     val accentCyan: Color,
     val accentRed: Color,
     val accentOrange: Color = Color(0xFFFF9500),
     val isDark: Boolean
 )
+
+// ── Base palettes ────────────────────────────────────────────
+// Neutral surfaces + text + semantic colours. The accent fields below carry
+// the DEFAULT preset (Signal Green) so these palettes are valid on their own
+// (CompositionLocal default, edge-to-edge scrims); OpenDroidTheme always goes
+// through resolveOpenDroidColors() to apply the user's actual choice.
+// Semantic colours (accentRed = error, accentOrange = warning) are part of
+// the base on purpose: the accent picker never moves them, so they remain
+// distinguishable under every accent.
 
 // ── Dark palette: Classic Pure Black (#000000) ───────────────
 val DarkPalette = OpenDroidColors(
@@ -36,10 +59,11 @@ val DarkPalette = OpenDroidColors(
     borderColor = Color(0xFF27272A),     // Zinc 800 hairline border
     textPrimary = Color(0xFFFFFFFF),     // Pure white
     textSecondary = Color(0xFFA1A1AA),   // Zinc 400 silver
-    accentNeonGreen = Color(0xFFFFFFFF), // High-contrast monochrome (replaces green)
-    accentGreenButton = Color(0xFFFFFFFF), // Crisp white button
-    accentPurple = Color(0xFFA855F7),    // Electric purple
-    accentCyan = Color(0xFF38BDF8),      // Sky sapphire
+    accentNeonGreen = Color(0xFF3ECF8E), // Signal Green marks (default preset)
+    accentGreenButton = Color(0xFF2FBF7F), // Signal Green fill
+    onAccent = Color(0xFF052418),
+    accentPurple = Color(0xFF3ECF8E),    // Legacy alias of the accent
+    accentCyan = Color(0xFF3ECF8E),      // Legacy alias of the accent
     accentRed = Color(0xFFEF4444),       // Clean alert red
     accentOrange = Color(0xFFFF9500),
     isDark = true
@@ -53,14 +77,47 @@ val LightPalette = OpenDroidColors(
     borderColor = Color(0xFFE4E4E7),     // Zinc 200 hairline border
     textPrimary = Color(0xFF09090B),     // Deep obsidian black
     textSecondary = Color(0xFF71717A),   // Zinc 500 slate
-    accentNeonGreen = Color(0xFF09090B), // High-contrast monochrome (replaces green)
-    accentGreenButton = Color(0xFF09090B), // Crisp black button
-    accentPurple = Color(0xFF7E22CE),    // Purple
-    accentCyan = Color(0xFF0284C7),      // Ocean sapphire
+    accentNeonGreen = Color(0xFF0B7A44), // Signal Green marks (default preset)
+    accentGreenButton = Color(0xFF0E8A4C), // Signal Green fill
+    onAccent = Color(0xFFFFFFFF),
+    accentPurple = Color(0xFF0B7A44),    // Legacy alias of the accent
+    accentCyan = Color(0xFF0B7A44),      // Legacy alias of the accent
     accentRed = Color(0xFFDC2626),       // Clean alert red
     accentOrange = Color(0xFFD97706),
     isDark = false
 )
+
+/**
+ * Resolves the palette for a brightness mode + the user's accent choice.
+ *
+ * The chosen accent is written into every accent token screens genuinely
+ * read — [OpenDroidColors.accentNeonGreen], [OpenDroidColors.accentGreenButton]
+ * and the legacy [OpenDroidColors.accentCyan] / [OpenDroidColors.accentPurple]
+ * aliases — so a picker change re-skins the whole app on the next
+ * recomposition, with no restart and no dead setting.
+ *
+ * When Material You dynamic colour is active, the caller passes the dynamic
+ * scheme's `primary` / `onPrimary` and they override the preset.
+ * Semantic colours always come from the base palette, untouched.
+ */
+fun resolveOpenDroidColors(
+    dark: Boolean,
+    accentTheme: AccentTheme,
+    dynamicPrimary: Color? = null,
+    dynamicOnPrimary: Color? = null
+): OpenDroidColors {
+    val base = if (dark) DarkPalette else LightPalette
+    val values = accentTheme.values(dark)
+    val marks = dynamicPrimary ?: values.marks
+    val fill = dynamicPrimary ?: values.fill
+    return base.copy(
+        accentNeonGreen = marks,
+        accentGreenButton = fill,
+        onAccent = dynamicOnPrimary ?: values.onFill,
+        accentPurple = marks,
+        accentCyan = marks
+    )
+}
 
 val LocalOpenDroidColors = compositionLocalOf { DarkPalette }
 
@@ -115,6 +172,11 @@ val AccentGreenButton: Color
     @Composable
     @ReadOnlyComposable
     get() = AppTheme.colors.accentGreenButton
+
+val OnAccent: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = AppTheme.colors.onAccent
 
 val AccentPurple: Color
     @Composable
