@@ -83,6 +83,7 @@ import com.opendroid.ai.core.intent.ExternalLaunch
 import com.opendroid.ai.core.llm.PendingAttachment
 import com.opendroid.ai.core.llm.RoutingStatus
 import com.opendroid.ai.core.voice.SpeechRecognitionEngine
+import com.opendroid.ai.core.voice.VoiceSessionPhase
 import com.opendroid.ai.data.export.ChatExportFormat
 import com.opendroid.ai.data.export.ChatExporter
 import com.opendroid.ai.data.models.AutoMode
@@ -174,6 +175,10 @@ fun ChatScreen(
     var isListening by remember { mutableStateOf(false) }
     var transcriptionText by remember { mutableStateOf("") }
     var voiceError by remember { mutableStateOf<String?>(null) }
+    // D2: a mic-permission grant that should open a voice session (from an
+    // orb long-press) rather than the one-shot push-to-talk listen.
+    var pendingVoiceSessionStart by remember { mutableStateOf(false) }
+    val voiceSessionUiState by viewModel.voiceSessionUiState.collectAsState()
     var showChatMenu by remember { mutableStateOf(false) }
     var sessionPendingDelete by remember { mutableStateOf<ChatSession?>(null) }
     var sessionPendingRename by remember { mutableStateOf<ChatSession?>(null) }
@@ -378,7 +383,12 @@ fun ChatScreen(
     val recordAudioPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
-        if (isGranted) {
+        if (isGranted && pendingVoiceSessionStart) {
+            // D2: the grant was for an orb long-press — open the continuous
+            // voice session instead of the one-shot listen below.
+            pendingVoiceSessionStart = false
+            viewModel.startVoiceSession(context)
+        } else if (isGranted) {
             isListening = true
             voiceError = null
             transcriptionText = ""
@@ -398,12 +408,42 @@ fun ChatScreen(
                     voiceError = err
                 }
             )
+        } else {
+            // Denied (or a stale flag): never let a later push-to-talk grant
+            // be hijacked into opening a voice session.
+            pendingVoiceSessionStart = false
         }
     }
 
     DisposableEffect(Unit) {
         onDispose {
             speechRecognizer.destroy()
+        }
+    }
+
+    // D2: orb long-press toggles the continuous voice session (hosted by
+    // OpenDroidService). Starting a session first cancels any in-chat
+    // push-to-talk listen so the two recognizers never fight over the mic.
+    fun toggleVoiceSession() {
+        if (voiceSessionUiState.active) {
+            viewModel.stopVoiceSession(context)
+            return
+        }
+        if (isListening) {
+            speechRecognizer.cancel()
+            isListening = false
+            mergeDictatedText(transcriptionText)
+            transcriptionText = ""
+        }
+        val audioPerm = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECORD_AUDIO
+        )
+        if (audioPerm == PackageManager.PERMISSION_GRANTED) {
+            viewModel.startVoiceSession(context)
+        } else {
+            pendingVoiceSessionStart = true
+            recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
 
@@ -896,14 +936,78 @@ fun ChatScreen(
                             modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
                         )
                     }
+                    // D2: continuous voice session bar — live phase label plus
+                    // the touch barge-in / end control (voice stop also works:
+                    // "Open Droid" while speaking, "that's all" while listening).
+                    if (voiceSessionUiState.active) {
+                        val sessionPhase = voiceSessionUiState.phase
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 4.dp, bottom = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (sessionPhase == VoiceSessionPhase.LISTENING) {
+                                            AccentRed
+                                        } else {
+                                            AccentCyan
+                                        }
+                                    )
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = when (sessionPhase) {
+                                    VoiceSessionPhase.LISTENING ->
+                                        "Voice conversation — listening… say \"that's all\" to end"
+                                    VoiceSessionPhase.THINKING ->
+                                        "Voice conversation — thinking…"
+                                    VoiceSessionPhase.SPEAKING ->
+                                        "Voice conversation — speaking… say \"Open Droid\" to interrupt"
+                                    VoiceSessionPhase.AWAITING_APPROVAL ->
+                                        "Voice conversation — say \"approve\" or \"cancel\""
+                                    null -> "Voice conversation"
+                                },
+                                fontSize = 11.sp,
+                                color = TextPrimary,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(
+                                onClick = {
+                                    if (sessionPhase == VoiceSessionPhase.SPEAKING) {
+                                        viewModel.interruptVoiceSession(context)
+                                    } else {
+                                        viewModel.stopVoiceSession(context)
+                                    }
+                                }
+                            ) {
+                                Text(
+                                    text = if (sessionPhase == VoiceSessionPhase.SPEAKING) {
+                                        "Interrupt"
+                                    } else {
+                                        "End"
+                                    },
+                                    fontSize = 11.sp,
+                                    color = AccentRed
+                                )
+                            }
+                        }
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Floating Orb for Speech
+                        // Floating Orb for Speech. Tap: one-shot push-to-talk
+                        // (unchanged). Long-press: toggle the D2 continuous
+                        // voice session.
                         FloatingOrb(
                             isListening = isListening,
                             agentState = visibleAgentState,
+                            onLongClick = { toggleVoiceSession() },
                             onClick = {
                                 if (isListening) {
                                     // True cancel: no final result will be delivered for this
@@ -1821,7 +1925,8 @@ fun ProposedPlanPrompt(
 fun FloatingOrb(
     isListening: Boolean,
     agentState: AgentState,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "orb")
     val pulseScale by infiniteTransition.animateFloat(
@@ -1859,7 +1964,10 @@ fun FloatingOrb(
                     radius = 120f
                 )
             )
-            .clickable { onClick() }
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
             .padding(6.dp),
         contentAlignment = Alignment.Center
     ) {
