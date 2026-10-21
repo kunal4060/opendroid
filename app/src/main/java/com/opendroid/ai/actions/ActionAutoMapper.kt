@@ -415,8 +415,17 @@ class ActionAutoMapper @Inject constructor() {
         SemanticRule(listOf("EMAIL"), emptyList(), "SEND_EMAIL"),
         SemanticRule(listOf("MAIL"), listOf("VOICEMAIL"), "SEND_EMAIL"),
 
-        // Generic message → WhatsApp default
-        SemanticRule(listOf("MESSAGE"), listOf("SHOW", "DISPLAY", "ERROR"), "SEND_WHATSAPP"),
+        // Generic message → WhatsApp default. The verb gating is load-
+        // bearing: without it, non-send verbs (DELETE_MESSAGE,
+        // READ_MESSAGE, PIN_MESSAGE, SEARCH_MESSAGES, …) resolved here and
+        // SENT the step's text to the contact on WhatsApp — the same defect
+        // Loop 1 removed with the generic SEND_* rule, from the other side.
+        // Excluded names fall through to no match (unknown → clarify).
+        SemanticRule(
+            listOf("MESSAGE"),
+            listOf("SHOW", "DISPLAY", "ERROR", "DELETE", "READ", "PIN", "SEARCH", "REMOVE"),
+            "SEND_WHATSAPP"
+        ),
 
         // Weather (before SEARCH)
         SemanticRule(listOf("WEATHER"), emptyList(), "GET_WEATHER"),
@@ -466,10 +475,15 @@ class ActionAutoMapper @Inject constructor() {
         SemanticRule(listOf("FLASHLIGHT"), emptyList(), "TOGGLE_FLASHLIGHT"),
         SemanticRule(listOf("TORCH"), emptyList(), "TOGGLE_FLASHLIGHT"),
 
-        // System toggles
-        SemanticRule(listOf("WIFI"), emptyList(), "TOGGLE_WIFI"),
-        SemanticRule(listOf("BLUETOOTH"), emptyList(), "TOGGLE_BLUETOOTH"),
-        SemanticRule(listOf("HOTSPOT"), emptyList(), "TOGGLE_HOTSPOT"),
+        // System toggles. The excludes keep non-toggle verbs away from the
+        // state-flipping actions: a query or navigation step that merely
+        // CONTAINS the radio name (CHECK_WIFI_STATUS, IS_WIFI_ON,
+        // OPEN_WIFI_SETTINGS, OPEN_BLUETOOTH_SETTINGS) must never flip the
+        // radio. Excluded names fall through — CHECK_* lands on the SKIP
+        // rule below, OPEN_* on the generic OPEN_APP rule.
+        SemanticRule(listOf("WIFI"), listOf("CHECK", "STATUS", "IS_", "OPEN", "SETTINGS"), "TOGGLE_WIFI"),
+        SemanticRule(listOf("BLUETOOTH"), listOf("CHECK", "STATUS", "IS_", "OPEN", "SETTINGS"), "TOGGLE_BLUETOOTH"),
+        SemanticRule(listOf("HOTSPOT"), listOf("CHECK", "STATUS", "IS_", "OPEN", "SETTINGS"), "TOGGLE_HOTSPOT"),
 
         // Brightness / Volume
         SemanticRule(listOf("BRIGHTNESS"), emptyList(), "SET_BRIGHTNESS"),
@@ -619,15 +633,21 @@ class ActionAutoMapper @Inject constructor() {
             }
 
             "ASK_USER" -> {
+                // The caller's own question wins: fabricating one from
+                // contact/message keys discarded the actual question the
+                // step was asking (only mapped calls lost it — the direct
+                // schema path preserves it). The fabrications remain as
+                // fallbacks for steps that carried no question at all.
                 val contact = originalParams["contact"]
-                val question = when {
-                    contact != null ->
-                        "What is $contact's phone number?"
-                    originalParams.containsKey("message") ->
-                        "Who should I send this message to?"
-                    else ->
-                        "Could you provide more details for: ${originalAction.lowercase().replace("_", " ")}?"
-                }
+                val question = originalParams["question"]?.takeIf { it.isNotBlank() }
+                    ?: when {
+                        contact != null ->
+                            "What is $contact's phone number?"
+                        originalParams.containsKey("message") ->
+                            "Who should I send this message to?"
+                        else ->
+                            "Could you provide more details for: ${originalAction.lowercase().replace("_", " ")}?"
+                    }
                 mapOf("question" to question)
             }
 

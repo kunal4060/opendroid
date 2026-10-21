@@ -27,6 +27,15 @@ class FoodShoppingActions @Inject constructor() {
             val items = params["items"] ?: return ActionResult(false, null, "items parameter is missing")
             val app = params["app"] ?: "zomato"
             val address = params["address"] ?: ""
+            // The deep links below carry only the search query — there is
+            // no parameter to hand the delivery address to the app. Say so
+            // instead of silently dropping a supplied address (the old
+            // code read it and never used or mentioned it).
+            val addressNote = if (address.isNotBlank()) {
+                " Note: I couldn't pass your delivery address ('$address') to $app — please make sure it's the delivery address set in the app."
+            } else {
+                ""
+            }
             return try {
                 val encItems = URLEncoder.encode(items, "UTF-8")
                 val (uri, packageName) = when (app.lowercase()) {
@@ -38,7 +47,7 @@ class FoodShoppingActions @Inject constructor() {
                 }
                 if (intent.resolveActivity(context.packageManager) != null) {
                     context.startActivity(intent)
-                    ActionResult(true, "Searching for $items on $app!", null)
+                    ActionResult(true, "Searching for $items on $app!$addressNote", null)
                 } else {
                     // Fallback to web search or Play Store
                     val playIntent = Intent(Intent.ACTION_VIEW, "market://details?id=$packageName".toUri()).apply {

@@ -183,12 +183,25 @@ class CalendarActions @Inject constructor(
                 else -> Calendar.getInstance().timeInMillis
             }
             val combinedEnd = params["end"] ?: params["endTime"]
-            val durationMinutes = params["durationMinutes"]?.toLongOrNull()
-                ?: params["duration"]?.toLongOrNull()
             val endMillis: Long = when {
                 combinedEnd != null -> parseEventInstant(combinedEnd)
                     ?: return ActionResult(false, null, "Couldn't understand the event end time '$combinedEnd'.")
-                durationMinutes != null -> startMillis + durationMinutes * 60 * 1000
+                params["durationMinutes"] != null || params["duration"] != null -> {
+                    val raw = (params["durationMinutes"] ?: params["duration"])!!
+                    // `durationMinutes` is a bare minute count; `duration`
+                    // is the human string the planner schema declares
+                    // (default "1 hour"). A bare number keeps its historical
+                    // minutes reading; anything else goes through
+                    // DurationParser (the parser SET_TIMER uses) — the old
+                    // code ran toLongOrNull() on the raw string, so
+                    // "2 hours" silently became the flat 1-hour default.
+                    // A supplied duration that parses neither way fails
+                    // honestly instead of booking the wrong length.
+                    val millis = raw.trim().toLongOrNull()?.times(60_000L)
+                        ?: DurationParser.parseToSeconds(raw)?.times(1000L)
+                    millis?.let { startMillis + it }
+                        ?: return ActionResult(false, null, "Couldn't understand the event duration '$raw'. Try something like '2 hours' or '30 minutes'.")
+                }
                 else -> startMillis + 60 * 60 * 1000 // 1 hr duration
             }
             if (endMillis <= startMillis) {
@@ -557,6 +570,15 @@ class CalendarActions @Inject constructor(
                 }
             }
 
+            // An explicit past date+time can never fire:
+            // resolveDateTimeParams rolls only TIME-ONLY values forward to
+            // tomorrow. Refuse a past instant honestly instead of inserting
+            // a dead event and claiming it set — the same stale-occurrence
+            // rejection SCHEDULE_AGENT_TASK applies to one-shot schedules.
+            if (startMillis <= System.currentTimeMillis()) {
+                return ActionResult(false, null, "That reminder time is in the past, so it could never alert you. Give me a future time.")
+            }
+
             // Insert the reminder event directly; success is claimed only
             // once the row actually exists.
             val calendarId = resolveWritableCalendarId(context)
@@ -573,16 +595,32 @@ class CalendarActions @Inject constructor(
                 }
                 val uri = context.contentResolver.insert(CalendarContract.Events.CONTENT_URI, values)
                 if (uri != null) {
-                    // Attach the alert that makes it a reminder, not just an event.
+                    // Attach the alert that makes it a reminder, not just an
+                    // event: HAS_ALARM alone produces no notification, so
+                    // without this row the "reminder" never fires. Its
+                    // failure (an exception OR a null URI — the old code
+                    // checked neither and claimed success regardless) must
+                    // not be swallowed: roll the event back and let the
+                    // outer catch hand the user the pre-filled compose UI
+                    // as a non-success result.
                     val reminderValues = ContentValues().apply {
                         put(CalendarContract.Reminders.EVENT_ID, ContentUris.parseId(uri))
                         put(CalendarContract.Reminders.MINUTES, 0)
                         put(CalendarContract.Reminders.METHOD, CalendarContract.Reminders.METHOD_ALERT)
                     }
-                    try {
+                    val reminderUri = try {
                         context.contentResolver.insert(CalendarContract.Reminders.CONTENT_URI, reminderValues)
                     } catch (e: Exception) {
-                        Log.w("SetReminder", "Event created but reminder alert failed: ${e.localizedMessage}")
+                        Log.w("SetReminder", "Reminder alert insert failed: ${e.localizedMessage}")
+                        null
+                    }
+                    if (reminderUri == null) {
+                        try {
+                            context.contentResolver.delete(uri, null, null)
+                        } catch (e: Exception) {
+                            Log.w("SetReminder", "Failed to roll back alert-less reminder event: ${e.localizedMessage}")
+                        }
+                        throw IllegalStateException("Reminder alert could not be attached")
                     }
                     ActionResult(true, "Reminder '$title' is set.", null)
                 } else {

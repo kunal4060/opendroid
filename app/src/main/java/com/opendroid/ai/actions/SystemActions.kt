@@ -149,6 +149,63 @@ internal class ToggleBluetoothAction(
     }
 }
 
+/** One installed app that could be what the user asked for. */
+private data class AppCandidate(val packageName: String, val label: String)
+
+/** Outcome of resolving a spoken/typed app name to an installed app. */
+private sealed interface AppResolution {
+    data class Found(val candidate: AppCandidate) : AppResolution
+    data class Ambiguous(val candidates: List<AppCandidate>) : AppResolution
+    object NotFound : AppResolution
+}
+
+/**
+ * Resolves [appName] against launcher apps first, then all installed
+ * apps. Exact label/package matches beat substring matches, and several
+ * distinct substring matches are reported [AppResolution.Ambiguous]
+ * instead of silently picking whichever the PackageManager happened to
+ * list first — the old first-contains behaviour, under which follow-up
+ * automation steps ran against the wrong app. Mirrors the
+ * exact-then-disambiguate hardening contacts received in Loop 1.
+ */
+private fun resolveApp(pm: PackageManager, appName: String): AppResolution {
+    val mainIntent = Intent(Intent.ACTION_MAIN, null).apply {
+        addCategory(Intent.CATEGORY_LAUNCHER)
+    }
+    val launcherCandidates = pm.queryIntentActivities(mainIntent, 0).map {
+        AppCandidate(it.activityInfo.packageName, it.loadLabel(pm).toString())
+    }
+    pickAppMatch(launcherCandidates, appName)?.let { return it }
+    val installedCandidates = try {
+        pm.getInstalledApplications(0).map {
+            AppCandidate(it.packageName, pm.getApplicationLabel(it).toString())
+        }
+    } catch (e: Exception) {
+        emptyList()
+    }
+    return pickAppMatch(installedCandidates, appName) ?: AppResolution.NotFound
+}
+
+private fun pickAppMatch(candidates: List<AppCandidate>, appName: String): AppResolution? {
+    val distinct = candidates.distinctBy { it.packageName }
+    if (distinct.isEmpty()) return null
+    val exact = distinct.filter {
+        it.label.equals(appName, ignoreCase = true) ||
+            it.packageName.equals(appName, ignoreCase = true)
+    }
+    val pool = exact.ifEmpty {
+        distinct.filter {
+            it.label.contains(appName, ignoreCase = true) ||
+                it.packageName.contains(appName, ignoreCase = true)
+        }
+    }
+    return when (pool.size) {
+        0 -> null
+        1 -> AppResolution.Found(pool.single())
+        else -> AppResolution.Ambiguous(pool)
+    }
+}
+
 @Singleton
 class SystemActions @Inject constructor(
     private val agentLoop: dagger.Lazy<AgentLoop>,
@@ -409,44 +466,28 @@ class SystemActions @Inject constructor(
         override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
             val appName = params["appName"] ?: return ActionResult(false, null, "appName parameter missing")
             val pm = context.packageManager
-            val mainIntent = Intent(Intent.ACTION_MAIN, null).apply {
-                addCategory(Intent.CATEGORY_LAUNCHER)
-            }
-            val resolveInfos = pm.queryIntentActivities(mainIntent, 0)
-            
-            // 1. Try to find a match among launcher apps first
-            var matchedPackage = resolveInfos.find {
-                val label = it.loadLabel(pm).toString()
-                val pkgName = it.activityInfo.packageName
-                label.contains(appName, ignoreCase = true) || pkgName.contains(appName, ignoreCase = true)
-            }?.activityInfo?.packageName
-
-            // 2. If not found in launcher apps, try matching installed applications as a fallback
-            if (matchedPackage == null) {
-                try {
-                    val packages = pm.getInstalledApplications(0)
-                    matchedPackage = packages.find {
-                        val label = pm.getApplicationLabel(it).toString()
-                        label.contains(appName, ignoreCase = true) || it.packageName.contains(appName, ignoreCase = true)
-                    }?.packageName
-                } catch (e: Exception) {
-                    // Ignore installed applications check exceptions
+            return when (val resolution = resolveApp(pm, appName)) {
+                is AppResolution.Found -> {
+                    val intent = pm.getLaunchIntentForPackage(resolution.candidate.packageName)
+                    if (intent != null) {
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                        // Wait 2 seconds for app transition to prevent race conditions in subsequent steps
+                        kotlinx.coroutines.delay(2000)
+                        // Name the app that was ACTUALLY opened, not just
+                        // the requested string.
+                        ActionResult(true, "${resolution.candidate.label} is open!", null)
+                    } else {
+                        ActionResult(false, null, "Launcher intent not found for ${resolution.candidate.packageName}")
+                    }
                 }
-            }
-
-            return if (matchedPackage != null) {
-                val intent = pm.getLaunchIntentForPackage(matchedPackage)
-                if (intent != null) {
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    context.startActivity(intent)
-                    // Wait 2 seconds for app transition to prevent race conditions in subsequent steps
-                    kotlinx.coroutines.delay(2000)
-                    ActionResult(true, "$appName is open!", null)
-                } else {
-                    ActionResult(false, null, "Launcher intent not found for $matchedPackage")
-                }
-            } else {
-                ActionResult(false, null, "App '$appName' not installed.")
+                is AppResolution.Ambiguous -> ActionResult(
+                    false, null,
+                    "More than one app matches '$appName': " +
+                        resolution.candidates.joinToString(", ") { it.label } +
+                        ". Which one should I open?"
+                )
+                AppResolution.NotFound -> ActionResult(false, null, "App '$appName' not installed.")
             }
         }
     }
@@ -586,33 +627,24 @@ class SystemActions @Inject constructor(
         override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
             val appName = params["appName"] ?: return ActionResult(false, null, "appName parameter missing")
             val pm = context.packageManager
-            val mainIntent = Intent(Intent.ACTION_MAIN, null).apply {
-                addCategory(Intent.CATEGORY_LAUNCHER)
-            }
-            val resolveInfos = pm.queryIntentActivities(mainIntent, 0)
-            
-            var matchedPackage = resolveInfos.find {
-                val label = it.loadLabel(pm).toString()
-                val pkgName = it.activityInfo.packageName
-                label.contains(appName, ignoreCase = true) || pkgName.contains(appName, ignoreCase = true)
-            }?.activityInfo?.packageName
-
-            if (matchedPackage == null) {
-                try {
-                    val packages = pm.getInstalledApplications(0)
-                    matchedPackage = packages.find {
-                        val label = pm.getApplicationLabel(it).toString()
-                        label.contains(appName, ignoreCase = true) || it.packageName.contains(appName, ignoreCase = true)
-                    }?.packageName
-                } catch (e: Exception) {
-                    // Ignore installed applications check exceptions
-                }
-            }
-
-            return if (matchedPackage != null) {
-                ActionResult(true, "App '$appName' ($matchedPackage) is installed and functional.", null)
-            } else {
-                ActionResult(false, null, "App '$appName' is not installed.")
+            // Report only what was actually checked: the old text claimed
+            // the matched app was "installed and functional" — no
+            // functionality check exists, and the match itself was a
+            // first-contains guess.
+            return when (val resolution = resolveApp(pm, appName)) {
+                is AppResolution.Found -> ActionResult(
+                    true,
+                    "App '${resolution.candidate.label}' (${resolution.candidate.packageName}) is installed.",
+                    null
+                )
+                is AppResolution.Ambiguous -> ActionResult(
+                    true,
+                    "More than one app matches '$appName': " +
+                        resolution.candidates.joinToString(", ") { "${it.label} (${it.packageName})" } +
+                        " — all of them are installed.",
+                    null
+                )
+                AppResolution.NotFound -> ActionResult(false, null, "App '$appName' is not installed.")
             }
         }
     }

@@ -2,9 +2,15 @@ package com.opendroid.ai.actions
 
 import android.content.Context
 import android.content.ContextWrapper
+import androidx.test.core.app.ApplicationProvider
 import com.opendroid.ai.core.agent.ActionCategory
 import com.opendroid.ai.core.agent.ActionSchema
 import com.opendroid.ai.core.agent.ActionSequenceExecutor
+import com.opendroid.ai.core.schedule.ScheduleRecurrence
+import com.opendroid.ai.core.schedule.ScheduledTask
+import com.opendroid.ai.core.schedule.ScheduledTaskKind
+import com.opendroid.ai.core.schedule.ScheduledTaskScheduler
+import com.opendroid.ai.core.schedule.ScheduledTaskStore
 import com.opendroid.ai.data.db.dao.MacroDao
 import com.opendroid.ai.data.db.entities.MacroEntity
 import kotlinx.coroutines.flow.Flow
@@ -14,10 +20,40 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+// Robolectric since Loop-2 #7: DELETE_MACRO cascades into the real
+// ScheduledTaskStore/ScheduledTaskScheduler, so constructions need a
+// working application context and real schedule collaborators.
+@RunWith(RobolectricTestRunner::class)
 class MacroActionsTest {
     private val context: Context = ContextWrapper(null)
+
+    private lateinit var taskStore: ScheduledTaskStore
+    private lateinit var taskScheduler: ScheduledTaskScheduler
+
+    @Before
+    fun setUp() {
+        val appContext = ApplicationProvider.getApplicationContext<Context>()
+        taskStore = ScheduledTaskStore(appContext)
+        taskScheduler = ScheduledTaskScheduler(appContext, taskStore)
+    }
+
+    private fun macroActions(
+        dao: MacroDao,
+        executor: ActionSequenceExecutor
+    ): MacroActions = MacroActions(
+        macroDao = dao,
+        actionSequenceExecutor = executor,
+        scheduledTaskStore = dagger.Lazy { taskStore },
+        scheduledTaskScheduler = dagger.Lazy { taskScheduler }
+    )
+
+    private fun failingExecutor() =
+        ActionSequenceExecutor({ _, _, _ -> error("must not dispatch") }, { true })
 
     @Test
     fun `run macro dispatches decoded steps instead of returning raw JSON`() = runBlocking {
@@ -32,9 +68,9 @@ class MacroActionsTest {
             )
         )
         val calls = mutableListOf<String>()
-        val actions = MacroActions(
-            macroDao = dao,
-            actionSequenceExecutor = ActionSequenceExecutor(
+        val actions = macroActions(
+            dao = dao,
+            executor = ActionSequenceExecutor(
                 executeAction = { action, _, _ ->
                     calls += action
                     com.opendroid.ai.actions.base.ActionResult.Success()
@@ -58,10 +94,8 @@ class MacroActionsTest {
             MacroEntity("bad", "bad", "manual", "not-json", false, true),
             MacroEntity("empty", "empty", "manual", "", false, true)
         )
-        val actions = MacroActions(
-            dao,
-            ActionSequenceExecutor({ _, _, _ -> error("must not dispatch") }, { true })
-        ).getActions().first { it.name == "RUN_MACRO" }
+        val actions = macroActions(dao, failingExecutor())
+            .getActions().first { it.name == "RUN_MACRO" }
 
         val missing = actions.execute(mapOf("macroName" to "missing"), context)
         val malformed = actions.execute(mapOf("macroName" to "bad"), context)
@@ -78,10 +112,8 @@ class MacroActionsTest {
     @Test
     fun `delete macro removes a found custom macro`() = runBlocking {
         val dao = InMemoryMacroDao(MacroEntity("macro-1", "morning", "manual", "[]", false, true))
-        val action = MacroActions(
-            dao,
-            ActionSequenceExecutor({ _, _, _ -> error("must not dispatch") }, { true })
-        ).getActions().first { it.name == "DELETE_MACRO" }
+        val action = macroActions(dao, failingExecutor())
+            .getActions().first { it.name == "DELETE_MACRO" }
 
         val result = action.execute(mapOf("macroName" to "morning"), context)
 
@@ -91,12 +123,62 @@ class MacroActionsTest {
     }
 
     @Test
+    fun `delete macro disarms scheduled tasks created for it`() = runBlocking {
+        taskStore.clearAll()
+        val dao = InMemoryMacroDao(MacroEntity("macro-1", "morning", "manual", "[]", false, true))
+        // Agent-created task: macroId set, sourceKey null (the shape
+        // SCHEDULE_AGENT_TASK writes — invisible to the un-mirror sweep).
+        taskStore.upsert(
+            ScheduledTask(
+                id = "task-agent",
+                kind = ScheduledTaskKind.MACRO,
+                label = "morning",
+                macroId = "macro-1",
+                macroName = "morning",
+                recurrence = ScheduleRecurrence.CRON,
+                cronExpression = "0 9 * * *"
+            )
+        )
+        // Sync-mirrored task for the same macro.
+        taskStore.upsert(
+            ScheduledTask(
+                id = "task-mirror",
+                kind = ScheduledTaskKind.MACRO,
+                label = "morning",
+                macroId = "macro-1",
+                macroName = "morning",
+                recurrence = ScheduleRecurrence.CRON,
+                cronExpression = "0 9 * * *",
+                sourceKey = "macro:macro-1"
+            )
+        )
+        // Another macro's task must survive.
+        taskStore.upsert(
+            ScheduledTask(
+                id = "task-other",
+                kind = ScheduledTaskKind.MACRO,
+                label = "evening",
+                macroId = "macro-2",
+                macroName = "evening",
+                recurrence = ScheduleRecurrence.CRON,
+                cronExpression = "0 18 * * *"
+            )
+        )
+        val action = macroActions(dao, failingExecutor())
+            .getActions().first { it.name == "DELETE_MACRO" }
+
+        val result = action.execute(mapOf("macroName" to "morning"), context)
+
+        assertTrue(result.success)
+        val remainingIds = taskStore.snapshot().map { it.id }
+        assertEquals(listOf("task-other"), remainingIds)
+    }
+
+    @Test
     fun `delete macro reports when the requested macro does not exist`() = runBlocking {
         val dao = InMemoryMacroDao()
-        val action = MacroActions(
-            dao,
-            ActionSequenceExecutor({ _, _, _ -> error("must not dispatch") }, { true })
-        ).getActions().first { it.name == "DELETE_MACRO" }
+        val action = macroActions(dao, failingExecutor())
+            .getActions().first { it.name == "DELETE_MACRO" }
 
         val result = action.execute(mapOf("macroName" to "missing"), context)
 
@@ -107,10 +189,8 @@ class MacroActionsTest {
     @Test
     fun `delete macro refuses to remove a system macro`() = runBlocking {
         val dao = InMemoryMacroDao(MacroEntity("system-1", "startup", "manual", "[]", true, true))
-        val action = MacroActions(
-            dao,
-            ActionSequenceExecutor({ _, _, _ -> error("must not dispatch") }, { true })
-        ).getActions().first { it.name == "DELETE_MACRO" }
+        val action = macroActions(dao, failingExecutor())
+            .getActions().first { it.name == "DELETE_MACRO" }
 
         val result = action.execute(mapOf("macroName" to "startup"), context)
 
@@ -125,10 +205,8 @@ class MacroActionsTest {
             MacroEntity("macro-1", "morning", "manual", "[]", false, true),
             deleteSucceeds = false
         )
-        val action = MacroActions(
-            dao,
-            ActionSequenceExecutor({ _, _, _ -> error("must not dispatch") }, { true })
-        ).getActions().first { it.name == "DELETE_MACRO" }
+        val action = macroActions(dao, failingExecutor())
+            .getActions().first { it.name == "DELETE_MACRO" }
 
         val result = action.execute(mapOf("macroName" to "morning"), context)
 
@@ -138,11 +216,58 @@ class MacroActionsTest {
     }
 
     @Test
+    fun `schedule macro stores a parseable cron on an existing macro`() = runBlocking {
+        val dao = InMemoryMacroDao(MacroEntity("macro-1", "morning", "manual", "[]", false, true))
+        val action = macroActions(dao, failingExecutor())
+            .getActions().first { it.name == "SCHEDULE_MACRO" }
+
+        val result = action.execute(
+            mapOf("macroName" to "morning", "cronExpression" to "0 9 * * *"),
+            context
+        )
+
+        assertTrue(result.success)
+        assertEquals("Macro 'morning' is scheduled!", result.data)
+        assertEquals("cron:0 9 * * *", dao.getMacroByName("morning")!!.trigger)
+    }
+
+    @Test
+    fun `schedule macro rejects an unparseable cron instead of arming nothing`() = runBlocking {
+        val dao = InMemoryMacroDao(MacroEntity("macro-1", "morning", "manual", "[]", false, true))
+        val action = macroActions(dao, failingExecutor())
+            .getActions().first { it.name == "SCHEDULE_MACRO" }
+
+        val result = action.execute(
+            mapOf("macroName" to "morning", "cronExpression" to "not a cron"),
+            context
+        )
+
+        assertFalse(result.success)
+        assertTrue(result.error!!.contains("isn't a valid cron expression"))
+        // The bad trigger must NOT have been stored.
+        assertEquals("manual", dao.getMacroByName("morning")!!.trigger)
+    }
+
+    @Test
+    fun `schedule macro reports a missing macro instead of creating an empty shell`() = runBlocking {
+        val dao = InMemoryMacroDao()
+        val action = macroActions(dao, failingExecutor())
+            .getActions().first { it.name == "SCHEDULE_MACRO" }
+
+        val result = action.execute(
+            mapOf("macroName" to "ghost", "cronExpression" to "0 9 * * *"),
+            context
+        )
+
+        assertFalse(result.success)
+        assertEquals("Macro 'ghost' not found.", result.error)
+        assertNull(dao.getMacroByName("ghost"))
+    }
+
+    @Test
     fun `list macros reports when none are saved`() = runBlocking {
-        val action = MacroActions(
-            InMemoryMacroDao(),
-            ActionSequenceExecutor({ _, _, _ -> error("must not dispatch") }, { true })
-        ).getActions().first { it.name == "LIST_MACROS" }
+        val action = macroActions(InMemoryMacroDao(), failingExecutor())
+            .getActions().first { it.name == "LIST_MACROS" }
 
         val result = action.execute(emptyMap(), context)
 
@@ -156,10 +281,8 @@ class MacroActionsTest {
             MacroEntity("macro-2", "evening", "manual", "secret-evening-steps", false, true),
             MacroEntity("macro-1", "morning", "manual", "secret-morning-steps", false, true)
         )
-        val action = MacroActions(
-            dao,
-            ActionSequenceExecutor({ _, _, _ -> error("must not dispatch") }, { true })
-        ).getActions().first { it.name == "LIST_MACROS" }
+        val action = macroActions(dao, failingExecutor())
+            .getActions().first { it.name == "LIST_MACROS" }
 
         val result = action.execute(emptyMap(), context)
 

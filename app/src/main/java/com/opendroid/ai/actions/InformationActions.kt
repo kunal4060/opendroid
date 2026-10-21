@@ -350,12 +350,32 @@ class InformationActions @Inject constructor() {
         }
 
         private fun fetchPageSummary(url: String): String? {
-            val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+            val parsedUrl = java.net.URL(url)
+            // Only web pages can be summarised. (The HttpURLConnection cast
+            // already rejected non-HTTP schemes before any read; this makes
+            // the http/https-only rule explicit instead of accidental.)
+            if (parsedUrl.protocol != "http" && parsedUrl.protocol != "https") return null
+            val connection = parsedUrl.openConnection() as java.net.HttpURLConnection
             connection.connectTimeout = 5000
             connection.readTimeout = 5000
             connection.instanceFollowRedirects = true
             connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Android) OpenDroid")
-            val html = connection.inputStream.bufferedReader().use { it.readText() }
+            // Content-type sanity: a PDF/image/binary body charset-decodes
+            // to garbage that the sentence extractor below would present
+            // as a "summary". Only textual content proceeds; anything else
+            // returns null and execute() falls back to opening the page as
+            // a non-success result. A missing content type is tolerated
+            // (some servers omit it) — the bounded read and the
+            // minimum-length check still apply.
+            val contentType = connection.contentType
+                ?.lowercase()?.substringBefore(';')?.trim()
+            if (contentType != null && !contentType.startsWith("text/") &&
+                contentType != "application/xhtml+xml" && contentType != "application/xml"
+            ) {
+                connection.disconnect()
+                return null
+            }
+            val html = readBounded(connection)
             val text = html
                 .replace(Regex("(?is)<script.*?</script>"), " ")
                 .replace(Regex("(?is)<style.*?</style>"), " ")
@@ -371,6 +391,46 @@ class InformationActions @Inject constructor() {
                 .take(3)
             val summary = if (sentences.isNotEmpty()) sentences.joinToString(" ") else text.take(600)
             return summary.take(1200)
+        }
+
+        /**
+         * Reads at most [MAX_FETCH_BYTES] of the response body and decodes
+         * it with the declared charset (UTF-8 when absent/unparseable).
+         * The old readText() pulled whole pages/files into memory on the
+         * action thread; the summary only ever uses the first ~1,200
+         * characters of extracted text, so a hard cap loses nothing.
+         */
+        private fun readBounded(connection: java.net.HttpURLConnection): String {
+            val charsetName = connection.contentType
+                ?.substringAfter("charset=", "")
+                ?.substringBefore(';')
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+            val charset = try {
+                if (charsetName != null) java.nio.charset.Charset.forName(charsetName) else Charsets.UTF_8
+            } catch (e: Exception) {
+                Charsets.UTF_8
+            }
+            val out = java.io.ByteArrayOutputStream()
+            try {
+                connection.inputStream.use { input ->
+                    val buffer = ByteArray(8192)
+                    var remaining = MAX_FETCH_BYTES
+                    while (remaining > 0) {
+                        val read = input.read(buffer, 0, minOf(buffer.size, remaining))
+                        if (read < 0) break
+                        out.write(buffer, 0, read)
+                        remaining -= read
+                    }
+                }
+            } finally {
+                connection.disconnect()
+            }
+            return out.toString(charset)
+        }
+
+        private companion object {
+            const val MAX_FETCH_BYTES = 256 * 1024
         }
     }
 
