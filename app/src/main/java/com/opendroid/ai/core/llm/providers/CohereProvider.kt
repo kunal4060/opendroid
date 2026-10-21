@@ -5,6 +5,7 @@ import com.opendroid.ai.core.llm.VisionSupport
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.opendroid.ai.core.llm.*
+import com.opendroid.ai.core.llm.error.LLMErrorMapper
 import com.opendroid.ai.core.llm.error.ProviderErrorDetail
 import com.opendroid.ai.core.llm.error.toSafeProviderException
 import com.opendroid.ai.data.repository.SettingsRepository
@@ -45,10 +46,18 @@ class CohereProvider @Inject constructor(
         val messagesList = request.messages.toOpenAIMessages(request.systemPrompt, visionCapable = VisionSupport.supportsImage(name, selectedModel))
 
 
+        // Cohere v2 accepts the sampling/budget fields and JSON mode;
+        // omitting them silently discarded the planner's token budget and
+        // response format (Loop-2 audit Area 1, Finding 18).
         val requestBodyMap = mutableMapOf<String, Any>(
             "model" to selectedModel,
-            "messages" to messagesList
+            "messages" to messagesList,
+            "temperature" to request.temperature,
+            "max_tokens" to request.maxTokens
         )
+        if (request.responseFormat == ResponseFormat.JSON) {
+            requestBodyMap["response_format"] = mapOf("type" to "json_object")
+        }
 
         val bodyJson = gson.toJson(requestBodyMap)
         val httpRequest = Request.Builder()
@@ -70,17 +79,37 @@ class CohereProvider @Inject constructor(
             val responseBody = response.body.string()
             if (responseBody.isBlank()) throw IOException("Empty response body from Cohere")
             val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
-            val messageObj = jsonResponse.getAsJsonObject("message")
-            val contentArray = messageObj.getAsJsonArray("content")
-            val content = contentArray[0].asJsonObject.get("text").asString
+                ?: throw IOException("Empty response body from Cohere")
+            // Cohere v2 content is an array of TYPED blocks: reasoning
+            // models emit thinking blocks first, tool/document blocks have
+            // no "text" member, and a reply may span several text blocks.
+            // Concatenate the text blocks in order; an unchecked [0] read
+            // crashed on non-text blocks and silently truncated the rest.
+            // No text anywhere is a malformed result, not a fake reply.
+            val contentArray = jsonResponse.get("message")
+                ?.takeIf { it.isJsonObject }?.asJsonObject
+                ?.get("content")?.takeIf { it.isJsonArray }?.asJsonArray
+            val content = contentArray?.joinToString("") { block ->
+                block.takeIf { it.isJsonObject }?.asJsonObject
+                    ?.get("text")?.takeIf { it.isJsonPrimitive }?.asString ?: ""
+            } ?: ""
+            if (content.isBlank()) {
+                throw LLMErrorMapper.malformed(name, selectedModel)
+            }
 
             // Cohere v2 reports usage.tokens.input_tokens / output_tokens;
             // keep the split for B3 metering, falling back to a reported
-            // combined total (which then stays unsplit downstream).
-            val usageTokens = jsonResponse.getAsJsonObject("usage")?.getAsJsonObject("tokens")
-            val promptTokens = usageTokens?.get("input_tokens")?.takeIf { it.isJsonPrimitive }?.asInt
-            val completionTokens = usageTokens?.get("output_tokens")?.takeIf { it.isJsonPrimitive }?.asInt
-            val tokensUsed = usageTokens?.get("total_tokens")?.takeIf { it.isJsonPrimitive }?.asInt
+            // combined total (which then stays unsplit downstream). Usage
+            // members are type-checked: a JSON-null usage must not crash.
+            val usageTokens = jsonResponse.get("usage")
+                ?.takeIf { it.isJsonObject }?.asJsonObject
+                ?.get("tokens")?.takeIf { it.isJsonObject }?.asJsonObject
+            val promptTokens = usageTokens?.get("input_tokens")
+                ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.asInt
+            val completionTokens = usageTokens?.get("output_tokens")
+                ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.asInt
+            val tokensUsed = usageTokens?.get("total_tokens")
+                ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.asInt
                 ?: ((promptTokens ?: 0) + (completionTokens ?: 0))
 
             LLMResponse(
