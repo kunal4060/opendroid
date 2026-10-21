@@ -37,6 +37,20 @@ class MemoryExtractor @Inject constructor(
             "not a valid action",
             "action failed"
         )
+
+        // One name token: letters with internal apostrophes/hyphens
+        // (O'Brien, Mary-Jane) — but never the word "and", which joins
+        // clauses ("My name is Tim Ugale and I live in Nashik") instead of
+        // continuing a name. The old `[a-zA-Z\s]+` classes were greedy and
+        // unterminated, so captures swallowed the rest of the sentence.
+        private const val NAME_TOKEN = "(?:(?!and\\b)[A-Za-z]+(?:['\\-][A-Za-z]+)*)"
+        // A name value: up to four tokens. Bounded, and it stops at commas,
+        // periods and other punctuation because they are outside the class.
+        private const val NAME_VALUE = "($NAME_TOKEN(?:\\s+$NAME_TOKEN){0,3})"
+        // Places/addresses: alphanumeric tokens (also never the word "and"),
+        // comma/space separated, up to ten tokens.
+        private const val PLACE_TOKEN = "(?:(?!and\\b)[A-Za-z0-9]+)"
+        private const val PLACE_VALUE = "($PLACE_TOKEN(?:[\\s,]+$PLACE_TOKEN){0,9})"
     }
 
     fun shouldStoreInSemanticMemory(content: String): Boolean {
@@ -48,12 +62,12 @@ class MemoryExtractor @Inject constructor(
     }
 
     private val patterns = listOf(
-        Regex("my name is ([a-zA-Z\\s]+)", RegexOption.IGNORE_CASE) to "user_name",
-        Regex("my wife's name is ([a-zA-Z\\s]+)", RegexOption.IGNORE_CASE) to "wife_name",
-        Regex("my husband's name is ([a-zA-Z\\s]+)", RegexOption.IGNORE_CASE) to "husband_name",
-        Regex("I live in ([a-zA-Z\\s,]+)", RegexOption.IGNORE_CASE) to "user_location",
-        Regex("my office address is ([a-zA-Z0-9\\s,]+)", RegexOption.IGNORE_CASE) to "office_address",
-        Regex("my home address is ([a-zA-Z0-9\\s,]+)", RegexOption.IGNORE_CASE) to "home_address",
+        Regex("my name is $NAME_VALUE", RegexOption.IGNORE_CASE) to "user_name",
+        Regex("my wife's name is $NAME_VALUE", RegexOption.IGNORE_CASE) to "wife_name",
+        Regex("my husband's name is $NAME_VALUE", RegexOption.IGNORE_CASE) to "husband_name",
+        Regex("I live in $PLACE_VALUE", RegexOption.IGNORE_CASE) to "user_location",
+        Regex("my office address is $PLACE_VALUE", RegexOption.IGNORE_CASE) to "office_address",
+        Regex("my home address is $PLACE_VALUE", RegexOption.IGNORE_CASE) to "home_address",
         Regex("my phone number is ([0-9+\\-]+)", RegexOption.IGNORE_CASE) to "user_phone"
     )
 
@@ -72,15 +86,21 @@ class MemoryExtractor @Inject constructor(
                 patterns.forEach { (regex, key) ->
                     val match = regex.find(msg.text)
                     if (match != null) {
-                        val value = match.groupValues[1].trim()
-                        if (shouldStoreInSemanticMemory(key) && shouldStoreInSemanticMemory(value)) {
+                        // Trim, then drop a separator comma the place
+                        // pattern may have stopped right after.
+                        val value = match.groupValues[1].trim().trimEnd(',').trim()
+                        if (value.isNotEmpty() &&
+                            shouldStoreInSemanticMemory(key) && shouldStoreInSemanticMemory(value)
+                        ) {
                             storeExtractedFact(key, value, msg, sessionId)
                         }
                     }
                 }
 
-                // Dynamic extraction helper
-                val wifeMatch = Regex("([a-zA-Z]+) is my wife", RegexOption.IGNORE_CASE).find(msg.text)
+                // Dynamic extraction helper — same bounded multi-word name
+                // capture (the old single-word class kept only the last
+                // word of e.g. "Priya Sharma is my wife").
+                val wifeMatch = Regex("$NAME_VALUE is my wife", RegexOption.IGNORE_CASE).find(msg.text)
                 if (wifeMatch != null) {
                     val value = wifeMatch.groupValues[1].trim()
                     if (shouldStoreInSemanticMemory("wife_name") && shouldStoreInSemanticMemory(value)) {
@@ -88,7 +108,7 @@ class MemoryExtractor @Inject constructor(
                     }
                 }
 
-                val husbandMatch = Regex("([a-zA-Z]+) is my husband", RegexOption.IGNORE_CASE).find(msg.text)
+                val husbandMatch = Regex("$NAME_VALUE is my husband", RegexOption.IGNORE_CASE).find(msg.text)
                 if (husbandMatch != null) {
                     val value = husbandMatch.groupValues[1].trim()
                     if (shouldStoreInSemanticMemory("husband_name") && shouldStoreInSemanticMemory(value)) {
