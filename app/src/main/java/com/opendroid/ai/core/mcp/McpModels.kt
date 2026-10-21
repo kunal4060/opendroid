@@ -54,7 +54,7 @@ sealed interface McpServerState {
 sealed class McpException(message: String, cause: Throwable? = null) : Exception(message, cause) {
 
     /** Network-level failure: unreachable host, TLS, HTTP status, broken stream. */
-    class Transport(message: String, cause: Throwable? = null) : McpException(message, cause)
+    open class Transport(message: String, cause: Throwable? = null) : McpException(message, cause)
 
     /** HTTP status failure (kept distinct so AUTO mode can fall back on 404/405). */
     class Http(val status: Int, message: String) : Transport(message)

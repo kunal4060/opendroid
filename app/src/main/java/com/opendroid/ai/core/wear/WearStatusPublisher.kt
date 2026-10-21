@@ -94,8 +94,9 @@ class WearStatusPublisher @Inject constructor(
     }
 
     private suspend fun publishApprovalLoop() {
+        // agentState is a StateFlow, which already only emits on change —
+        // distinctUntilChanged() on it is a deprecated no-op (warningsAsErrors).
         agentLoop.agentState
-            .distinctUntilChanged()
             .collectLatest { state ->
                 val proposed = state as? AgentState.PlanProposed
                 if (proposed == null) {
