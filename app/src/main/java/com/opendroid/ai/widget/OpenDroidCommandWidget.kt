@@ -4,10 +4,12 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.datastore.preferences.core.Preferences
+import androidx.glance.GlanceComposable
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
@@ -21,6 +23,7 @@ import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.cornerRadius
+import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.currentState
 import androidx.glance.layout.Alignment
@@ -172,7 +175,8 @@ class OpenDroidCommandWidget : GlanceAppWidget() {
         }
     }
 
-    @androidx.glance.GlanceComposable
+    @Composable
+    @GlanceComposable
     private fun RoutineSection(prefs: Preferences, appContext: Context) {
         val routineId = prefs[OpenDroidWidgetKeys.NEXT_ROUTINE_ID]
         val routineName = prefs[OpenDroidWidgetKeys.NEXT_ROUTINE_NAME]
@@ -230,7 +234,8 @@ class OpenDroidCommandWidget : GlanceAppWidget() {
         }
     }
 
-    @androidx.glance.GlanceComposable
+    @Composable
+    @GlanceComposable
     private fun BriefingSection(prefs: Preferences) {
         val lastBriefingAt = prefs[OpenDroidWidgetKeys.LAST_BRIEFING_AT]
         Spacer(modifier = GlanceModifier.height(8.dp))
