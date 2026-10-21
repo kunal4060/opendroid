@@ -53,6 +53,21 @@ class LiteRTLMProvider @Inject constructor(
      * which a synchronized block cannot span.
      */
     private val conversationMutex = Mutex()
+
+    /**
+     * Engine leases currently held (guarded by this instance's monitor,
+     * like every other engine-lifecycle state here). The streaming path
+     * holds a lease for its whole conversation; close/evict paths retire a
+     * leased engine — clearing it from the cache so it is never handed out
+     * again — but defer the physical close until the last lease drains,
+     * because a native engine must never be closed under a live
+     * conversation (Loop-2 audit Area 1, Finding 3).
+     */
+    private var engineLeaseCount = 0
+
+    /** Engines retired while leased; closed by [releaseEngine] when drained. */
+    private val enginesPendingClose = mutableListOf<Engine>()
+
     private var cachedModelPath: String? = null
     private val artifactVerifier = ModelArtifactVerifier(
         hashVerifier = CachingFileHashVerifier()
@@ -187,8 +202,8 @@ class LiteRTLMProvider @Inject constructor(
 
     override fun streamComplete(request: LLMRequest): Flow<String> = flow {
         val modelId = request.model?.takeIf { it.isNotBlank() } ?: ProviderCatalog.defaultModel(name)
+        val spec = resolveModelSpec(modelId)
         try {
-            val spec = resolveModelSpec(modelId)
             checkSdkCompatibility(spec)
             val modelPath = getModelFilePath(spec)
             checkModelReady(modelPath, spec)
@@ -201,7 +216,6 @@ class LiteRTLMProvider @Inject constructor(
             )
 
             checkPromptFits(prompt, spec, request.maxTokens)
-            val engine = getOrInitializeEngine(modelPath, spec)
 
             val samplerConfig = SamplerConfig(
                 topK = 40,
@@ -214,15 +228,27 @@ class LiteRTLMProvider @Inject constructor(
             // Conversation use on the shared cached engine is serialized
             // with the synchronous path through conversationMutex: two live
             // conversations on one native engine can crash the runtime.
+            // The engine is captured INSIDE the mutex and leased for the
+            // whole conversation: previously it was captured outside, while
+            // every close/evict path (delete, model replace, a failed sync
+            // call's catch) took only the monitor — a queued or collecting
+            // stream could be left holding a closed native engine. The
+            // lease makes those paths defer the physical close until this
+            // conversation ends (see closeCachedEngine).
             conversationMutex.withLock {
-                val conversation = engine.createConversation(conversationConfig)
+                val engine = acquireEngine(modelPath, spec)
                 try {
-                    conversation.sendMessageAsync(prompt).collect { msg ->
-                        val fullText = msg.contents.contents.filterIsInstance<Content.Text>().joinToString("") { it.text }
-                        emit(fullText)
+                    val conversation = engine.createConversation(conversationConfig)
+                    try {
+                        conversation.sendMessageAsync(prompt).collect { msg ->
+                            val fullText = msg.contents.contents.filterIsInstance<Content.Text>().joinToString("") { it.text }
+                            emit(fullText)
+                        }
+                    } finally {
+                        conversation.close()
                     }
                 } finally {
-                    conversation.close()
+                    releaseEngine()
                 }
             }
         } catch (e: CancellationException) {
@@ -230,8 +256,8 @@ class LiteRTLMProvider @Inject constructor(
             throw e
         } catch (e: Throwable) {
             // Fail the stream through its error channel instead of emitting
-            // the error text as chat content.
-            val spec = resolveModelSpec(modelId)
+            // the error text as chat content. The spec was resolved before
+            // the try, so this cannot mask the original failure.
             throw handleThrowable(e, spec)
         }
     }
@@ -241,8 +267,8 @@ class LiteRTLMProvider @Inject constructor(
         tools: List<ToolDefinition>
     ): Flow<StreamChunk> = flow {
         val modelId = settingsRepository.llmConfig.first().selectedModelFor(name)
+        val spec = resolveModelSpec(modelId)
         try {
-            val spec = resolveModelSpec(modelId)
             checkSdkCompatibility(spec)
             val modelPath = getModelFilePath(spec)
             checkModelReady(modelPath, spec)
@@ -274,8 +300,12 @@ class LiteRTLMProvider @Inject constructor(
             // Cancellation must propagate; it is not an assistant reply.
             throw e
         } catch (e: Throwable) {
-            val spec = resolveModelSpec(modelId)
-            emit(StreamChunk.Content("Error (LiteRT-LM): ${handleThrowable(e, spec).localizedMessage}"))
+            // Fail the flow instead of emitting the error text as a content
+            // chunk: downstream it was rendered/persisted as the assistant's
+            // reply, and because nothing threw, Hybrid's fallback-on-error
+            // could never trigger. (The spec is resolved before the try, so
+            // this cannot mask the original failure either.)
+            throw handleThrowable(e, spec)
         }
     }
 
@@ -292,6 +322,11 @@ class LiteRTLMProvider @Inject constructor(
                     entity.status == com.opendroid.ai.data.db.entities.ModelStatus.READY &&
                     isModelDownloaded(entity.id)
             }
+        } catch (e: CancellationException) {
+            // Cancellation is not unavailability: Hybrid's probes must not
+            // read a cancelled check as "backend down" and go on to try the
+            // other backend on a cancelled call.
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "isAvailable check failed: ${e.message}")
             false
@@ -496,16 +531,53 @@ class LiteRTLMProvider @Inject constructor(
 
     @Synchronized
     fun closeCachedEngine() {
-        cachedEngine?.let { engine ->
-            try {
-                Log.i(TAG, "Closing cached LiteRT engine")
-                engine.close()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error closing cached engine: ${e.message}")
-            }
-        }
+        val engine = cachedEngine
         cachedEngine = null
         cachedModelPath = null
+        if (engine == null) return
+        if (engineLeaseCount > 0) {
+            // A streaming conversation is live on this engine and does not
+            // hold this monitor while it collects, so closing the native
+            // handle here would be use-after-close. Retire the engine: it
+            // is out of the cache and releaseEngine() closes it when the
+            // last lease drains.
+            Log.i(TAG, "Retiring cached LiteRT engine; close deferred until its lease drains")
+            enginesPendingClose.add(engine)
+        } else {
+            closeEngineNow(engine)
+        }
+    }
+
+    private fun closeEngineNow(engine: Engine) {
+        try {
+            Log.i(TAG, "Closing cached LiteRT engine")
+            engine.close()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error closing cached engine: ${e.message}")
+        }
+    }
+
+    /**
+     * Captures the engine for [modelPath] under the same monitor that
+     * guards every close/evict path, and leases it so those paths cannot
+     * physically close it until [releaseEngine]. The caller must use the
+     * engine only while holding the lease.
+     */
+    @Synchronized
+    private fun acquireEngine(modelPath: String, spec: OnDeviceModelSpec): Engine {
+        val engine = getOrInitializeEngine(modelPath, spec)
+        engineLeaseCount++
+        return engine
+    }
+
+    @Synchronized
+    private fun releaseEngine() {
+        if (engineLeaseCount > 0) engineLeaseCount--
+        if (engineLeaseCount == 0 && enginesPendingClose.isNotEmpty()) {
+            val pending = enginesPendingClose.toList()
+            enginesPendingClose.clear()
+            pending.forEach { closeEngineNow(it) }
+        }
     }
 
     // ── Prompt building (shared with GemmaProvider pattern) ─────────────
