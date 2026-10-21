@@ -181,6 +181,47 @@ class ChatViewModel @Inject constructor(
         super.onCleared()
     }
 
+    // ── Chat export (A11) ───────────────────────────────────────────────
+
+    /**
+     * Builds the export payload for [sessionId] from its real stored rows
+     * (the same rows the chat screen renders), or null when the session no
+     * longer exists or has no messages — callers must refuse the export in
+     * that case instead of writing an empty file. Serialisation and PDF
+     * rendering run off the main thread.
+     */
+    suspend fun buildChatExport(
+        sessionId: String,
+        format: com.opendroid.ai.data.export.ChatExportFormat
+    ): com.opendroid.ai.data.export.ChatExportPayload? {
+        val session = conversationRepository.sessions.first()
+            .firstOrNull { it.id == sessionId } ?: return null
+        val messages = conversationRepository.getMessages(sessionId).first()
+        if (messages.isEmpty()) return null
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            when (format) {
+                com.opendroid.ai.data.export.ChatExportFormat.MARKDOWN ->
+                    com.opendroid.ai.data.export.ChatExportPayload(
+                        fileName = com.opendroid.ai.data.export.ChatExporter
+                            .suggestedFileName(session, format.extension),
+                        mimeType = format.mimeType,
+                        textContent = com.opendroid.ai.data.export.ChatExporter
+                            .toMarkdown(session, messages),
+                        binaryContent = null
+                    )
+                com.opendroid.ai.data.export.ChatExportFormat.PDF ->
+                    com.opendroid.ai.data.export.ChatExportPayload(
+                        fileName = com.opendroid.ai.data.export.ChatExporter
+                            .suggestedFileName(session, format.extension),
+                        mimeType = format.mimeType,
+                        textContent = null,
+                        binaryContent = com.opendroid.ai.data.export.ChatPdfExporter
+                            .render(session, messages)
+                    )
+            }
+        }
+    }
+
     fun retryAfterChatError(context: Context) {
         val error = agentLoop.chatError.value ?: return
         when (error.primaryAction()) {

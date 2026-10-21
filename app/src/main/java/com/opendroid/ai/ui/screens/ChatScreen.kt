@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Refresh
@@ -65,6 +66,8 @@ import com.opendroid.ai.core.agent.guidance
 import com.opendroid.ai.core.agent.primaryAction
 import com.opendroid.ai.core.agent.title
 import com.opendroid.ai.core.voice.SpeechRecognitionEngine
+import com.opendroid.ai.data.export.ChatExportFormat
+import com.opendroid.ai.data.export.ChatExporter
 import com.opendroid.ai.data.models.AutoMode
 import com.opendroid.ai.data.models.ChatMessage
 import com.opendroid.ai.data.models.effectiveGrantedActions
@@ -116,6 +119,13 @@ fun ChatScreen(
     var renameText by remember { mutableStateOf("") }
     var editingMessageId by remember { mutableStateOf<String?>(null) }
     var textBeforeEdit by remember { mutableStateOf("") }
+    // Chat export (A11): session awaiting a format choice, the export whose
+    // system file picker is currently open, the verified cache copy offered
+    // for sharing, and the last export error to surface.
+    var exportSession by remember { mutableStateOf<ChatSession?>(null) }
+    var pendingExport by remember { mutableStateOf<Pair<ChatSession, ChatExportFormat>?>(null) }
+    var exportedFile by remember { mutableStateOf<java.io.File?>(null) }
+    var exportError by remember { mutableStateOf<String?>(null) }
 
     // Merges a piece of dictated text into whatever the user already typed, so review/edit
     // never clobbers text entered before dictation started.
@@ -160,6 +170,52 @@ fun ChatScreen(
             viewModel.sendMessage(text, context)
         }
         inputQuery = ""
+    }
+
+    // System file picker for the export destination (SAF — no storage
+    // permission). On a successful pick the payload built from the stored
+    // rows is written to the chosen URI, plus a cache copy used for sharing;
+    // the share offer appears only when that copy verifiably holds bytes.
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val pending = pendingExport
+        pendingExport = null
+        val uri = result.data?.data
+        if (result.resultCode != android.app.Activity.RESULT_OK || uri == null || pending == null) {
+            return@rememberLauncherForActivityResult // picker cancelled
+        }
+        val (session, format) = pending
+        scope.launch {
+            val payload = viewModel.buildChatExport(session.id, format)
+            if (payload == null) {
+                exportError = "This chat has no messages to export."
+                return@launch
+            }
+            try {
+                val bytes = payload.bytes()
+                context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                    ?: throw java.io.IOException("Could not open the chosen file for writing")
+                val dir = java.io.File(context.cacheDir, "exports").apply { mkdirs() }
+                val cacheFile = java.io.File(dir, payload.fileName)
+                cacheFile.writeBytes(bytes)
+                exportedFile = cacheFile.takeIf { it.length() > 0 }
+            } catch (e: Exception) {
+                exportError = "Export failed: ${e.localizedMessage ?: "unknown error"}"
+            }
+        }
+    }
+
+    // Opens the system file creator for [session] in [format], suggesting
+    // the exporter's file name.
+    fun startExport(session: ChatSession, format: ChatExportFormat) {
+        pendingExport = session to format
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = format.mimeType
+            putExtra(Intent.EXTRA_TITLE, ChatExporter.suggestedFileName(session, format.extension))
+        }
+        exportLauncher.launch(intent)
     }
 
     // Scroll to bottom on history change. Keyed on currentSessionId too: keying on
@@ -314,6 +370,20 @@ fun ChatScreen(
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             IconButton(
                                                 onClick = {
+                                                    exportSession = session
+                                                    showChatMenu = false
+                                                },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Download,
+                                                    contentDescription = "Export chat",
+                                                    tint = TextSecondary,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = {
                                                     renameText = session.title
                                                     sessionPendingRename = session
                                                     showChatMenu = false
@@ -346,6 +416,24 @@ fun ChatScreen(
                                     onClick = {
                                         showChatMenu = false
                                         viewModel.switchToSession(session.id)
+                                    }
+                                )
+                            }
+                            sessions.firstOrNull { it.isCurrent }?.let { current ->
+                                HorizontalDivider(color = BorderColor)
+                                DropdownMenuItem(
+                                    text = { Text("Export current chat", color = TextPrimary, fontSize = 13.sp) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Download,
+                                            contentDescription = null,
+                                            tint = TextSecondary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    },
+                                    onClick = {
+                                        showChatMenu = false
+                                        exportSession = current
                                     }
                                 )
                             }
@@ -626,6 +714,79 @@ fun ChatScreen(
         }
     }
 
+    exportSession?.let { session ->
+        AlertDialog(
+            onDismissRequest = { exportSession = null },
+            containerColor = DarkSurface,
+            title = { Text("Export chat", color = TextPrimary) },
+            text = {
+                Text(
+                    "\"${session.title}\" will be exported with all of its stored messages.",
+                    color = TextSecondary
+                )
+            },
+            confirmButton = {
+                Row {
+                    TextButton(onClick = {
+                        exportSession = null
+                        startExport(session, ChatExportFormat.MARKDOWN)
+                    }) {
+                        Text("Markdown", color = TextPrimary, fontWeight = FontWeight.Bold)
+                    }
+                    TextButton(onClick = {
+                        exportSession = null
+                        startExport(session, ChatExportFormat.PDF)
+                    }) {
+                        Text("PDF", color = TextPrimary, fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { exportSession = null }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
+    }
+
+    exportedFile?.let { file ->
+        AlertDialog(
+            onDismissRequest = { exportedFile = null },
+            containerColor = DarkSurface,
+            title = { Text("Chat exported", color = TextPrimary) },
+            text = {
+                Text("Saved as ${file.name}.", color = TextSecondary)
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    shareExportedChat(context, file)
+                    exportedFile = null
+                }) {
+                    Text("Share", color = TextPrimary, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { exportedFile = null }) {
+                    Text("Done", color = TextSecondary)
+                }
+            }
+        )
+    }
+
+    exportError?.let { message ->
+        AlertDialog(
+            onDismissRequest = { exportError = null },
+            containerColor = DarkSurface,
+            title = { Text("Export failed", color = TextPrimary) },
+            text = { Text(message, color = TextSecondary) },
+            confirmButton = {
+                TextButton(onClick = { exportError = null }) {
+                    Text("OK", color = TextPrimary, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
     sessionPendingDelete?.let { session ->
         AlertDialog(
             onDismissRequest = { sessionPendingDelete = null },
@@ -689,6 +850,27 @@ fun ChatScreen(
             }
         )
     }
+}
+
+/**
+ * Shares a written chat-export file through the system share sheet via its
+ * FileProvider URI. An empty or missing file is never shared — a failed
+ * write must surface as an error, not as a successful share of nothing.
+ */
+private fun shareExportedChat(context: android.content.Context, file: java.io.File) {
+    if (!file.exists() || file.length() == 0L) return
+    val uri = androidx.core.content.FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        file
+    )
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = if (file.extension.equals("pdf", ignoreCase = true)) "application/pdf" else "text/markdown"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        putExtra(Intent.EXTRA_SUBJECT, file.nameWithoutExtension)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(intent, "Share chat export"))
 }
 
 @Composable

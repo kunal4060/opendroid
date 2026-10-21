@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Roots the FileProvider may share URIs for. Only directories the app
+     deliberately publishes from are listed: cache/exports (chat export
+     share copies) plus the general cache/files roots for captures and
+     generated files produced by later features. -->
+<paths>
+    <cache-path name="cache" path="." />
+    <files-path name="files" path="." />
+</paths>
