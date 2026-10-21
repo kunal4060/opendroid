@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 11,
-    "identityHash": "eed41da91937c01a6e486738493e1c81",
+    "identityHash": "bf9f125ea85b936e5c1401968fff4152",
     "entities": [
       {
         "tableName": "conversations",
@@ -1915,7 +1915,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'eed41da91937c01a6e486738493e1c81')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'bf9f125ea85b936e5c1401968fff4152')"
     ]
   }
 }
