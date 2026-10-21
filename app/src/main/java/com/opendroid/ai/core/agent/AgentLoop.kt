@@ -203,8 +203,15 @@ class AgentLoop @Inject constructor(
         requestId: String = UUID.randomUUID().toString()
     ): String {
         val request = PendingUserInput(sessionId, requestId, CompletableDeferred())
-        waitingSessionId = sessionId
+        // Loop-2 Area2 #3: install the pending request BEFORE publishing
+        // the waiting session. processQuery reads waitingSessionId first and
+        // pendingUserInput second; with the old order a reply landing
+        // between the two writes saw a waiting session but a null/stale
+        // pending prompt, failed its delivery revalidation, and was
+        // silently dropped. Written in this order, any reply that can see
+        // the waiting session can also see its matching prompt.
         pendingUserInput = request
+        waitingSessionId = sessionId
         _pendingPromptRequestId.value = requestId
         try {
             return request.deferred.await()
@@ -352,14 +359,22 @@ class AgentLoop @Inject constructor(
                 if (isAnsweringPendingQuestion) {
                     // Re-validate at delivery time, not just at schedule time: only
                     // complete the EXACT prompt this reply was aimed at (matched by
-                    // requestId, not merely by session). If it's gone - already answered,
-                    // abandoned, or superseded by a newer prompt in the meantime - there
-                    // is nothing to buffer it for; just drop it.
+                    // requestId, not merely by session). complete()'s result is
+                    // checked, not ignored.
                     val pending = pendingUserInput
-                    if (pending != null && pending.requestId == pendingAtScheduleTime?.requestId) {
+                    val delivered = pending != null &&
+                        pending.requestId == pendingAtScheduleTime?.requestId &&
                         pending.deferred.complete(query)
-                    }
-                    return@launch
+                    if (delivered) return@launch
+                    // Loop-2 Area2 #3: the prompt this message was aimed at is
+                    // gone — already answered by an earlier message in the same
+                    // burst, abandoned, or superseded before the parked
+                    // coroutine's finally cleared the waiting state. The old
+                    // code returned here and the message, though persisted,
+                    // was never answered. Fall through instead and process it
+                    // as a genuinely new query in this same session (it is
+                    // already saved above, and processQueryLocked re-reads
+                    // history, so the transcript stays coherent).
                 }
 
                 // Serialize query handling so contextual follow-up state cannot race.
