@@ -331,6 +331,14 @@ class SettingsRepository internal constructor(
         }
     }
 
+    /**
+     * Erases every persisted setting (the A6 forget-everything wipe). The DataStore file
+     * itself remains but empty — indistinguishable from a fresh install's first read.
+     */
+    suspend fun clearAllSettings() {
+        dataStore.edit { preferences -> preferences.clear() }
+    }
+
     suspend fun updateAutoReplyConfig(config: AutoReplyConfig) {
         dataStore.edit { preferences ->
             preferences[autoReplyGlobalKey] = config.globalEnabled

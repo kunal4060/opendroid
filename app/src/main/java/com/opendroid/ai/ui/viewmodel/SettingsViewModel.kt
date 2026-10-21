@@ -38,6 +38,7 @@ import android.os.Build
 import com.opendroid.ai.core.security.CredentialStoreResult
 import com.opendroid.ai.core.security.ProviderCredentialId
 import com.opendroid.ai.core.security.ProviderCredentialRecoveryState
+import com.opendroid.ai.core.privacy.ForgetEverythingUseCase
 import com.opendroid.ai.core.security.ProviderCredentialStore
 import com.opendroid.ai.core.settings.AppSettingsStore
 import com.opendroid.ai.data.repository.ProviderCredentialPersistenceState
@@ -64,7 +65,8 @@ class SettingsViewModel @Inject constructor(
     private val providerCredentialStore: ProviderCredentialStore,
     // The verification timestamp says when a token was last checked, never what the token is,
     // so it lives with ordinary settings rather than in encrypted storage.
-    private val appSettingsStore: AppSettingsStore
+    private val appSettingsStore: AppSettingsStore,
+    private val forgetEverythingUseCase: ForgetEverythingUseCase
 ) : ViewModel() {
 
     private val _huggingFaceToken = MutableStateFlow("")
@@ -828,6 +830,37 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             modelRepository.deleteUnusedModels()
         }
+    }
+
+    // ─── Forget everything (A6) ───
+
+    private val _forgetEverythingState =
+        MutableStateFlow<ForgetEverythingUiState>(ForgetEverythingUiState.Idle)
+    val forgetEverythingState: StateFlow<ForgetEverythingUiState> =
+        _forgetEverythingState.asStateFlow()
+
+    /**
+     * Runs the full wipe. Progress arrives step by step; the final state carries the honest
+     * per-store report — the UI must only claim a complete wipe when the report says so.
+     */
+    fun forgetEverything() {
+        if (_forgetEverythingState.value is ForgetEverythingUiState.Running) return
+        _forgetEverythingState.value = ForgetEverythingUiState.Running(emptyList())
+        viewModelScope.launch {
+            val report = forgetEverythingUseCase.execute { step ->
+                val current = _forgetEverythingState.value
+                if (current is ForgetEverythingUiState.Running) {
+                    _forgetEverythingState.value =
+                        ForgetEverythingUiState.Running(current.completedSteps + step)
+                }
+            }
+            _forgetEverythingState.value = ForgetEverythingUiState.Done(report)
+        }
+    }
+
+    /** Restarts the app into its first-run state after the wipe report has been shown. */
+    fun restartAfterWipe() {
+        forgetEverythingUseCase.relaunchApp()
     }
 
     private fun clearHuggingFaceVerificationMetadata() {
