@@ -395,7 +395,11 @@ class AgentLoop @Inject constructor(
         val waitingSession = waitingSessionId
         if (waitingSession != null && waitingSession != sessionId) {
             abandonWaitingTask(waitingSession)
-        } else {
+        } else if (currentTaskSessionId() == null || currentTaskSessionId() == sessionId) {
+            // Audit-2 #17: never cancel a task pinned to a DIFFERENT
+            // session — AgentLoop is a singleton with one currentJob, and an
+            // unscoped cancel here would silently kill another chat's
+            // running task just because this session retried/regenerated.
             currentJob?.cancel()
         }
 
@@ -1038,6 +1042,20 @@ class AgentLoop @Inject constructor(
      * even starts unwinding. [planManager.currentPlan] is a plain StateFlow
      * read, not suspending, so this capture is safe to do here.
      */
+    /**
+     * Session id the in-flight task is pinned to, or null when no task is
+     * currently running. Audit-2 #17: lets session-scoped UI actions (chat
+     * regenerate/retry) tell "my chat's task" apart from another chat's
+     * before touching [cancelCurrentTask] — the loop is a singleton, so
+     * its one job may belong to any session or surface.
+     */
+    fun currentTaskSessionId(): String? =
+        if (currentJob?.isActive == true) {
+            activeTaskSessionId.takeIf { it.isNotEmpty() }
+        } else {
+            null
+        }
+
     fun cancelCurrentTask() {
         val jobToCancel = currentJob
         currentJob = null

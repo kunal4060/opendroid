@@ -118,6 +118,16 @@ class ChatViewModel @Inject constructor(
     private val _pendingComposerDraft = MutableStateFlow<String?>(null)
     val pendingComposerDraft: StateFlow<String?> = _pendingComposerDraft
 
+    /**
+     * Monotonic id of the most recently staged share draft (audit-2 #18).
+     * The draft's identity is this sequence number, NOT its text: sharing
+     * the same text twice (e.g. the same link) is two shares and must be
+     * applied twice — text-keyed dedupe consumed the second share without
+     * applying it, losing its caption while staging its images.
+     */
+    private val _composerDraftSeq = MutableStateFlow(0L)
+    val composerDraftSeq: StateFlow<Long> = _composerDraftSeq
+
     /** Shared images waiting to ride the user's next sent message in this chat. */
     private val _pendingSharedImages = MutableStateFlow<List<SharedImageRef>>(emptyList())
     val pendingSharedImages: StateFlow<List<SharedImageRef>> = _pendingSharedImages
@@ -152,6 +162,7 @@ class ChatViewModel @Inject constructor(
             // earlier images pending too rather than silently dropping them.
             _pendingSharedImages.value = _pendingSharedImages.value + images
             _pendingComposerDraft.value = content.composerPrefill()
+            _composerDraftSeq.value += 1
         }
     }
 
@@ -234,6 +245,13 @@ class ChatViewModel @Inject constructor(
     /** True while a research send is running (drives the thinking bubble). */
     private val _researchInFlight = MutableStateFlow(false)
     val researchInFlight: StateFlow<Boolean> = _researchInFlight
+
+    // Audit-2 #16: the Boolean above is derived from this COUNT of live
+    // research sends. A single shared Boolean raced when two sends
+    // overlapped — the first one's finally cleared the flag while the
+    // second was still working, so the "researching" indicator vanished
+    // mid-run.
+    private val researchInFlightCount = java.util.concurrent.atomic.AtomicInteger(0)
 
     /**
      * Stored citations for the messages of the current chat, keyed by
@@ -671,7 +689,14 @@ class ChatViewModel @Inject constructor(
             if (agentIndex < 0) return@launch
             val userMessage = messages.subList(0, agentIndex)
                 .lastOrNull { it.sender == ChatMessage.Sender.USER } ?: return@launch
-            agentLoop.cancelCurrentTask()
+            // Audit-2 #17: supersede only THIS chat's task. AgentLoop is a
+            // singleton — an unconditional cancelCurrentTask() silently
+            // killed an unrelated task running for another chat (e.g. one
+            // started from the assistant window) whenever the user hit
+            // regenerate here.
+            if (agentLoop.currentTaskSessionId() == sessionId) {
+                agentLoop.cancelCurrentTask()
+            }
             conversationRepository.deleteMessageAndAfter(sessionId, agentMessageId)
             _taskSessionId.value = sessionId
             agentLoop.retryRequest(
@@ -1021,6 +1046,7 @@ class ChatViewModel @Inject constructor(
         pinnedSessionId: String?,
         configOverride: com.opendroid.ai.data.models.LLMConfig?
     ): Boolean {
+        researchInFlightCount.incrementAndGet()
         _researchInFlight.value = true
         viewModelScope.launch {
             try {
@@ -1028,7 +1054,12 @@ class ChatViewModel @Inject constructor(
                     ?: conversationRepository.ensureCurrentSessionId()
                 researchChatRunner.run(sessionId, query, configOverride)
             } finally {
-                _researchInFlight.value = false
+                // Audit-2 #16: only the LAST overlapping send to finish
+                // clears the flag.
+                if (researchInFlightCount.decrementAndGet() <= 0) {
+                    researchInFlightCount.set(0)
+                    _researchInFlight.value = false
+                }
             }
         }
         return true

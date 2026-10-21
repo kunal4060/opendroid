@@ -307,18 +307,23 @@ fun ChatScreen(
     // Moves a staged share draft into the composer: fills an empty composer
     // outright, appends below anything the user already typed rather than
     // clobbering it.
-    var lastAppliedShareDraft by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(pendingComposerDraft) {
+    // Audit-2 #18: dedupe on the share's sequence id, never its text — the
+    // same text shared twice is two shares and applies twice. And a draft
+    // is consumed only when it was actually applied; the old code consumed
+    // unconditionally, discarding the second identical share's caption.
+    var lastAppliedShareSeq by remember { mutableStateOf(0L) }
+    val composerDraftSeq by viewModel.composerDraftSeq.collectAsState()
+    LaunchedEffect(pendingComposerDraft, composerDraftSeq) {
         val draft = pendingComposerDraft ?: return@LaunchedEffect
-        if (draft != lastAppliedShareDraft) {
+        if (composerDraftSeq != lastAppliedShareSeq) {
             inputQuery = if (inputQuery.isBlank()) {
                 draft
             } else {
                 inputQuery.trimEnd() + "\n" + draft
             }
-            lastAppliedShareDraft = draft
+            lastAppliedShareSeq = composerDraftSeq
+            viewModel.consumeComposerDraft()
         }
-        viewModel.consumeComposerDraft()
     }
 
     // System file picker for the export destination (SAF — no storage
