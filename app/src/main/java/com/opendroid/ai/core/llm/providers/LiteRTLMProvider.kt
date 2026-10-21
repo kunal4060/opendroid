@@ -7,6 +7,7 @@ import com.opendroid.ai.core.llm.*
 import com.opendroid.ai.data.models.ChatMessage
 import com.opendroid.ai.data.models.selectedModelFor
 import com.opendroid.ai.data.repository.SettingsRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.withContext
@@ -106,10 +107,31 @@ class LiteRTLMProvider @Inject constructor(
      */
     fun deleteModel(modelId: String): Boolean {
         val spec = modelRepository.get().resolveLiteRTSpec(modelId) ?: return false
-        val modelFile = File(getModelFilePath(spec))
+        val modelPath = getModelFilePath(spec)
+        // Evict first: a cached engine keeps running against the deleted
+        // (mmap'd) file and the space is never actually freed.
+        closeEngineIfLoadedFrom(modelPath)
+        val modelFile = File(modelPath)
         val deleted = if (modelFile.exists()) modelFile.delete() else true
         modelFile.parentFile?.let(ModelStoragePaths::manifestFile)?.delete()
         return deleted
+    }
+
+    /**
+     * Closes the cached engine when it is loaded from [modelId]'s file.
+     * Callers about to delete a model's files (e.g. ModelRepository) must
+     * evict first, for the same reason as [deleteModel].
+     */
+    fun evictEngineForModel(modelId: String) {
+        val spec = modelRepository.get().resolveLiteRTSpec(modelId) ?: return
+        closeEngineIfLoadedFrom(getModelFilePath(spec))
+    }
+
+    @Synchronized
+    private fun closeEngineIfLoadedFrom(modelPath: String) {
+        if (cachedEngine != null && cachedModelPath == modelPath) {
+            closeCachedEngine()
+        }
     }
 
     override suspend fun complete(request: LLMRequest): LLMResponse {
@@ -176,19 +198,29 @@ class LiteRTLMProvider @Inject constructor(
                 seed = 0
             )
             val conversationConfig = ConversationConfig(samplerConfig = samplerConfig)
-            val conversation = engine.createConversation(conversationConfig)
 
-            try {
-                conversation.sendMessageAsync(prompt).collect { msg ->
-                    val fullText = msg.contents.contents.filterIsInstance<Content.Text>().joinToString("") { it.text }
-                    emit(fullText)
+            // Conversation use on the shared cached engine must hold the same
+            // monitor as the @Synchronized synchronous path: two live
+            // conversations on one native engine can crash the runtime.
+            synchronized(this) {
+                val conversation = engine.createConversation(conversationConfig)
+                try {
+                    conversation.sendMessageAsync(prompt).collect { msg ->
+                        val fullText = msg.contents.contents.filterIsInstance<Content.Text>().joinToString("") { it.text }
+                        emit(fullText)
+                    }
+                } finally {
+                    conversation.close()
                 }
-            } finally {
-                conversation.close()
             }
+        } catch (e: CancellationException) {
+            // Cancellation must propagate; it is not an assistant reply.
+            throw e
         } catch (e: Throwable) {
+            // Fail the stream through its error channel instead of emitting
+            // the error text as chat content.
             val spec = resolveModelSpec(modelId)
-            emit("Error (LiteRT-LM): ${handleThrowable(e, spec).localizedMessage}")
+            throw handleThrowable(e, spec)
         }
     }
 
@@ -224,6 +256,9 @@ class LiteRTLMProvider @Inject constructor(
             } catch (_: Throwable) {
                 // Not JSON — treat as plain text
             }
+        } catch (e: CancellationException) {
+            // Cancellation must propagate; it is not an assistant reply.
+            throw e
         } catch (e: Throwable) {
             val spec = resolveModelSpec(modelId)
             emit(StreamChunk.Content("Error (LiteRT-LM): ${handleThrowable(e, spec).localizedMessage}"))

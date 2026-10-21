@@ -8,6 +8,7 @@ import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.WorkManager
 import com.opendroid.ai.core.llm.*
+import com.opendroid.ai.core.llm.providers.LiteRTLMProvider
 import com.opendroid.ai.data.db.dao.ModelDao
 import com.opendroid.ai.data.db.entities.ModelEntity
 import com.opendroid.ai.data.db.entities.ModelStatus
@@ -31,7 +32,10 @@ import javax.inject.Singleton
 class ModelRepository @Inject constructor(
     private val context: Context,
     private val modelDao: ModelDao,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    // Lazy both ways: LiteRTLMProvider already holds a Lazy<ModelRepository>,
+    // and the engine must be evicted before a model's files are deleted.
+    private val liteRTLMProvider: dagger.Lazy<LiteRTLMProvider>
 ) : ModelManager {
 
     private val tag = "ModelRepository"
@@ -487,6 +491,9 @@ class ModelRepository @Inject constructor(
         val isCatalog = OnDeviceModelRegistry.findById(model.id) != null
         val isCustom = OnDeviceModelRegistry.isCustomId(model.id)
         if (!isCatalog && !isCustom) return
+        // Evict a cached engine loaded from this model's file before the
+        // files disappear below (delete() funnels through here too).
+        liteRTLMProvider.get().evictEngineForModel(model.id)
         // Mark cancellation before stopping work so a stopping worker cannot restore PAUSED.
         if (isCatalog) {
             modelDao.clearDownloadState(model.id)
@@ -609,6 +616,7 @@ class ModelRepository @Inject constructor(
         
         OnDeviceModelRegistry.liteRTOnly.forEach { spec ->
             if (spec.id != activeModelId) {
+                liteRTLMProvider.get().evictEngineForModel(spec.id)
                 val dir = getModelDir(spec.id)
                 if (dir.exists()) {
                     dir.deleteRecursively()
