@@ -16,5 +16,14 @@ data class ConversationEntity(
     val modelBadge: String? = null,
     val contactPickerData: String? = null,
     // Which chat history this message belongs to. See ChatSessionEntity.
-    val sessionId: String
+    val sessionId: String,
+    // Composer attachments (feature B1, DB v11): the attachment payload and
+    // its type/name, so an attached image or file stays visible in history
+    // after restart and a regenerate/retry replays exactly what was sent.
+    // imageBase64 stays null for text attachments (their content is inlined
+    // into [text] at send time) and for PDFs too large to keep (see
+    // AttachmentProcessor's storage cap) - those render as a file chip.
+    val imageBase64: String? = null,
+    val attachmentMimeType: String? = null,
+    val attachmentName: String? = null
 )

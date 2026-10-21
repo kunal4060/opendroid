@@ -210,7 +210,10 @@ class ConversationRepository @Inject constructor(
         sender = ChatMessage.Sender.valueOf(sender),
         timestamp = timestamp,
         modelBadge = modelBadge,
-        contactPickerData = contactPickerData
+        contactPickerData = contactPickerData,
+        imageBase64 = imageBase64,
+        attachmentMimeType = attachmentMimeType,
+        attachmentName = attachmentName
     )
 
     private fun ChatMessage.toEntity(sessionId: String) = ConversationEntity(
@@ -220,7 +223,10 @@ class ConversationRepository @Inject constructor(
         timestamp = timestamp,
         modelBadge = modelBadge,
         contactPickerData = contactPickerData,
-        sessionId = sessionId
+        sessionId = sessionId,
+        imageBase64 = imageBase64,
+        attachmentMimeType = attachmentMimeType,
+        attachmentName = attachmentName
     )
 
     private fun ChatSessionEntity.toChatSession() = ChatSession(

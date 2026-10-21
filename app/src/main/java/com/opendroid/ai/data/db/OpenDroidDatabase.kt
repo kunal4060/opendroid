@@ -69,7 +69,7 @@ import androidx.room.TypeConverters
         SocialAutomationRuleEntity::class,
         SocialAuditLogEntity::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -273,6 +273,20 @@ abstract class OpenDroidDatabase : RoomDatabase() {
                 // until its user picks a model in that chat.
                 database.execSQL("ALTER TABLE chat_sessions ADD COLUMN providerOverride TEXT DEFAULT NULL")
                 database.execSQL("ALTER TABLE chat_sessions ADD COLUMN modelOverride TEXT DEFAULT NULL")
+            }
+        }
+
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Feature B1 (composer attachments): nullable attachment
+                // columns on conversations. Purely additive - every existing
+                // message keeps NULLs and behaves exactly as before (the
+                // screenshot path never persisted its payload; it still
+                // doesn't need to). New attachment messages store their
+                // payload/type/name so history and retry replay them.
+                database.execSQL("ALTER TABLE conversations ADD COLUMN imageBase64 TEXT DEFAULT NULL")
+                database.execSQL("ALTER TABLE conversations ADD COLUMN attachmentMimeType TEXT DEFAULT NULL")
+                database.execSQL("ALTER TABLE conversations ADD COLUMN attachmentName TEXT DEFAULT NULL")
             }
         }
 
