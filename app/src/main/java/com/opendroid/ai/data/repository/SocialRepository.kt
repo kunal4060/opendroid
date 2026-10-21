@@ -26,10 +26,10 @@ open class SocialRepository @Inject constructor(
     // ── ACCOUNTS ─────────────────────────────────────────────────────────────
 
     fun getAllAccountsFlow(): Flow<List<SocialAccount>> =
-        accountDao.getAllAccountsFlow().map { list -> list.map { it.toDomain() } }
+        accountDao.getAllAccountsFlow().map { list -> list.mapNotNull { it.toDomain() } }
 
     fun getConnectedAccountsFlow(): Flow<List<SocialAccount>> =
-        accountDao.getConnectedAccountsFlow().map { list -> list.map { it.toDomain() } }
+        accountDao.getConnectedAccountsFlow().map { list -> list.mapNotNull { it.toDomain() } }
 
     suspend fun getAccountById(id: String): SocialAccount? =
         accountDao.getAccountById(id)?.toDomain()
@@ -66,19 +66,19 @@ open class SocialRepository @Inject constructor(
     // ── POSTS ────────────────────────────────────────────────────────────────
 
     fun getAllPostsFlow(): Flow<List<SocialPost>> =
-        postDao.getAllPostsFlow().map { list -> list.map { it.toDomain() } }
+        postDao.getAllPostsFlow().map { list -> list.mapNotNull { it.toDomain() } }
 
     fun getPostsByStatusFlow(status: PostStatus): Flow<List<SocialPost>> =
-        postDao.getPostsByStatusFlow(status.name).map { list -> list.map { it.toDomain() } }
+        postDao.getPostsByStatusFlow(status.name).map { list -> list.mapNotNull { it.toDomain() } }
 
     suspend fun getPostsByStatus(status: PostStatus): List<SocialPost> =
-        postDao.getPostsByStatus(status.name).map { it.toDomain() }
+        postDao.getPostsByStatus(status.name).mapNotNull { it.toDomain() }
 
     suspend fun getDueScheduledPosts(currentTime: Long): List<SocialPost> =
-        postDao.getDueScheduledPosts(currentTime).map { it.toDomain() }
+        postDao.getDueScheduledPosts(currentTime).mapNotNull { it.toDomain() }
 
     fun getPostsByPlatformFlow(platform: SocialPlatform): Flow<List<SocialPost>> =
-        postDao.getPostsByPlatformFlow(platform.id).map { list -> list.map { it.toDomain() } }
+        postDao.getPostsByPlatformFlow(platform.id).map { list -> list.mapNotNull { it.toDomain() } }
 
     suspend fun getPostById(id: String): SocialPost? =
         postDao.getPostById(id)?.toDomain()
@@ -115,21 +115,21 @@ open class SocialRepository @Inject constructor(
     }
 
     suspend fun getTopPerformingPosts(limit: Int = 5): List<SocialPost> =
-        postDao.getTopPerformingPosts(limit).map { it.toDomain() }
+        postDao.getTopPerformingPosts(limit).mapNotNull { it.toDomain() }
 
     // ── COMMENTS ─────────────────────────────────────────────────────────────
 
     fun getAllCommentsFlow(): Flow<List<SocialComment>> =
-        commentDao.getAllCommentsFlow().map { list -> list.map { it.toDomain() } }
+        commentDao.getAllCommentsFlow().map { list -> list.mapNotNull { it.toDomain() } }
 
     fun getUnansweredCommentsFlow(): Flow<List<SocialComment>> =
-        commentDao.getUnansweredCommentsFlow().map { list -> list.map { it.toDomain() } }
+        commentDao.getUnansweredCommentsFlow().map { list -> list.mapNotNull { it.toDomain() } }
 
     suspend fun getUnansweredComments(): List<SocialComment> =
-        commentDao.getUnansweredComments().map { it.toDomain() }
+        commentDao.getUnansweredComments().mapNotNull { it.toDomain() }
 
     fun getCommentsForPostFlow(postId: String): Flow<List<SocialComment>> =
-        commentDao.getCommentsForPostFlow(postId).map { list -> list.map { it.toDomain() } }
+        commentDao.getCommentsForPostFlow(postId).map { list -> list.mapNotNull { it.toDomain() } }
 
     suspend fun saveComment(comment: SocialComment) {
         commentDao.insertOrUpdate(comment.toEntity())
@@ -154,13 +154,13 @@ open class SocialRepository @Inject constructor(
     // ── INBOX / INTERACTIONS ─────────────────────────────────────────────────
 
     fun getAllInteractionsFlow(): Flow<List<SocialInteraction>> =
-        interactionDao.getAllInteractionsFlow().map { list -> list.map { it.toDomain() } }
+        interactionDao.getAllInteractionsFlow().map { list -> list.mapNotNull { it.toDomain() } }
 
     fun getUnreadInteractionsFlow(): Flow<List<SocialInteraction>> =
-        interactionDao.getUnreadInteractionsFlow().map { list -> list.map { it.toDomain() } }
+        interactionDao.getUnreadInteractionsFlow().map { list -> list.mapNotNull { it.toDomain() } }
 
     fun getInteractionsByCategoryFlow(category: InteractionCategory): Flow<List<SocialInteraction>> =
-        interactionDao.getInteractionsByCategoryFlow(category.name).map { list -> list.map { it.toDomain() } }
+        interactionDao.getInteractionsByCategoryFlow(category.name).map { list -> list.mapNotNull { it.toDomain() } }
 
     suspend fun saveInteraction(interaction: SocialInteraction) {
         interactionDao.insertOrUpdate(interaction.toEntity())
@@ -177,16 +177,16 @@ open class SocialRepository @Inject constructor(
     // ── ANALYTICS ────────────────────────────────────────────────────────────
 
     fun getAllSnapshotsFlow(): Flow<List<SocialAnalytics>> =
-        analyticsDao.getAllSnapshotsFlow().map { list -> list.map { it.toDomain() } }
+        analyticsDao.getAllSnapshotsFlow().map { list -> list.mapNotNull { it.toDomain() } }
 
     suspend fun getLatestSnapshotForPlatform(platform: SocialPlatform): SocialAnalytics? =
         analyticsDao.getLatestSnapshotForPlatform(platform.id)?.toDomain()
 
     suspend fun getSnapshotsSince(sinceTimestamp: Long): List<SocialAnalytics> =
-        analyticsDao.getSnapshotsSince(sinceTimestamp).map { it.toDomain() }
+        analyticsDao.getSnapshotsSince(sinceTimestamp).mapNotNull { it.toDomain() }
 
     suspend fun getSnapshotsBetween(fromTimestamp: Long, toTimestamp: Long): List<SocialAnalytics> =
-        analyticsDao.getSnapshotsBetween(fromTimestamp, toTimestamp).map { it.toDomain() }
+        analyticsDao.getSnapshotsBetween(fromTimestamp, toTimestamp).mapNotNull { it.toDomain() }
 
     suspend fun recordAnalyticsSnapshot(snapshot: SocialAnalytics) {
         analyticsDao.insertSnapshot(snapshot.toEntity())
@@ -238,10 +238,10 @@ open class SocialRepository @Inject constructor(
     // ── AUDIT LOGS ───────────────────────────────────────────────────────────
 
     fun getRecentAuditLogsFlow(limit: Int = 100): Flow<List<SocialAuditEntry>> =
-        auditDao.getRecentAuditLogsFlow(limit).map { list -> list.map { it.toDomain() } }
+        auditDao.getRecentAuditLogsFlow(limit).map { list -> list.mapNotNull { it.toDomain() } }
 
     suspend fun getRecentAuditLogs(limit: Int = 100): List<SocialAuditEntry> =
-        auditDao.getRecentAuditLogs(limit).map { it.toDomain() }
+        auditDao.getRecentAuditLogs(limit).mapNotNull { it.toDomain() }
 
     suspend fun recordAuditLog(entry: SocialAuditEntry) {
         auditDao.insertLog(entry.toEntity())
@@ -249,9 +249,17 @@ open class SocialRepository @Inject constructor(
 
     // ── ENTITY MAPPING EXTENSIONS ───────────────────────────────────────────
 
-    private fun SocialAccountEntity.toDomain(): SocialAccount = SocialAccount(
+    // Platform parsing (audit2-4 #1): a stored row naming a platform this
+    // build doesn't know — a downgrade after a build that added one, a
+    // hand-repaired DB — must not throw on every flow emission and take the
+    // whole social feature down with it. Like the sibling enum fields
+    // (parsed defensively since audit-4 #1), the row is handled safely:
+    // single-row mappers return null and list mappers skip the row.
+    private fun SocialAccountEntity.toDomain(): SocialAccount? {
+        val parsedPlatform = SocialPlatform.fromIdOrNull(platform) ?: return null
+        return SocialAccount(
         id = id,
-        platform = SocialPlatform.fromId(platform),
+        platform = parsedPlatform,
         username = username,
         displayName = displayName,
         avatarUrl = avatarUrl,
@@ -265,7 +273,8 @@ open class SocialRepository @Inject constructor(
         tokenExpiresAt = tokenExpiresAt,
         lastSyncAt = lastSyncAt,
         errorMessage = errorMessage
-    )
+        )
+    }
 
     private fun SocialAccount.toEntity(): SocialAccountEntity = SocialAccountEntity(
         id = id,
@@ -281,10 +290,12 @@ open class SocialRepository @Inject constructor(
         errorMessage = errorMessage
     )
 
-    private fun SocialPostEntity.toDomain(): SocialPost = SocialPost(
+    private fun SocialPostEntity.toDomain(): SocialPost? {
+        val parsedPlatform = SocialPlatform.fromIdOrNull(platform) ?: return null
+        return SocialPost(
         id = id,
         accountId = accountId,
-        platform = SocialPlatform.fromId(platform),
+        platform = parsedPlatform,
         content = content,
         mediaUrls = runCatching { json.decodeFromString<List<String>>(mediaUrlsJson) }.getOrDefault(emptyList()),
         status = runCatching { PostStatus.valueOf(status) }.getOrDefault(PostStatus.DRAFT),
@@ -307,7 +318,8 @@ open class SocialRepository @Inject constructor(
         engagementRate = engagementRate,
         createdAt = createdAt,
         updatedAt = updatedAt
-    )
+        )
+    }
 
     private fun SocialPost.toEntity(): SocialPostEntity = SocialPostEntity(
         id = id,
@@ -337,11 +349,13 @@ open class SocialRepository @Inject constructor(
         updatedAt = updatedAt
     )
 
-    private fun SocialCommentEntity.toDomain(): SocialComment = SocialComment(
+    private fun SocialCommentEntity.toDomain(): SocialComment? {
+        val parsedPlatform = SocialPlatform.fromIdOrNull(platform) ?: return null
+        return SocialComment(
         id = id,
         platformCommentId = platformCommentId,
         postId = postId,
-        platform = SocialPlatform.fromId(platform),
+        platform = parsedPlatform,
         authorName = authorName,
         authorAvatarUrl = authorAvatarUrl,
         content = content,
@@ -354,7 +368,8 @@ open class SocialRepository @Inject constructor(
         sentiment = runCatching { Sentiment.valueOf(sentiment) }.getOrDefault(Sentiment.NEUTRAL),
         category = runCatching { InteractionCategory.valueOf(category) }.getOrDefault(InteractionCategory.GENERAL),
         priority = runCatching { InteractionPriority.valueOf(priority) }.getOrDefault(InteractionPriority.NORMAL)
-    )
+        )
+    }
 
     private fun SocialComment.toEntity(): SocialCommentEntity = SocialCommentEntity(
         id = id,
@@ -375,9 +390,11 @@ open class SocialRepository @Inject constructor(
         priority = priority.name
     )
 
-    private fun SocialInteractionEntity.toDomain(): SocialInteraction = SocialInteraction(
+    private fun SocialInteractionEntity.toDomain(): SocialInteraction? {
+        val parsedPlatform = SocialPlatform.fromIdOrNull(platform) ?: return null
+        return SocialInteraction(
         id = id,
-        platform = SocialPlatform.fromId(platform),
+        platform = parsedPlatform,
         accountId = accountId,
         authorName = authorName,
         authorHandle = authorHandle,
@@ -388,7 +405,8 @@ open class SocialRepository @Inject constructor(
         timestamp = timestamp,
         status = status,
         suggestedAction = suggestedAction
-    )
+        )
+    }
 
     private fun SocialInteraction.toEntity(): SocialInteractionEntity = SocialInteractionEntity(
         id = id,
@@ -405,9 +423,11 @@ open class SocialRepository @Inject constructor(
         suggestedAction = suggestedAction
     )
 
-    private fun SocialAnalyticsSnapshotEntity.toDomain(): SocialAnalytics = SocialAnalytics(
+    private fun SocialAnalyticsSnapshotEntity.toDomain(): SocialAnalytics? {
+        val parsedPlatform = SocialPlatform.fromIdOrNull(platform) ?: return null
+        return SocialAnalytics(
         accountId = accountId,
-        platform = SocialPlatform.fromId(platform),
+        platform = parsedPlatform,
         timestamp = timestamp,
         followersCount = followersCount,
         followingCount = followingCount,
@@ -423,7 +443,8 @@ open class SocialRepository @Inject constructor(
         profileVisits = profileVisits,
         linkClicks = linkClicks,
         periodLabel = periodLabel
-    )
+        )
+    }
 
     private fun SocialAnalytics.toEntity(): SocialAnalyticsSnapshotEntity = SocialAnalyticsSnapshotEntity(
         id = "${accountId}_${timestamp}",
@@ -484,7 +505,7 @@ open class SocialRepository @Inject constructor(
         id = id,
         name = name,
         isEnabled = isEnabled,
-        platform = platform?.let { SocialPlatform.fromId(it) },
+        platform = SocialPlatform.fromIdOrNull(platform),
         triggerType = triggerType,
         keywords = runCatching { json.decodeFromString<List<String>>(keywordsJson) }.getOrDefault(emptyList()),
         actionType = actionType,
@@ -508,16 +529,19 @@ open class SocialRepository @Inject constructor(
         createdAt = createdAt
     )
 
-    private fun SocialAuditLogEntity.toDomain(): SocialAuditEntry = SocialAuditEntry(
+    private fun SocialAuditLogEntity.toDomain(): SocialAuditEntry? {
+        val parsedPlatform = SocialPlatform.fromIdOrNull(platform) ?: return null
+        return SocialAuditEntry(
         id = id,
         timestamp = timestamp,
         actor = actor,
         action = action,
-        platform = SocialPlatform.fromId(platform),
+        platform = parsedPlatform,
         targetId = targetId,
         details = details,
         status = status
-    )
+        )
+    }
 
     private fun SocialAuditEntry.toEntity(): SocialAuditLogEntity = SocialAuditLogEntity(
         id = id,
