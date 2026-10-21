@@ -156,6 +156,57 @@ class HabitRoutineEngineTest {
     }
 
     @Test
+    fun `re-detection of a still-suggested routine does not duplicate its PKG node`() = runBlocking {
+        // Same repeated weekday-morning pattern as the detection test.
+        val baseCal = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 9)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+            while (get(Calendar.DAY_OF_WEEK) != Calendar.MONDAY) {
+                add(Calendar.DAY_OF_YEAR, -1)
+            }
+        }
+        val packages = listOf(
+            "com.google.android.gm" to "Gmail",
+            "com.google.android.calendar" to "Calendar",
+            "com.Slack" to "Slack"
+        )
+        for (dayOffset in 0..3) {
+            val cal = Calendar.getInstance().apply {
+                timeInMillis = baseCal.timeInMillis + (dayOffset * 24 * 60 * 60 * 1000L)
+            }
+            packages.forEachIndexed { idx, (pkg, action) ->
+                habitDao.insertEvent(
+                    HabitEventEntity(
+                        id = "dup_${dayOffset}_$idx",
+                        eventType = "APP_OPEN",
+                        packageName = pkg,
+                        actionName = action,
+                        timestamp = cal.timeInMillis + idx * 60_000L,
+                        dayOfWeek = cal.get(Calendar.DAY_OF_WEEK),
+                        hourOfDay = 9,
+                        minuteOfHour = idx
+                    )
+                )
+            }
+        }
+
+        engine.detectRoutines(lookbackDays = 14, minRepetitions = 3)
+        val afterFirst = personalGrowthEngine.getSnapshot().nodes.values
+            .count { it.properties["routineId"] == "routine_weekday_morning" }
+        assertEquals(1, afterFirst)
+
+        // Detection runs again over the still-SUGGESTED routine (in
+        // production this happens every 10 recorded events): the routine
+        // row is refreshed, but no second graph node may appear.
+        engine.detectRoutines(lookbackDays = 14, minRepetitions = 3)
+        val afterSecond = personalGrowthEngine.getSnapshot().nodes.values
+            .count { it.properties["routineId"] == "routine_weekday_morning" }
+        assertEquals(1, afterSecond)
+    }
+
+    @Test
     fun `approving a routine creates a macro and updates status`() = runBlocking {
         val routineEntity = HabitRoutineEntity(
             id = "routine_weekday_morning",

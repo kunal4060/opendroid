@@ -321,6 +321,16 @@ class HabitRoutineEngine @Inject constructor(
         for (routine in discoveredRoutines) {
             habitDao.insertRoutine(routine)
 
+            // Feed the pattern into the PKG only the FIRST time this
+            // routine is seen. checkAndSynthesizeRoutine re-discovers a
+            // still-SUGGESTED routine on every pass (detection runs every
+            // 10 recorded events), and recordExplicitMemory mints a fresh
+            // node id per call — without this guard the graph accumulates
+            // unbounded duplicate "Detected routine" nodes for one
+            // suggestion. The routine row itself is upserted by id either
+            // way, so re-detection still refreshes it.
+            if (routine.id in existingRoutines) continue
+
             // Feed pattern into PKG
             try {
                 personalGrowthEngine.get().recordExplicitMemory(
