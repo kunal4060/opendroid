@@ -1,6 +1,7 @@
 package com.opendroid.ai.core.voice.kws
 
 import android.content.Context
+import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Handler
@@ -131,8 +132,8 @@ class SherpaKwsEngine(private val context: Context) : KeywordSpotterEngine {
     private fun captureLoop(activeSpotter: KeywordSpotter, activeStream: OnlineStream) {
         val minBuffer = AudioRecord.getMinBufferSize(
             SAMPLE_RATE_HZ,
-            AudioRecord.CHANNEL_IN_MONO,
-            AudioRecord.ENCODING_PCM_16BIT
+            AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_16BIT
         )
         if (minBuffer <= 0) {
             throw IllegalStateException("Microphone does not support 16 kHz mono capture")
@@ -141,8 +142,8 @@ class SherpaKwsEngine(private val context: Context) : KeywordSpotterEngine {
             AudioRecord(
                 MediaRecorder.AudioSource.VOICE_RECOGNITION,
                 SAMPLE_RATE_HZ,
-                AudioRecord.CHANNEL_IN_MONO,
-                AudioRecord.ENCODING_PCM_16BIT,
+                AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT,
                 maxOf(minBuffer, CHUNK_SAMPLES * 2)
             )
         } catch (e: SecurityException) {
