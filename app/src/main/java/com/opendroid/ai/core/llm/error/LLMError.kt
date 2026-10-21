@@ -17,6 +17,7 @@ import kotlin.math.roundToLong
 sealed class LLMError(val code: String) {
     data object AuthMissing : LLMError("AUTH_MISSING")
     data object AuthInvalid : LLMError("AUTH_INVALID")
+    data object PermissionDenied : LLMError("PERMISSION_DENIED")
     data object QuotaExhausted : LLMError("QUOTA_EXHAUSTED")
     data object RateLimited : LLMError("RATE_LIMITED")
     data object ModelUnavailable : LLMError("MODEL_UNAVAILABLE")
@@ -264,7 +265,12 @@ object LLMErrorMapper {
 
         return when {
             invalidKey && (status == 400 || status == 401 || status == 403) -> LLMError.AuthInvalid
-            status == 401 || status == 403 -> LLMError.AuthInvalid
+            // A bare 401 is an authentication failure, but a bare 403 is just as
+            // often the API not being enabled for the key's project, a key
+            // restriction, or a project permission problem — none of which a
+            // new key fixes, so it must not be labelled "Key rejected".
+            status == 401 -> LLMError.AuthInvalid
+            status == 403 -> LLMError.PermissionDenied
             // A 429 is retryable rate limiting unless the body specifically
             // reports exhausted credit; generic "quota" wording stays retryable.
             status == 429 ->

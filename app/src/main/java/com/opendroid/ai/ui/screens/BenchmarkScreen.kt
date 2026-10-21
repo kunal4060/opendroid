@@ -240,6 +240,7 @@ fun ProviderConnectionRow(
 private fun connectionFailureLabel(error: LLMError): String = when (error) {
     LLMError.AuthMissing -> "Key required"
     LLMError.AuthInvalid -> "Invalid key"
+    LLMError.PermissionDenied -> "Permission denied"
     LLMError.QuotaExhausted -> "Quota exhausted"
     LLMError.RateLimited -> "Rate limited"
     LLMError.ModelUnavailable -> "Model unavailable"

@@ -66,7 +66,8 @@ enum class ChatErrorPrimaryAction {
 }
 
 fun ChatErrorUiState.primaryAction(): ChatErrorPrimaryAction = when (category) {
-    LLMError.AuthMissing, LLMError.AuthInvalid -> ChatErrorPrimaryAction.OPEN_SETTINGS
+    LLMError.AuthMissing, LLMError.AuthInvalid, LLMError.PermissionDenied ->
+        ChatErrorPrimaryAction.OPEN_SETTINGS
     LLMError.QuotaExhausted -> ChatErrorPrimaryAction.CHOOSE_PROVIDER
     LLMError.ModelUnavailable -> ChatErrorPrimaryAction.CHOOSE_MODEL
     LLMError.RequestInvalid -> ChatErrorPrimaryAction.EDIT_MESSAGE
@@ -82,6 +83,7 @@ fun ChatErrorUiState.primaryAction(): ChatErrorPrimaryAction = when (category) {
 fun ChatErrorUiState.title(): String = when (category) {
     LLMError.AuthMissing -> "Set up $provider to continue"
     LLMError.AuthInvalid -> "$provider rejected the API key"
+    LLMError.PermissionDenied -> "$provider denied the request"
     LLMError.QuotaExhausted -> "$provider has no credits available"
     LLMError.RateLimited -> "$provider rate limited the request"
     LLMError.ModelUnavailable -> "Model unavailable on $provider"
@@ -96,6 +98,8 @@ fun ChatErrorUiState.title(): String = when (category) {
 fun ChatErrorUiState.guidance(): String = when (category) {
     LLMError.AuthMissing -> "Add an API key in Settings."
     LLMError.AuthInvalid -> "Check or replace the key in Settings."
+    LLMError.PermissionDenied ->
+        "The key was accepted but lacks access — check that the API is enabled for its project and that the key is not restricted."
     LLMError.QuotaExhausted -> "Add credits with $provider, or choose another provider."
     LLMError.RateLimited -> "Wait a moment, then retry."
     LLMError.ModelUnavailable -> "Choose an available model, then retry."

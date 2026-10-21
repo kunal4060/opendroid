@@ -509,6 +509,7 @@ private fun ConnectionResultText(state: ConnectionTestState?, done: Boolean) {
         is ConnectionTestState.Failed -> Text(
             text = when (state.error) {
                 LLMError.AuthInvalid -> "That key was rejected. Check it and try again."
+                LLMError.PermissionDenied -> "That key lacks access — check the API is enabled for its project."
                 LLMError.AuthMissing -> "A key is required."
                 LLMError.QuotaExhausted -> "Quota exhausted for that key."
                 LLMError.RateLimited -> "Rate limited — try again in a moment."

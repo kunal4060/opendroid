@@ -3365,6 +3365,7 @@ private fun connectionStatusLabel(state: ConnectionTestState?): String = when (s
         "Connected with ${state.model} · ${state.latencyMs} ms"
     is ConnectionTestState.Failed -> when (state.error) {
         LLMError.AuthInvalid -> "Key rejected"
+        LLMError.PermissionDenied -> "Permission denied"
         LLMError.AuthMissing -> "Key required"
         LLMError.QuotaExhausted -> "Quota exhausted"
         LLMError.RateLimited -> "Rate limited"
