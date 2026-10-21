@@ -11,6 +11,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.TheaterComedy
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowRight
@@ -205,7 +212,7 @@ fun SettingsScreen(
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary,
-                        fontSize = 20.sp,
+                        style = MaterialTheme.typography.titleLarge,
                         letterSpacing = 2.sp
                     )
                 },
@@ -221,39 +228,40 @@ fun SettingsScreen(
                 .padding(padding)
                 .consumeWindowInsets(padding)
                 .imePadding()
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(bottom = 32.dp)
         ) {
             if (providerCredentialRecoveryState == ProviderCredentialRecoveryState.CredentialsMustBeReentered) {
                 item {
                     Card(
+                        shape = RoundedCornerShape(18.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, Color(0xFFFF9800), RoundedCornerShape(12.dp)),
+                            .border(1.dp, AccentOrange, RoundedCornerShape(18.dp)),
                         colors = CardDefaults.cardColors(containerColor = CardBackground)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(
                                 text = "CREDENTIALS MUST BE RE-ENTERED",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
-                                color = Color(0xFFFF9800)
+                                color = AccentOrange
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 text = "Saved provider credentials cannot be read on this device. " +
                                     "Clear unavailable records, then enter your API keys again.",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )
                             Spacer(modifier = Modifier.height(12.dp))
                             Button(
                                 onClick = viewModel::resetProviderCredentialsForReentry,
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
+                                colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton)
                             ) {
-                                Text("Clear unavailable credentials", color = DarkBackground)
+                                Text("Clear unavailable credentials", color = OnAccent)
                             }
                         }
                     }
@@ -265,24 +273,25 @@ fun SettingsScreen(
             ) {
                 item {
                     Card(
+                        shape = RoundedCornerShape(18.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, Color(0xFFFF9800), RoundedCornerShape(12.dp)),
+                            .border(1.dp, AccentOrange, RoundedCornerShape(18.dp)),
                         colors = CardDefaults.cardColors(containerColor = CardBackground)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(
                                 text = "CREDENTIALS WERE NOT SAVED",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
-                                color = Color(0xFFFF9800)
+                                color = AccentOrange
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 text = "Secure credential storage is unavailable. Existing settings " +
                                     "were preserved; check device storage and try again.",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )
                         }
@@ -293,15 +302,16 @@ fun SettingsScreen(
             // Active LLM Provider Selection Card
             item {
                 Card(
+                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
+                        .border(1.dp, BorderColor, RoundedCornerShape(18.dp)),
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "ACTIVE BRAIN PROVIDER",
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
                             color = AccentCyan
@@ -335,8 +345,7 @@ fun SettingsScreen(
                                 Text(
                                     text = if (config.activeProvider == "On-Device AI" || config.activeProvider == "Gemma 4 (On-device)") "On-Device AI" else config.activeProvider,
                                     color = TextPrimary,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.SemiBold
+                                    style = MaterialTheme.typography.titleMedium,
                                 )
                                 Icon(
                                     imageVector = Icons.Default.ArrowDropDown,
@@ -350,7 +359,7 @@ fun SettingsScreen(
                                 onDismissRequest = { providerDropdownExpanded = false },
                                 modifier = Modifier
                                     .fillMaxWidth(0.85f)
-                                    .background(CardBackground)
+                                    .background(AppTheme.colors.surfaceRaised)
                                     .border(1.dp, BorderColor)
                             ) {
                                 DropdownMenuItem(
@@ -421,7 +430,7 @@ fun SettingsScreen(
                         ) {
                             Text(
                                 text = "ACTIVE MODEL",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                                 color = TextPrimary
@@ -453,7 +462,7 @@ fun SettingsScreen(
                             OutlinedTextField(
                                 value = config.activeModel,
                                 onValueChange = { viewModel.updateActiveModel(it) },
-                                label = { Text("Active LLM Model", fontSize = 12.sp) },
+                                label = { Text("Active LLM Model", style = MaterialTheme.typography.labelMedium) },
                                 singleLine = true,
                                 trailingIcon = {
                                     IconButton(onClick = { modelDropdownExpanded = !modelDropdownExpanded }) {
@@ -479,7 +488,7 @@ fun SettingsScreen(
                                     onDismissRequest = { modelDropdownExpanded = false },
                                     modifier = Modifier
                                         .fillMaxWidth(0.85f)
-                                        .background(CardBackground)
+                                        .background(AppTheme.colors.surfaceRaised)
                                         .border(1.dp, BorderColor)
                                 ) {
                                     fetchedModels.forEach { model ->
@@ -537,14 +546,14 @@ fun SettingsScreen(
                                                             Box(
                                                                 modifier = Modifier
                                                                     .background(
-                                                                        Color(0xFFFFD700).copy(alpha = 0.15f),
+                                                                        AppTheme.colors.accentContainer,
                                                                         RoundedCornerShape(4.dp)
                                                                     )
                                                                     .padding(horizontal = 4.dp, vertical = 2.dp)
                                                             ) {
                                                                 Text(
                                                                     text = "PRO",
-                                                                    color = Color(0xFFFFD700),
+                                                                    color = AppTheme.colors.onAccentContainer,
                                                                     fontSize = 9.sp,
                                                                     fontWeight = FontWeight.Bold
                                                                 )
@@ -566,7 +575,7 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
                             text = "EXPLICIT PLANNING FALLBACKS",
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
                             color = AccentCyan
@@ -598,7 +607,7 @@ fun SettingsScreen(
                                     Text(
                                         text = fallbackProvider,
                                         color = TextPrimary,
-                                        fontSize = 12.sp
+                                        style = MaterialTheme.typography.bodySmall
                                     )
                                 }
                             }
@@ -622,9 +631,10 @@ fun SettingsScreen(
             // Benchmark latency report card link
             item {
                 Card(
+                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, AccentCyan.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        .border(1.dp, AccentCyan.copy(alpha = 0.3f), RoundedCornerShape(18.dp))
                         .clickable { onNavigateToBenchmark() },
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
@@ -644,7 +654,7 @@ fun SettingsScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "LLM RESPONSIVENESS REPORT",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                                 color = AccentCyan
@@ -652,7 +662,7 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "View live charts comparing speeds & latency.",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )
                         }
@@ -663,9 +673,10 @@ fun SettingsScreen(
             // B3: token / cost usage dashboard card link
             item {
                 Card(
+                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, AccentCyan.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        .border(1.dp, AccentCyan.copy(alpha = 0.3f), RoundedCornerShape(18.dp))
                         .clickable { onNavigateToUsage() },
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
@@ -685,7 +696,7 @@ fun SettingsScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "TOKEN & COST USAGE",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                                 color = AccentCyan
@@ -693,7 +704,7 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "Tokens used per provider & model, with estimated spend.",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )
                         }
@@ -704,9 +715,10 @@ fun SettingsScreen(
             // D4: knowledge base (document RAG) card link
             item {
                 Card(
+                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, AccentCyan.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        .border(1.dp, AccentCyan.copy(alpha = 0.3f), RoundedCornerShape(18.dp))
                         .clickable { onNavigateToKnowledgeBase() },
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
@@ -726,7 +738,7 @@ fun SettingsScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "KNOWLEDGE BASE",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                                 color = AccentCyan
@@ -734,7 +746,7 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "Ask questions over your own documents (PDF & text), indexed privately on this device.",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )
                         }
@@ -746,15 +758,16 @@ fun SettingsScreen(
             if (config.activeProvider == "Ollama") {
                 item {
                     Card(
+                        shape = RoundedCornerShape(18.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
+                            .border(1.dp, BorderColor, RoundedCornerShape(18.dp)),
                         colors = CardDefaults.cardColors(containerColor = CardBackground)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(
                                 text = "OLLAMA LOCAL ENDPOINT",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                                 color = TextPrimary
@@ -763,7 +776,7 @@ fun SettingsScreen(
                             OutlinedTextField(
                                 value = config.ollamaUrl,
                                 onValueChange = { viewModel.updateOllamaUrl(it) },
-                                label = { Text("Ollama Server URL", fontSize = 12.sp) },
+                                label = { Text("Ollama Server URL", style = MaterialTheme.typography.labelMedium) },
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = AccentCyan,
@@ -788,15 +801,16 @@ fun SettingsScreen(
             if (config.activeProvider == "On-Device AI" || config.activeProvider == "Gemma 4 (On-device)") {
                 item {
                     Card(
+                        shape = RoundedCornerShape(18.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
+                            .border(1.dp, BorderColor, RoundedCornerShape(18.dp)),
                         colors = CardDefaults.cardColors(containerColor = CardBackground)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(
                                 text = "ON-DEVICE AI STATUS",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                                 color = TextPrimary
@@ -891,7 +905,7 @@ fun SettingsScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Gemma 4", fontSize = 13.sp, color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                                Text("Gemma 4", style = MaterialTheme.typography.titleSmall, color = TextPrimary, fontWeight = FontWeight.SemiBold)
                                 Text(
                                     text = gemma4Status,
                                     fontSize = 11.sp,
@@ -930,7 +944,7 @@ fun SettingsScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Gemma 3n Multimodal", fontSize = 13.sp, color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                                Text("Gemma 3n Multimodal", style = MaterialTheme.typography.titleSmall, color = TextPrimary, fontWeight = FontWeight.SemiBold)
                                 Text(
                                     text = gemma3nStatus,
                                     fontSize = 11.sp,
@@ -977,7 +991,7 @@ fun SettingsScreen(
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
-                                color = Color(0xFFFF9800)
+                                color = AccentNeonGreen
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
@@ -988,9 +1002,10 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.height(12.dp))
 
                             Card(
+                                shape = RoundedCornerShape(14.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .border(1.dp, BorderColor, RoundedCornerShape(10.dp)),
+                                    .border(1.dp, BorderColor, RoundedCornerShape(14.dp)),
                                 colors = CardDefaults.cardColors(containerColor = CardBackground.copy(alpha = 0.3f))
                             ) {
                                 Column(modifier = Modifier.padding(12.dp)) {
@@ -1001,7 +1016,7 @@ fun SettingsScreen(
                                     OutlinedTextField(
                                         value = hfToken,
                                         onValueChange = { viewModel.updateHuggingFaceToken(it) },
-                                        label = { Text("Hugging Face Access Token", fontSize = 12.sp) },
+                                        label = { Text("Hugging Face Access Token", style = MaterialTheme.typography.labelMedium) },
                                         singleLine = true,
                                         visualTransformation = if (showToken) VisualTransformation.None else PasswordVisualTransformation(),
                                         placeholder = { Text("hf_...", fontSize = 12.sp, color = TextSecondary) },
@@ -1015,7 +1030,7 @@ fun SettingsScreen(
                                             }
                                         },
                                         colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = Color(0xFFFF9800),
+                                            focusedBorderColor = AccentNeonGreen,
                                             unfocusedBorderColor = BorderColor,
                                             focusedTextColor = TextPrimary,
                                             unfocusedTextColor = TextPrimary
@@ -1044,14 +1059,28 @@ fun SettingsScreen(
                                                 },
                                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                                             ) {
-                                                Text("📋 Paste", fontSize = 11.sp, color = Color(0xFFFF9800))
+                                                Icon(
+                                                    imageVector = Icons.Default.ContentPaste,
+                                                    contentDescription = null,
+                                                    tint = AccentNeonGreen,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Paste", fontSize = 11.sp, color = AccentNeonGreen)
                                             }
 
                                             TextButton(
                                                 onClick = { viewModel.updateHuggingFaceToken("") },
                                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                                             ) {
-                                                Text("❌ Clear", fontSize = 11.sp, color = Color.Red)
+                                                Icon(
+                                                    imageVector = Icons.Default.Close,
+                                                    contentDescription = null,
+                                                    tint = AccentRed,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Clear", fontSize = 11.sp, color = AccentRed)
                                             }
                                         }
                                     }
@@ -1069,9 +1098,9 @@ fun SettingsScreen(
 
                                     val statusColor = when (validationStatus) {
                                         "Valid" -> AccentCyan
-                                        "Invalid" -> Color.Red
+                                        "Invalid" -> AccentRed
                                         "Verifying..." -> AccentCyan
-                                        "Unable to verify" -> Color.Yellow
+                                        "Unable to verify" -> AccentOrange
                                         else -> TextSecondary
                                     }
 
@@ -1089,21 +1118,21 @@ fun SettingsScreen(
                                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                             Button(
                                                 onClick = { viewModel.validateHuggingFaceToken() },
-                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800)),
+                                                colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton),
                                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                                                 modifier = Modifier.height(28.dp)
                                             ) {
-                                                Text("Validate Token", fontSize = 10.sp, color = DarkBackground, fontWeight = FontWeight.Bold)
+                                                Text("Validate Token", fontSize = 10.sp, color = OnAccent, fontWeight = FontWeight.Bold)
                                             }
 
                                             if (hfToken.isNotBlank()) {
                                                 Button(
                                                     onClick = { viewModel.removeHuggingFaceToken() },
-                                                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.2f)),
+                                                    colors = ButtonDefaults.buttonColors(containerColor = AccentRed.copy(alpha = 0.2f)),
                                                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                                                     modifier = Modifier.height(28.dp)
                                                 ) {
-                                                    Text("Remove Token", fontSize = 10.sp, color = Color.Red, fontWeight = FontWeight.Bold)
+                                                    Text("Remove Token", fontSize = 10.sp, color = AccentRed, fontWeight = FontWeight.Bold)
                                                 }
                                             }
                                         }
@@ -1121,7 +1150,7 @@ fun SettingsScreen(
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
-                                color = Color(0xFFFF9800)
+                                color = AccentNeonGreen
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
@@ -1168,13 +1197,14 @@ fun SettingsScreen(
                                 }
                                 
                                 Card(
+                                    shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(vertical = 6.dp)
                                         .border(
                                             1.dp,
                                             if (config.activeModel == spec.id) AccentCyan.copy(alpha = 0.5f) else BorderColor,
-                                            RoundedCornerShape(10.dp)
+                                            RoundedCornerShape(14.dp)
                                         )
                                         .clickable { if (isApiCompatible) expanded = !expanded },
                                     colors = CardDefaults.cardColors(
@@ -1191,7 +1221,7 @@ fun SettingsScreen(
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                                     Text(
                                                         text = spec.displayName,
-                                                        fontSize = 13.sp,
+                                                        style = MaterialTheme.typography.titleSmall,
                                                         color = if (isApiCompatible) TextPrimary else TextSecondary,
                                                         fontWeight = FontWeight.SemiBold
                                                     )
@@ -1199,12 +1229,12 @@ fun SettingsScreen(
                                                         Spacer(modifier = Modifier.width(6.dp))
                                                         Box(
                                                             modifier = Modifier
-                                                                .background(Color(0xFFFF9800).copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                                                                .background(AccentNeonGreen.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
                                                                 .padding(horizontal = 4.dp, vertical = 2.dp)
                                                         ) {
                                                             Text(
                                                                 text = "REC",
-                                                                color = Color(0xFFFF9800),
+                                                                color = AccentNeonGreen,
                                                                 fontSize = 8.sp,
                                                                 fontWeight = FontWeight.Bold
                                                             )
@@ -1214,7 +1244,7 @@ fun SettingsScreen(
                                                     Box(
                                                         modifier = Modifier
                                                             .background(
-                                                                if (spec.authRequired) Color(0xFFFF9800).copy(alpha = 0.12f)
+                                                                if (spec.authRequired) AccentOrange.copy(alpha = 0.12f)
                                                                 else AccentCyan.copy(alpha = 0.12f),
                                                                 RoundedCornerShape(4.dp)
                                                             )
@@ -1222,7 +1252,7 @@ fun SettingsScreen(
                                                     ) {
                                                         Text(
                                                             text = if (spec.authRequired) "GATED · HF TOKEN" else "PUBLIC · NO TOKEN",
-                                                            color = if (spec.authRequired) Color(0xFFFF9800) else AccentCyan,
+                                                            color = if (spec.authRequired) AccentOrange else AccentCyan,
                                                             fontSize = 8.sp,
                                                             fontWeight = FontWeight.Bold
                                                         )
@@ -1273,11 +1303,11 @@ fun SettingsScreen(
                                                             }
                                                             ModelFitVerdict.WARN -> {
                                                                 chipText = "TIGHT · LEAVES ${formatBytes(fitAssessment.remainingAfterBytes)}"
-                                                                chipColor = Color(0xFFFF9800)
+                                                                chipColor = AccentOrange
                                                             }
                                                             ModelFitVerdict.BLOCK -> {
                                                                 chipText = "WON'T FIT · NEEDS ${formatBytes(totalSize)}"
-                                                                chipColor = Color.Red
+                                                                chipColor = AccentRed
                                                             }
                                                         }
                                                         Box(
@@ -1296,7 +1326,7 @@ fun SettingsScreen(
                                                             Spacer(modifier = Modifier.width(6.dp))
                                                             Text(
                                                                 text = "LOW RAM",
-                                                                color = Color.Red,
+                                                                color = AccentRed,
                                                                 fontSize = 8.sp,
                                                                 fontWeight = FontWeight.Bold
                                                             )
@@ -1311,7 +1341,7 @@ fun SettingsScreen(
                                                                     ""
                                                                 },
                                                             fontSize = 9.sp,
-                                                            color = if (fitAssessment.ramSufficient) TextSecondary else Color.Red
+                                                            color = if (fitAssessment.ramSufficient) TextSecondary else AccentRed
                                                         )
                                                     }
                                                 }
@@ -1319,10 +1349,10 @@ fun SettingsScreen(
                                             
                                             val badgeColor = when (status) {
                                                 ModelStatus.READY -> AccentCyan
-                                                ModelStatus.DOWNLOADING -> Color(0xFFFF9800)
-                                                ModelStatus.PAUSED -> Color.Yellow
+                                                ModelStatus.DOWNLOADING -> AccentNeonGreen
+                                                ModelStatus.PAUSED -> AccentOrange
                                                 ModelStatus.LOADING -> AccentCyan
-                                                ModelStatus.FAILED -> Color.Red
+                                                ModelStatus.FAILED -> AccentRed
                                                 else -> TextSecondary
                                             }
                                             
@@ -1354,7 +1384,7 @@ fun SettingsScreen(
                                                     .fillMaxWidth()
                                                     .height(4.dp)
                                                     .clip(RoundedCornerShape(2.dp)),
-                                                color = Color(0xFFFF9800),
+                                                color = AccentNeonGreen,
                                                 trackColor = BorderColor
                                             )
                                             Spacer(modifier = Modifier.height(4.dp))
@@ -1398,23 +1428,23 @@ fun SettingsScreen(
                                                     Button(
                                                         onClick = { requestModelDownload(spec, true) },
                                                         enabled = fitAssessment.verdict != ModelFitVerdict.BLOCK,
-                                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800)),
+                                                        colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton),
                                                         modifier = Modifier.height(28.dp).padding(horizontal = 4.dp),
                                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                                                     ) {
-                                                        Icon(Icons.Default.PlayArrow, contentDescription = "Resume", modifier = Modifier.size(12.dp), tint = DarkBackground)
+                                                        Icon(Icons.Default.PlayArrow, contentDescription = "Resume", modifier = Modifier.size(12.dp), tint = OnAccent)
                                                         Spacer(modifier = Modifier.width(4.dp))
-                                                        Text("Resume", fontSize = 10.sp, color = DarkBackground)
+                                                        Text("Resume", fontSize = 10.sp, color = OnAccent)
                                                     }
                                                 }
                                                 Spacer(modifier = Modifier.width(6.dp))
                                                 Button(
                                                     onClick = { viewModel.cancelDownload(spec.id) },
-                                                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.6f)),
+                                                    colors = ButtonDefaults.buttonColors(containerColor = AccentRed.copy(alpha = 0.6f)),
                                                     modifier = Modifier.height(28.dp).padding(horizontal = 4.dp),
                                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                                                 ) {
-                                                    Text("Cancel", fontSize = 10.sp, color = Color.White)
+                                                    Text("Cancel", fontSize = 10.sp, color = TextPrimary)
                                                 }
                                             }
                                         }
@@ -1425,7 +1455,7 @@ fun SettingsScreen(
                                             Text(
                                                 text = errorText,
                                                 fontSize = 10.sp,
-                                                color = Color.Red,
+                                                color = AccentRed,
                                                 fontWeight = FontWeight.SemiBold
                                             )
                                             if (spec.licenseUrl.isNotEmpty() && (errorText.contains("permission", ignoreCase = true) || errorText.contains("license", ignoreCase = true))) {
@@ -1433,11 +1463,11 @@ fun SettingsScreen(
                                                 val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
                                                 Button(
                                                     onClick = { uriHandler.openUri(spec.licenseUrl) },
-                                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800).copy(alpha = 0.2f)),
+                                                    colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton.copy(alpha = 0.2f)),
                                                     modifier = Modifier.fillMaxWidth().height(28.dp),
                                                     contentPadding = PaddingValues(vertical = 2.dp)
                                                 ) {
-                                                    Text("Open Model Page", color = Color(0xFFFF9800), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                    Text("Open Model Page", color = AccentNeonGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                                 }
                                             }
                                         }
@@ -1457,14 +1487,14 @@ fun SettingsScreen(
                                                             Button(
                                                                 onClick = { requestModelDownload(spec, false) },
                                                                 enabled = fitAssessment.verdict != ModelFitVerdict.BLOCK,
-                                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800)),
+                                                                colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton),
                                                                 modifier = Modifier.weight(1f).height(32.dp),
                                                                 contentPadding = PaddingValues(horizontal = 4.dp)
                                                             ) {
                                                                 Text(
                                                                     if (fitAssessment.verdict == ModelFitVerdict.BLOCK) "Won't Fit" else "Download",
                                                                     fontSize = 11.sp,
-                                                                    color = DarkBackground
+                                                                    color = OnAccent
                                                                 )
                                                             }
                                                         }
@@ -1504,11 +1534,11 @@ fun SettingsScreen(
                                                          
                                                          Button(
                                                              onClick = { viewModel.deleteModel(spec.id) },
-                                                             colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.2f)),
+                                                             colors = ButtonDefaults.buttonColors(containerColor = AccentRed.copy(alpha = 0.2f)),
                                                              modifier = Modifier.height(32.dp),
                                                              contentPadding = PaddingValues(horizontal = 8.dp)
                                                          ) {
-                                                             Icon(Icons.Default.Delete, contentDescription = "Delete", modifier = Modifier.size(14.dp), tint = Color.Red)
+                                                             Icon(Icons.Default.Delete, contentDescription = "Delete", modifier = Modifier.size(14.dp), tint = AccentRed)
                                                          }
                                                     }
                                                     
@@ -1538,7 +1568,7 @@ fun SettingsScreen(
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
-                                color = Color(0xFFFF9800)
+                                color = AccentNeonGreen
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
@@ -1566,13 +1596,14 @@ fun SettingsScreen(
                             customModels.forEach { entity ->
                                 var expanded by remember(entity.id) { mutableStateOf(false) }
                                 Card(
+                                    shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(vertical = 6.dp)
                                         .border(
                                             1.dp,
                                             if (config.activeModel == entity.id) AccentCyan.copy(alpha = 0.5f) else BorderColor,
-                                            RoundedCornerShape(10.dp)
+                                            RoundedCornerShape(14.dp)
                                         )
                                         .clickable { expanded = !expanded },
                                     colors = CardDefaults.cardColors(
@@ -1592,7 +1623,7 @@ fun SettingsScreen(
                                             Column(modifier = Modifier.weight(1f)) {
                                                 Text(
                                                     text = entity.name,
-                                                    fontSize = 13.sp,
+                                                    style = MaterialTheme.typography.titleSmall,
                                                     color = TextPrimary,
                                                     fontWeight = FontWeight.SemiBold
                                                 )
@@ -1649,7 +1680,7 @@ fun SettingsScreen(
                                                     Button(
                                                         onClick = { viewModel.deleteModel(entity.id) },
                                                         colors = ButtonDefaults.buttonColors(
-                                                            containerColor = Color.Red.copy(alpha = 0.2f)
+                                                            containerColor = AccentRed.copy(alpha = 0.2f)
                                                         ),
                                                         modifier = Modifier.height(32.dp),
                                                         contentPadding = PaddingValues(horizontal = 8.dp)
@@ -1658,7 +1689,7 @@ fun SettingsScreen(
                                                             Icons.Default.Delete,
                                                             contentDescription = "Delete",
                                                             modifier = Modifier.size(14.dp),
-                                                            tint = Color.Red
+                                                            tint = AccentRed
                                                         )
                                                     }
                                                 }
@@ -1678,7 +1709,7 @@ fun SettingsScreen(
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
-                                color = Color(0xFFFF9800)
+                                color = AccentNeonGreen
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             
@@ -1709,7 +1740,7 @@ fun SettingsScreen(
                                      .fillMaxWidth()
                                      .height(6.dp)
                                      .clip(RoundedCornerShape(3.dp)),
-                                 color = Color(0xFFFF9800),
+                                 color = AccentNeonGreen,
                                  trackColor = BorderColor
                              )
                              Spacer(modifier = Modifier.height(6.dp))
@@ -1721,11 +1752,11 @@ fun SettingsScreen(
                              Spacer(modifier = Modifier.height(8.dp))
                              Button(
                                  onClick = { viewModel.deleteUnusedModels() },
-                                 colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.8f)),
+                                 colors = ButtonDefaults.buttonColors(containerColor = AccentRed.copy(alpha = 0.8f)),
                                  modifier = Modifier.fillMaxWidth(),
                                  shape = RoundedCornerShape(8.dp)
                              ) {
-                                 Text("Delete Unused Models", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                 Text("Delete Unused Models", color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                              }
                         }
                     }
@@ -1735,18 +1766,19 @@ fun SettingsScreen(
             // ─── Privacy — Danger Zone Card (A6: forget everything) ───
             item {
                 Card(
+                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, Color.Red.copy(alpha = 0.6f), RoundedCornerShape(12.dp)),
+                        .border(1.dp, AccentRed.copy(alpha = 0.6f), RoundedCornerShape(18.dp)),
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "PRIVACY — DANGER ZONE",
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
-                            color = Color.Red
+                            color = AccentRed
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
@@ -1764,11 +1796,11 @@ fun SettingsScreen(
                                 forgetEverythingUnderstood = false
                                 showForgetEverythingConfirm = true
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.8f)),
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentRed.copy(alpha = 0.8f)),
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Text("Forget Everything", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("Forget Everything", color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -1778,15 +1810,16 @@ fun SettingsScreen(
             if (config.activeProvider == "Copilot API") {
                 item {
                     Card(
+                        shape = RoundedCornerShape(18.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
+                            .border(1.dp, BorderColor, RoundedCornerShape(18.dp)),
                         colors = CardDefaults.cardColors(containerColor = CardBackground)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(
                                 text = "COPILOT LOCAL ENDPOINT",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                                 color = TextPrimary
@@ -1795,7 +1828,7 @@ fun SettingsScreen(
                             OutlinedTextField(
                                 value = config.copilotUrl,
                                 onValueChange = { viewModel.updateCopilotUrl(it) },
-                                label = { Text("Copilot Server URL", fontSize = 12.sp) },
+                                label = { Text("Copilot Server URL", style = MaterialTheme.typography.labelMedium) },
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = AccentCyan,
@@ -1820,15 +1853,16 @@ fun SettingsScreen(
             if (config.activeProvider == "Custom OpenAI Compatible") {
                 item {
                     Card(
+                        shape = RoundedCornerShape(18.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
+                            .border(1.dp, BorderColor, RoundedCornerShape(18.dp)),
                         colors = CardDefaults.cardColors(containerColor = CardBackground)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(
                                 text = "CUSTOM OPENAI ENDPOINT",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                                 color = TextPrimary
@@ -1837,7 +1871,7 @@ fun SettingsScreen(
                             OutlinedTextField(
                                 value = config.customEndpoints["Custom OpenAI Compatible"] ?: "",
                                 onValueChange = { viewModel.updateCustomEndpoint("Custom OpenAI Compatible", it) },
-                                label = { Text("Base URL (e.g. https://api.openai.com/v1)", fontSize = 12.sp) },
+                                label = { Text("Base URL (e.g. https://api.openai.com/v1)", style = MaterialTheme.typography.labelMedium) },
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = AccentCyan,
@@ -1861,9 +1895,10 @@ fun SettingsScreen(
             // Provider API Keys Card
             item {
                 Card(
+                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
+                        .border(1.dp, BorderColor, RoundedCornerShape(18.dp)),
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -1876,7 +1911,7 @@ fun SettingsScreen(
                         ) {
                             Text(
                                 text = "PROVIDER API KEYS",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                                 color = AccentCyan
@@ -1942,9 +1977,10 @@ fun SettingsScreen(
             // ElevenLabs Voice Synthesis Card
             item {
                 Card(
+                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
+                        .border(1.dp, BorderColor, RoundedCornerShape(18.dp)),
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -1957,7 +1993,7 @@ fun SettingsScreen(
                         ) {
                             Text(
                                 text = "ELEVENLABS VOICE SYNTHESIS",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                                 color = AccentCyan
@@ -1982,7 +2018,7 @@ fun SettingsScreen(
                                 OutlinedTextField(
                                     value = config.elevenLabsVoiceId,
                                     onValueChange = { viewModel.updateElevenLabsVoiceId(it) },
-                                    label = { Text("ElevenLabs Voice ID", fontSize = 12.sp) },
+                                    label = { Text("ElevenLabs Voice ID", style = MaterialTheme.typography.labelMedium) },
                                     singleLine = true,
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = AccentCyan,
@@ -2006,9 +2042,10 @@ fun SettingsScreen(
             // Planning & Automation Preferences Card
             item {
                 Card(
+                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
+                        .border(1.dp, BorderColor, RoundedCornerShape(18.dp)),
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -2021,7 +2058,7 @@ fun SettingsScreen(
                         ) {
                             Text(
                                 text = "PLANNING & AUTOMATION",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                                 color = AccentCyan
@@ -2041,13 +2078,12 @@ fun SettingsScreen(
 
                         Text(
                             text = "Auto Mode",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.titleMedium,
                             color = TextPrimary
                         )
                         Text(
                             text = "Auto runs plans whose every step you've allowed. YOLO runs everything without asking.",
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary
                         )
                         Spacer(modifier = Modifier.height(12.dp))
@@ -2082,7 +2118,7 @@ fun SettingsScreen(
                         if (showYoloWarning) {
                             AlertDialog(
                                 onDismissRequest = { showYoloWarning = false },
-                                containerColor = DarkSurface,
+                                containerColor = AppTheme.colors.surfaceRaised,
                                 title = { Text("Enable YOLO mode?", color = AccentRed, fontWeight = FontWeight.Bold) },
                                 text = {
                                     Text(
@@ -2156,23 +2192,18 @@ fun SettingsScreen(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = "Multi-Agent Planning Mode",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.SemiBold,
+                                    style = MaterialTheme.typography.titleMedium,
                                     color = TextPrimary
                                 )
                                 Text(
                                     text = "Use critic and plan merger agents for safer, more robust plan generation.",
-                                    fontSize = 12.sp,
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = TextSecondary
                                 )
                             }
                             Switch(
                                 checked = config.multiAgentModeEnabled,
                                 onCheckedChange = { viewModel.updateMultiAgentMode(it) },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = TextPrimary,
-                                    checkedTrackColor = TextPrimary.copy(alpha = 0.5f)
-                                )
                             )
                         }
 
@@ -2193,23 +2224,18 @@ fun SettingsScreen(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = "Show Floating Button",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.SemiBold,
+                                    style = MaterialTheme.typography.titleMedium,
                                     color = TextPrimary
                                 )
                                 Text(
                                     text = "Show a tiny floating bubble to launch the app or record commands directly.",
-                                    fontSize = 12.sp,
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = TextSecondary
                                 )
                             }
                             Switch(
                                 checked = config.showFloatingButton,
                                 onCheckedChange = { viewModel.updateShowFloatingButton(it) },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = TextPrimary,
-                                    checkedTrackColor = TextPrimary.copy(alpha = 0.5f)
-                                )
                             )
                         }
 
@@ -2230,23 +2256,18 @@ fun SettingsScreen(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = if (config.isDarkMode) "Dark Mode" else "Light Mode",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.SemiBold,
+                                    style = MaterialTheme.typography.titleMedium,
                                     color = TextPrimary
                                 )
                                 Text(
                                     text = "Switch between dark and light appearance.",
-                                    fontSize = 12.sp,
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = TextSecondary
                                 )
                             }
                             Switch(
                                 checked = config.isDarkMode,
                                 onCheckedChange = { viewModel.updateDarkMode(it) },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = TextPrimary,
-                                    checkedTrackColor = TextPrimary.copy(alpha = 0.5f)
-                                )
                             )
                         }
 
@@ -2267,8 +2288,7 @@ fun SettingsScreen(
                         Column(modifier = Modifier.fillMaxWidth()) {
                             Text(
                                 text = "Accent Colour",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.SemiBold,
+                                style = MaterialTheme.typography.titleMedium,
                                 color = TextPrimary
                             )
                             Text(
@@ -2277,7 +2297,7 @@ fun SettingsScreen(
                                 } else {
                                     "Applied across the whole app, instantly."
                                 },
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )
                             Spacer(modifier = Modifier.height(12.dp))
@@ -2319,7 +2339,7 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
                                 text = AccentTheme.fromId(config.accentTheme).displayName,
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )
                         }
@@ -2345,23 +2365,18 @@ fun SettingsScreen(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = "Dynamic Colour",
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.SemiBold,
+                                        style = MaterialTheme.typography.titleMedium,
                                         color = TextPrimary
                                     )
                                     Text(
                                         text = "Material You — take accent colours from your wallpaper (Android 12+).",
-                                        fontSize = 12.sp,
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = TextSecondary
                                     )
                                 }
                                 Switch(
                                     checked = config.useDynamicColor,
                                     onCheckedChange = { viewModel.updateDynamicColor(it) },
-                                    colors = SwitchDefaults.colors(
-                                        checkedThumbColor = TextPrimary,
-                                        checkedTrackColor = TextPrimary.copy(alpha = 0.5f)
-                                    )
                                 )
                             }
                         }
@@ -2374,9 +2389,10 @@ fun SettingsScreen(
             // Auto-Reply Settings Card
             item {
                 Card(
+                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, AccentPurple.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        .border(1.dp, AccentPurple.copy(alpha = 0.3f), RoundedCornerShape(18.dp))
                         .clickable { onNavigateToAutoReply() },
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
@@ -2386,12 +2402,17 @@ fun SettingsScreen(
                             .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("🤖", fontSize = 22.sp)
+                        Icon(
+                            imageVector = Icons.Default.SmartToy,
+                            contentDescription = "Auto-Reply",
+                            tint = AccentPurple,
+                            modifier = Modifier.size(24.dp)
+                        )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "AUTO-REPLY SETTINGS",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                                 color = AccentPurple
@@ -2399,7 +2420,7 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "Configure AI auto-reply for WhatsApp, SMS & Email.",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )
                         }
@@ -2415,9 +2436,10 @@ fun SettingsScreen(
             // Notification History Card
             item {
                 Card(
+                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, AccentCyan.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        .border(1.dp, AccentCyan.copy(alpha = 0.3f), RoundedCornerShape(18.dp))
                         .clickable { onNavigateToNotificationHistory() },
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
@@ -2427,12 +2449,17 @@ fun SettingsScreen(
                             .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("🔔", fontSize = 22.sp)
+                        Icon(
+                            imageVector = Icons.Default.Notifications,
+                            contentDescription = "Notification History",
+                            tint = AccentCyan,
+                            modifier = Modifier.size(24.dp)
+                        )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "NOTIFICATION HISTORY",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                                 color = AccentCyan
@@ -2440,7 +2467,7 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "View captured notifications and auto-reply log.",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )
                         }
@@ -2456,9 +2483,10 @@ fun SettingsScreen(
             // Permissions link card
             item {
                 Card(
+                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, BorderColor, RoundedCornerShape(12.dp))
+                        .border(1.dp, BorderColor, RoundedCornerShape(18.dp))
                         .clickable { onNavigateToPermissions() },
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
@@ -2478,7 +2506,7 @@ fun SettingsScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "PERMISSIONS",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                                 color = AccentCyan
@@ -2486,7 +2514,7 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "Review and grant microphone, storage, accessibility & other permissions.",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )
                         }
@@ -2502,9 +2530,10 @@ fun SettingsScreen(
             // Habits & Routines link card
             item {
                 Card(
+                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, BorderColor, RoundedCornerShape(12.dp))
+                        .border(1.dp, BorderColor, RoundedCornerShape(18.dp))
                         .clickable { onNavigateToRoutines() },
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
@@ -2514,12 +2543,17 @@ fun SettingsScreen(
                             .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("⚡", fontSize = 22.sp)
+                        Icon(
+                            imageVector = Icons.Default.Bolt,
+                            contentDescription = "Habits & Routines",
+                            tint = AccentCyan,
+                            modifier = Modifier.size(24.dp)
+                        )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "HABITS & ROUTINES",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                                 color = AccentCyan
@@ -2527,7 +2561,7 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "Detect repeated daily patterns & automate morning routines.",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )
                         }
@@ -2543,9 +2577,10 @@ fun SettingsScreen(
             // Personas & quick commands link card (B6)
             item {
                 Card(
+                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, BorderColor, RoundedCornerShape(12.dp))
+                        .border(1.dp, BorderColor, RoundedCornerShape(18.dp))
                         .clickable { onNavigateToPersonas() },
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
@@ -2555,12 +2590,17 @@ fun SettingsScreen(
                             .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("🎭", fontSize = 22.sp)
+                        Icon(
+                            imageVector = Icons.Default.TheaterComedy,
+                            contentDescription = "Personas",
+                            tint = AccentCyan,
+                            modifier = Modifier.size(24.dp)
+                        )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "PERSONAS & QUICK COMMANDS",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                                 color = AccentCyan
@@ -2568,7 +2608,7 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "Saved system prompts you can apply per chat, and reusable message snippets.",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )
                         }
@@ -2584,9 +2624,10 @@ fun SettingsScreen(
             // Crash Log link card
             item {
                 Card(
+                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, AccentRed.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        .border(1.dp, AccentRed.copy(alpha = 0.3f), RoundedCornerShape(18.dp))
                         .clickable { onNavigateToCrashLog() },
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
@@ -2596,12 +2637,17 @@ fun SettingsScreen(
                             .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("💥", fontSize = 22.sp)
+                        Icon(
+                            imageVector = Icons.Default.BugReport,
+                            contentDescription = "Crash Log",
+                            tint = AccentRed,
+                            modifier = Modifier.size(24.dp)
+                        )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "CRASH LOG",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                                 color = AccentRed
@@ -2609,7 +2655,7 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "View and share crashes recorded on this device.",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )
                         }
@@ -2677,9 +2723,10 @@ fun SettingsScreen(
             // Privacy Policy link card
             item {
                 Card(
+                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, BorderColor, RoundedCornerShape(12.dp))
+                        .border(1.dp, BorderColor, RoundedCornerShape(18.dp))
                         .clickable { onNavigateToPrivacyPolicy() },
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
@@ -2699,7 +2746,7 @@ fun SettingsScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "PRIVACY POLICY",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                                 color = AccentCyan
@@ -2707,7 +2754,7 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "How OpenDroid handles your data and privacy.",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )
                         }
@@ -2723,9 +2770,10 @@ fun SettingsScreen(
             // Terms of Use link card
             item {
                 Card(
+                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, BorderColor, RoundedCornerShape(12.dp))
+                        .border(1.dp, BorderColor, RoundedCornerShape(18.dp))
                         .clickable { onNavigateToTermsOfUse() },
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
@@ -2745,7 +2793,7 @@ fun SettingsScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "TERMS OF USE",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                                 color = AccentCyan
@@ -2753,7 +2801,7 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "Usage terms and conditions for OpenDroid.",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )
                         }
@@ -2769,9 +2817,10 @@ fun SettingsScreen(
             // Help Center link card
             item {
                 Card(
+                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, BorderColor, RoundedCornerShape(12.dp))
+                        .border(1.dp, BorderColor, RoundedCornerShape(18.dp))
                         .clickable { onNavigateToHelpCenter() },
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
@@ -2791,7 +2840,7 @@ fun SettingsScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "HELP CENTER",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                                 color = AccentCyan
@@ -2799,7 +2848,7 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "Guides, FAQs, and troubleshooting.",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )
                         }
@@ -2815,9 +2864,10 @@ fun SettingsScreen(
             // License link card
             item {
                 Card(
+                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, BorderColor, RoundedCornerShape(12.dp))
+                        .border(1.dp, BorderColor, RoundedCornerShape(18.dp))
                         .clickable { onNavigateToLicense() },
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
@@ -2837,7 +2887,7 @@ fun SettingsScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "LICENSE",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                                 color = AccentPurple
@@ -2845,7 +2895,7 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "Open-source license and third-party credits.",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )
                         }
@@ -2861,9 +2911,10 @@ fun SettingsScreen(
             // About link card
             item {
                 Card(
+                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, BorderColor, RoundedCornerShape(12.dp))
+                        .border(1.dp, BorderColor, RoundedCornerShape(18.dp))
                         .clickable { onNavigateToAbout() },
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
@@ -2883,7 +2934,7 @@ fun SettingsScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "ABOUT OPENDROID",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                                 color = AccentPurple
@@ -2891,7 +2942,7 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "Version info, features, and technology stack.",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )
                         }
@@ -2907,15 +2958,16 @@ fun SettingsScreen(
             // System integration info card
             item {
                 Card(
+                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
+                        .border(1.dp, BorderColor, RoundedCornerShape(18.dp)),
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "SYSTEM INTEGRATION PERMISSIONS",
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
                             color = TextSecondary
@@ -2923,7 +2975,7 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
                             text = "To allow OpenDroid to operate other applications autonomously (e.g. WhatsApp, Calendar), verify that the accessibility service 'OpenDroid' is active in Settings -> Accessibility -> Installed Services.",
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary
                         )
                     }
@@ -2944,7 +2996,7 @@ fun SettingsScreen(
                     Text(
                         text = "This permanently erases, from this device:",
                         color = TextSecondary,
-                        fontSize = 12.sp
+                        style = MaterialTheme.typography.bodySmall
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     listOf(
@@ -2957,12 +3009,12 @@ fun SettingsScreen(
                         "• All app settings",
                         "• Downloaded on-device models & workspace files"
                     ).forEach { line ->
-                        Text(text = line, color = TextSecondary, fontSize = 12.sp)
+                        Text(text = line, color = TextSecondary, style = MaterialTheme.typography.bodySmall)
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "This cannot be undone.",
-                        color = Color.Red,
+                        color = AccentRed,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -2978,7 +3030,7 @@ fun SettingsScreen(
                         Text(
                             text = "I understand everything above will be permanently deleted.",
                             color = TextPrimary,
-                            fontSize = 12.sp
+                            style = MaterialTheme.typography.bodySmall
                         )
                     }
                 }
@@ -2990,9 +3042,9 @@ fun SettingsScreen(
                         viewModel.forgetEverything()
                     },
                     enabled = forgetEverythingUnderstood,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentRed)
                 ) {
-                    Text("Erase everything", color = Color.White)
+                    Text("Erase everything", color = TextPrimary)
                 }
             },
             dismissButton = {
@@ -3000,7 +3052,7 @@ fun SettingsScreen(
                     Text("Cancel", color = TextSecondary)
                 }
             },
-            containerColor = CardBackground,
+            containerColor = AppTheme.colors.surfaceRaised,
             titleContentColor = TextPrimary,
             textContentColor = TextSecondary
         )
@@ -3016,7 +3068,7 @@ fun SettingsScreen(
                 Column {
                     LinearProgressIndicator(
                         modifier = Modifier.fillMaxWidth(),
-                        color = Color.Red,
+                        color = AccentRed,
                         trackColor = BorderColor
                     )
                     Spacer(modifier = Modifier.height(12.dp))
@@ -3024,7 +3076,7 @@ fun SettingsScreen(
                 }
             },
             confirmButton = {},
-            containerColor = CardBackground,
+            containerColor = AppTheme.colors.surfaceRaised,
             titleContentColor = TextPrimary,
             textContentColor = TextSecondary
         )
@@ -3050,7 +3102,7 @@ fun SettingsScreen(
                             text = "The items marked above could not be erased and are still on " +
                                 "this device. You can try again, or restart now and wipe again later.",
                             color = TextSecondary,
-                            fontSize = 12.sp
+                            style = MaterialTheme.typography.bodySmall
                         )
                     }
                 }
@@ -3058,9 +3110,9 @@ fun SettingsScreen(
             confirmButton = {
                 Button(
                     onClick = { viewModel.restartAfterWipe() },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton)
                 ) {
-                    Text("Restart OpenDroid", color = DarkBackground)
+                    Text("Restart OpenDroid", color = OnAccent)
                 }
             },
             dismissButton = if (!report.fullyErased) {
@@ -3072,7 +3124,7 @@ fun SettingsScreen(
             } else {
                 null
             },
-            containerColor = CardBackground,
+            containerColor = AppTheme.colors.surfaceRaised,
             titleContentColor = TextPrimary,
             textContentColor = TextSecondary
         )
@@ -3093,9 +3145,9 @@ fun SettingsScreen(
             confirmButton = {
                 Button(
                     onClick = { showAuthRequiredDialog = null },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton)
                 ) {
-                    Text("OK", color = DarkBackground)
+                    Text("OK", color = OnAccent)
                 }
             },
             dismissButton = {
@@ -3103,7 +3155,7 @@ fun SettingsScreen(
                     Text("Cancel", color = TextSecondary)
                 }
             },
-            containerColor = CardBackground,
+            containerColor = AppTheme.colors.surfaceRaised,
             titleContentColor = TextPrimary,
             textContentColor = TextSecondary
         )
@@ -3127,7 +3179,7 @@ fun SettingsScreen(
                         viewModel.downloadModel(modelIdToDownload, cellularDownloadFitConfirmed)
                         cellularDownloadFitConfirmed = false
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentOrange)
                 ) {
                     Text("Download", color = DarkBackground)
                 }
@@ -3137,7 +3189,7 @@ fun SettingsScreen(
                     Text("Cancel", color = TextSecondary)
                 }
             },
-            containerColor = CardBackground,
+            containerColor = AppTheme.colors.surfaceRaised,
             titleContentColor = TextPrimary,
             textContentColor = TextSecondary
         )
@@ -3161,7 +3213,7 @@ fun SettingsScreen(
                         viewModel.resumeDownload(modelIdToResume, cellularResumeFitConfirmed)
                         cellularResumeFitConfirmed = false
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentOrange)
                 ) {
                     Text("Resume", color = DarkBackground)
                 }
@@ -3171,7 +3223,7 @@ fun SettingsScreen(
                     Text("Cancel", color = TextSecondary)
                 }
             },
-            containerColor = CardBackground,
+            containerColor = AppTheme.colors.surfaceRaised,
             titleContentColor = TextPrimary,
             textContentColor = TextSecondary
         )
@@ -3207,7 +3259,7 @@ fun SettingsScreen(
                             beginModelDownload(specForFit, request.isResume, true)
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentOrange)
                 ) {
                     Text("Download Anyway", color = DarkBackground)
                 }
@@ -3217,7 +3269,7 @@ fun SettingsScreen(
                     Text("Cancel", color = TextSecondary)
                 }
             },
-            containerColor = CardBackground,
+            containerColor = AppTheme.colors.surfaceRaised,
             titleContentColor = TextPrimary,
             textContentColor = TextSecondary
         )
@@ -3239,12 +3291,12 @@ fun SettingsScreen(
             confirmButton = {
                 Button(
                     onClick = { fitBlockedInfo = null },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton)
                 ) {
-                    Text("OK", color = DarkBackground)
+                    Text("OK", color = OnAccent)
                 }
             },
-            containerColor = CardBackground,
+            containerColor = AppTheme.colors.surfaceRaised,
             titleContentColor = TextPrimary,
             textContentColor = TextSecondary
         )
@@ -3273,7 +3325,7 @@ fun SettingsScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                     when {
                         isImporting -> {
-                            CircularProgressIndicator(color = Color(0xFFFF9800))
+                            CircularProgressIndicator(color = AccentNeonGreen)
                             Spacer(modifier = Modifier.height(12.dp))
                             Text("Copying and verifying the model file. This may take a minute...", color = TextSecondary)
                         }
@@ -3284,7 +3336,7 @@ fun SettingsScreen(
                             Text(
                                 text = localImportStatus
                                     ?: "Failed to import model. Please make sure it is a valid LiteRT model file (.task or .litertlm) and is not corrupted.",
-                                color = Color.Red
+                                color = AccentRed
                             )
                         }
                     }
@@ -3294,13 +3346,13 @@ fun SettingsScreen(
                 if (!isImporting) {
                     Button(
                         onClick = { viewModel.clearImportStatus() },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton)
                     ) {
-                        Text("OK", color = DarkBackground)
+                        Text("OK", color = OnAccent)
                     }
                 }
             },
-            containerColor = CardBackground,
+            containerColor = AppTheme.colors.surfaceRaised,
             titleContentColor = TextPrimary,
             textContentColor = TextSecondary
         )
@@ -3350,7 +3402,7 @@ private fun WipeStepRow(step: WipeStepResult) {
         Icon(
             imageVector = if (step.cleared) Icons.Default.Check else Icons.Default.Warning,
             contentDescription = if (step.cleared) "Erased" else "Not erased",
-            tint = if (step.cleared) Color(0xFF4CAF50) else Color.Red,
+            tint = if (step.cleared) AppTheme.colors.success else AccentRed,
             modifier = Modifier.size(16.dp)
         )
         Spacer(modifier = Modifier.width(8.dp))
@@ -3358,13 +3410,13 @@ private fun WipeStepRow(step: WipeStepResult) {
             Text(
                 text = step.title,
                 color = TextPrimary,
-                fontSize = 12.sp,
+                style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Bold
             )
             if (!step.cleared) {
                 Text(
                     text = step.remainingDescription,
-                    color = Color.Red,
+                    color = AccentRed,
                     fontSize = 11.sp
                 )
                 step.errorMessage?.let { message ->
@@ -3401,7 +3453,7 @@ private fun SecureApiKeyField(
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        label = { Text(label, fontSize = 12.sp) },
+        label = { Text(label, style = MaterialTheme.typography.labelMedium) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
         visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
