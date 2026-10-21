@@ -77,7 +77,14 @@ class OpenDroidService : Service() {
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var showFloatingButton = false
-    @Volatile private var pendingApprovalListen = false
+    /**
+     * Plan id whose spoken approval prompt we are waiting on. Set when a
+     * plan enters PlanProposed, cleared as soon as the plan leaves the gate
+     * or the prompt's own utterance completes — approval listening opens
+     * ONLY for that prompt's completion, never for unrelated speech on the
+     * shared TTS engine.
+     */
+    @Volatile private var pendingApprovalPlanId: String? = null
 
     companion object {
         const val ACTION_TRIGGER_RECORD = "com.opendroid.ai.action.TRIGGER_RECORD"
@@ -95,6 +102,9 @@ class OpenDroidService : Service() {
 
         private const val CHANNEL_ID = "opendroid_channel"
         private const val NOTIFICATION_ID = 2024
+
+        /** Utterance id tagging the spoken plan-approval prompt. */
+        private const val APPROVAL_PROMPT_UTTERANCE_ID = "opendroid_approval_prompt"
 
         fun start(context: Context) {
             val intent = Intent(context, OpenDroidService::class.java)
@@ -143,6 +153,20 @@ class OpenDroidService : Service() {
             textToSpeechEngine.speak(text)
         }
 
+        // Approval listening is tied to the approval prompt's own utterance
+        // id: any other speech completing on the shared engine (chat
+        // read-aloud, summaries) must not open the approval microphone.
+        textToSpeechEngine.onUtteranceCompletionListener = { utteranceId ->
+            if (utteranceId == APPROVAL_PROMPT_UTTERANCE_ID) {
+                val planId = pendingApprovalPlanId
+                pendingApprovalPlanId = null
+                val state = agentLoop.agentState.value
+                if (planId != null && state is AgentState.PlanProposed && state.plan.planId == planId) {
+                    startListeningForApproval()
+                }
+            }
+        }
+
         // Set TTS completion listener to transition back to Idle
         textToSpeechEngine.onCompletionListener = {
             // Only Speaking resets to Idle - speech that happens to play while a
@@ -150,10 +174,7 @@ class OpenDroidService : Service() {
             if (agentLoop.agentState.value is AgentState.Speaking) {
                 agentLoop.setAgentState(AgentState.Idle)
             }
-            if (pendingApprovalListen) {
-                pendingApprovalListen = false
-                startListeningForApproval()
-            } else if (voiceController.state == VoiceConversationController.State.SPEAKING) {
+            if (voiceController.state == VoiceConversationController.State.SPEAKING) {
                 // D2: session speech (agent reply or the still-listening
                 // prompt) finished — advance the conversation loop.
                 disarmBargeInWatcher()
@@ -199,12 +220,18 @@ class OpenDroidService : Service() {
                 if (state is AgentState.PlanProposed && state.plan.planId != promptedPlanId) {
                     promptedPlanId = state.plan.planId
                     if (!showFloatingButton || voiceController.isActive) {
-                        pendingApprovalListen = true
+                        pendingApprovalPlanId = state.plan.planId
                     }
                     textToSpeechEngine.speak(
                         "I've planned: ${state.plan.goal}, ${state.plan.estimatedSteps} steps. " +
-                        "Say approve to run, or cancel."
+                        "Say approve to run, or cancel.",
+                        APPROVAL_PROMPT_UTTERANCE_ID
                     )
+                } else if (state !is AgentState.PlanProposed) {
+                    // The plan left the approval gate (approved, rejected,
+                    // timed out): a late completion of its prompt must not
+                    // open the approval microphone out of context.
+                    pendingApprovalPlanId = null
                 }
             }
         }

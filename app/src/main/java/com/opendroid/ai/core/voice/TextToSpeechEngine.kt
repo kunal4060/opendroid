@@ -30,6 +30,18 @@ class TextToSpeechEngine(
 
     var onCompletionListener: (() -> Unit)? = null
 
+    /**
+     * Completion observer that receives the id of the utterance that just
+     * finished (see [speak]). Lets a caller react only to ITS OWN speech —
+     * e.g. OpenDroidService starts approval listening only when the
+     * plan-approval prompt itself completes, never when unrelated
+     * read-aloud speech happens to finish.
+     */
+    var onUtteranceCompletionListener: ((String?) -> Unit)? = null
+
+    @Volatile
+    private var currentUtteranceId: String? = null
+
     // Additional completion observers, for callers that must not clobber the
     // single [onCompletionListener] slot owned by OpenDroidService (chat
     // read-aloud queues its chunks off these). Notified on the main thread,
@@ -44,8 +56,9 @@ class TextToSpeechEngine(
         completionListeners.remove(listener)
     }
 
-    private fun notifyCompletion() {
+    private fun notifyCompletion(utteranceId: String? = null) {
         onCompletionListener?.invoke()
+        onUtteranceCompletionListener?.invoke(utteranceId)
         completionListeners.forEach { listener -> runCatching { listener() } }
     }
 
@@ -60,12 +73,12 @@ class TextToSpeechEngine(
             override fun onStart(utteranceId: String?) {}
             override fun onDone(utteranceId: String?) {
                 mainHandler.post {
-                    notifyCompletion()
+                    notifyCompletion(utteranceId)
                 }
             }
             override fun onError(utteranceId: String?) {
                 mainHandler.post {
-                    notifyCompletion()
+                    notifyCompletion(utteranceId)
                 }
             }
         })
@@ -81,6 +94,16 @@ class TextToSpeechEngine(
     }
 
     fun speak(text: String) {
+        speak(text, DEFAULT_UTTERANCE_ID)
+    }
+
+    /**
+     * Speaks [text] tagged with [utteranceId]; completion observers that
+     * care about a specific utterance ([onUtteranceCompletionListener])
+     * receive this id when the speech finishes.
+     */
+    fun speak(text: String, utteranceId: String) {
+        currentUtteranceId = utteranceId
         scope.launch {
             val config = settingsRepository.llmConfig.first()
             val apiKey = config.elevenLabsApiKey
@@ -98,7 +121,7 @@ class TextToSpeechEngine(
             // Local fallback — must run on main thread
             if (isInitialized) {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "opendroid_tts")
+                    tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
                 }
             } else {
                 // Nothing will be spoken (engine not ready, no cloud voice):
@@ -156,7 +179,7 @@ class TextToSpeechEngine(
                 prepare()
                 setOnCompletionListener {
                     mainHandler.post {
-                        notifyCompletion()
+                        notifyCompletion(currentUtteranceId)
                     }
                 }
                 start()
@@ -168,6 +191,10 @@ class TextToSpeechEngine(
     fun stop() {
         tts?.stop()
         mediaPlayer?.stop()
+    }
+
+    companion object {
+        const val DEFAULT_UTTERANCE_ID = "opendroid_tts"
     }
 
     fun destroy() {

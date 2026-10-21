@@ -152,13 +152,21 @@ class PrivilegedCommandExecutor @Inject constructor() {
 
     private fun readLimited(stream: java.io.InputStream, output: StringBuilder) {
         val buffer = ByteArray(8192)
-        var remaining = MAX_OUTPUT_BYTES
+        var stored = 0
         stream.use {
-            while (remaining > 0) {
-                val count = it.read(buffer, 0, minOf(buffer.size, remaining))
+            while (true) {
+                val count = it.read(buffer)
                 if (count < 0) break
-                output.append(String(buffer, 0, count, Charsets.UTF_8))
-                remaining -= count
+                // Keep draining after the storage cap is reached, discarding
+                // the excess: stopping the reads blocks the child process on
+                // a full pipe, so a command that would finish instantly is
+                // destroyed at the timeout and misreported as exit 124.
+                val room = MAX_OUTPUT_BYTES - stored
+                if (room > 0) {
+                    val take = minOf(count, room)
+                    output.append(String(buffer, 0, take, Charsets.UTF_8))
+                    stored += take
+                }
             }
         }
     }
