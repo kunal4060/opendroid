@@ -25,7 +25,8 @@ class NextFireCalculatorTest {
         cron: String? = null,
         enabled: Boolean = true,
         status: ScheduledTaskStatus = ScheduledTaskStatus.ARMED,
-        lastFiredOccurrenceMillis: Long? = null
+        lastFiredOccurrenceMillis: Long? = null,
+        createdAtMillis: Long = 0L
     ) = ScheduledTask(
         id = "test",
         kind = ScheduledTaskKind.INSTRUCTION,
@@ -39,7 +40,8 @@ class NextFireCalculatorTest {
         cronExpression = cron,
         enabled = enabled,
         status = status,
-        lastFiredOccurrenceMillis = lastFiredOccurrenceMillis
+        lastFiredOccurrenceMillis = lastFiredOccurrenceMillis,
+        createdAtMillis = createdAtMillis
     )
 
     // 2026-10-21 is a Wednesday.
@@ -99,6 +101,36 @@ class NextFireCalculatorTest {
         assertEquals(
             millis(2026, 10, 22, 7, 0),
             NextFireCalculator.dueOccurrence(t, millis(2026, 10, 22, 7, 5), zone)
+        )
+    }
+
+    @Test
+    fun `an occurrence that predates the task's creation is never due`() {
+        // Created Wed 09:30 for 09:00 daily: today's 09:00 predates the
+        // task itself, so the sweep must not fire it the same morning.
+        val t = task(
+            ScheduleRecurrence.DAILY, hour = 9,
+            createdAtMillis = millis(2026, 10, 21, 9, 30)
+        )
+        assertNull(NextFireCalculator.dueOccurrence(t, millis(2026, 10, 21, 9, 45), zone))
+        // Tomorrow's occurrence is after creation and becomes due normally.
+        assertEquals(
+            millis(2026, 10, 22, 9, 0),
+            NextFireCalculator.dueOccurrence(t, millis(2026, 10, 22, 9, 10), zone)
+        )
+    }
+
+    @Test
+    fun `an occurrence after creation still fires late inside the window`() {
+        // Created 08:30 for 09:00 daily, phone off until 09:45: the
+        // phone-was-off late-fire the freshness window exists for.
+        val t = task(
+            ScheduleRecurrence.DAILY, hour = 9,
+            createdAtMillis = millis(2026, 10, 21, 8, 30)
+        )
+        assertEquals(
+            millis(2026, 10, 21, 9, 0),
+            NextFireCalculator.dueOccurrence(t, millis(2026, 10, 21, 9, 45), zone)
         )
     }
 
