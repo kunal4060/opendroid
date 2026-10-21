@@ -50,6 +50,8 @@ class ResearchPipelineTest {
     ) : SearchProvider {
         var searchCalls = 0
 
+        override val kind: ResearchProviderKind = ResearchProviderKind.TAVILY
+
         override suspend fun search(query: String, maxResults: Int): List<SearchResult> {
             searchCalls++
             searchError?.let { throw it }

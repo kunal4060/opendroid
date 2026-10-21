@@ -445,6 +445,7 @@ class FakeMemoryDao : MemoryDao {
     override suspend fun deleteExpiredMemories(now: Long) {}
     override suspend fun deleteMemoryEntity(memory: MemoryEntity) { memories.remove(memory.key) }
     override suspend fun getMemoriesByKeyPrefix(prefix: String): List<MemoryEntity> = memories.values.filter { it.key.startsWith(prefix) }
+    override suspend fun clearAllMemories() { memories.clear() }
 }
 
 class FakeTaskHistoryDao : TaskHistoryDao {
@@ -453,6 +454,40 @@ class FakeTaskHistoryDao : TaskHistoryDao {
     override suspend fun getTaskHistoryForPlan(planId: String): List<TaskHistoryEntity> = history.filter { it.planId == planId }
     override suspend fun insertHistory(task: TaskHistoryEntity) { history.add(task) }
     override suspend fun clearAll() { history.clear() }
+
+    // B4 audit-viewer members — same semantics as the Room queries:
+    // DENIED = failed with an error starting "Denied by user"; every other
+    // failure is FAILED. searchPattern arrives pre-wrapped ("%term%").
+    private fun isDenied(task: TaskHistoryEntity): Boolean =
+        !task.success && task.errorMessage?.startsWith("Denied by user") == true
+
+    override fun getFilteredHistoryFlow(
+        outcome: String,
+        actionType: String?,
+        searchPattern: String?
+    ): Flow<List<TaskHistoryEntity>> {
+        val term = searchPattern?.trim('%')?.lowercase()
+        val filtered = history.filter { task ->
+            (actionType == null || task.actionType == actionType) &&
+                (term == null || task.description.lowercase().contains(term) ||
+                    task.actionType.lowercase().contains(term)) &&
+                when (outcome) {
+                    "SUCCESS" -> task.success
+                    "FAILED" -> !task.success && !isDenied(task)
+                    "DENIED" -> isDenied(task)
+                    else -> true
+                }
+        }.sortedByDescending { it.timestamp }
+        return MutableStateFlow(filtered)
+    }
+
+    override fun getDistinctActionTypesFlow(): Flow<List<String>> =
+        MutableStateFlow(history.map { it.actionType }.distinct().sorted())
+
+    override fun getTotalCountFlow(): Flow<Int> = MutableStateFlow(history.size)
+    override fun getSuccessCountFlow(): Flow<Int> = MutableStateFlow(history.count { it.success })
+    override fun getFailureCountFlow(): Flow<Int> = MutableStateFlow(history.count { !it.success && !isDenied(it) })
+    override fun getDeniedCountFlow(): Flow<Int> = MutableStateFlow(history.count { isDenied(it) })
 }
 
 class FakeSensitiveMemoryStore : SensitiveMemoryStore {

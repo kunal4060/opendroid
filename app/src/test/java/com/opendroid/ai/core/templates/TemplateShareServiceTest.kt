@@ -248,4 +248,7 @@ private class InMemoryPlanDao(initial: List<PlanEntity> = emptyList()) : PlanDao
     override suspend fun deletePlan(planId: String) {
         store.value = store.value.filterNot { it.planId == planId }
     }
+    override suspend fun clearAllPlans() {
+        store.value = emptyList()
+    }
 }
