@@ -13,7 +13,9 @@ import com.opendroid.ai.data.repository.ConversationRepository
 import com.opendroid.ai.data.repository.MemoryRepository
 import com.opendroid.ai.core.memory.graph.KnowledgeCategory
 import com.opendroid.ai.core.memory.graph.KnowledgeNode
+import com.opendroid.ai.core.memory.graph.MemoryOrigin
 import com.opendroid.ai.core.memory.graph.MemoryTier
+import com.opendroid.ai.core.memory.graph.OriginKind
 import com.opendroid.ai.core.memory.graph.PersonalKnowledgeGraph
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -85,7 +87,14 @@ class MemoryViewModel @Inject constructor(
             personalGrowthEngine.recordExplicitMemory(
                 label = label,
                 summary = summary,
-                category = category
+                category = category,
+                // This path is the Memory screen's own add form — the user
+                // typed it in directly, which provenance must say.
+                origin = MemoryOrigin(
+                    kind = OriginKind.USER_ENTERED,
+                    detail = "Memory screen",
+                    createdAt = System.currentTimeMillis()
+                )
             )
         }
     }
@@ -95,7 +104,12 @@ class MemoryViewModel @Inject constructor(
             personalGrowthEngine.recordSensitiveSecret(
                 key = key,
                 secretValue = secret,
-                label = label
+                label = label,
+                origin = MemoryOrigin(
+                    kind = OriginKind.USER_ENTERED,
+                    detail = "Memory screen · Level 4 encrypted secret",
+                    createdAt = System.currentTimeMillis()
+                )
             )
         }
     }

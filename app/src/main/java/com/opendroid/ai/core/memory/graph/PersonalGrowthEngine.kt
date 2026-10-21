@@ -112,9 +112,11 @@ class PersonalGrowthEngine @Inject constructor(
         label: String,
         summary: String,
         category: KnowledgeCategory = KnowledgeCategory.NOTE_FACT,
-        properties: Map<String, String> = emptyMap()
+        properties: Map<String, String> = emptyMap(),
+        origin: MemoryOrigin? = null
     ): KnowledgeNode {
-        val sanitizedId = "explicit_${label.lowercase().replace(Regex("[^a-z0-9_]"), "_").take(30)}_${System.currentTimeMillis()}"
+        val now = System.currentTimeMillis()
+        val sanitizedId = "explicit_${label.lowercase().replace(Regex("[^a-z0-9_]"), "_").take(30)}_$now"
         val node = KnowledgeNode(
             id = sanitizedId,
             label = label,
@@ -124,7 +126,48 @@ class PersonalGrowthEngine @Inject constructor(
             properties = properties,
             confidence = 1.0f,
             accessCount = 1,
-            lastUpdated = System.currentTimeMillis()
+            lastUpdated = now,
+            // Callers that know a more precise origin (manual UI entry, detected
+            // routine, …) pass it in; the default is the honest common case:
+            // the user asked for this to be remembered.
+            origin = origin ?: MemoryOrigin(kind = OriginKind.USER_EXPLICIT, createdAt = now)
+        )
+        saveNodeToDb(node)
+        return node
+    }
+
+    /**
+     * Records a fact that [com.opendroid.ai.core.memory.MemoryExtractor] pulled
+     * out of the user's chat messages. Unlike [recordExplicitMemory] this uses a
+     * deterministic id per fact key, so re-extracting the same fact updates the
+     * existing node (preserving its original [MemoryOrigin.createdAt]) instead
+     * of piling up duplicates on every chat turn.
+     */
+    suspend fun recordChatExtractedFact(
+        factKey: String,
+        factValue: String,
+        sessionId: String?,
+        sourceMessageTimestamp: Long
+    ): KnowledgeNode {
+        val nodeId = "chatfact_${factKey.lowercase().replace(Regex("[^a-z0-9_]"), "_").take(40)}"
+        val existing = getNodeFromDb(nodeId)
+        val now = System.currentTimeMillis()
+        val node = KnowledgeNode(
+            id = nodeId,
+            label = factKey,
+            category = KnowledgeCategory.NOTE_FACT,
+            tier = MemoryTier.LONG_TERM,
+            summary = factValue,
+            properties = mapOf("factKey" to factKey, "source" to "chat_extraction"),
+            confidence = 1.0f,
+            accessCount = (existing?.accessCount ?: 0) + 1,
+            lastUpdated = now,
+            origin = existing?.origin ?: MemoryOrigin(
+                kind = OriginKind.CHAT_EXTRACTION,
+                detail = "Extracted automatically from your chat messages",
+                sessionId = sessionId,
+                createdAt = if (sourceMessageTimestamp > 0L) sourceMessageTimestamp else now
+            )
         )
         saveNodeToDb(node)
         return node
@@ -177,7 +220,14 @@ class PersonalGrowthEngine @Inject constructor(
             properties = mapOf("appName" to appName, "category" to actionCategory, "count" to count.toString()),
             confidence = confidence,
             accessCount = count,
-            lastUpdated = System.currentTimeMillis()
+            lastUpdated = System.currentTimeMillis(),
+            // First observation stamps the origin; re-observation preserves it
+            // so provenance keeps the original "first learned" moment.
+            origin = existing?.origin ?: MemoryOrigin(
+                kind = OriginKind.APP_USAGE,
+                detail = actionCategory,
+                createdAt = System.currentTimeMillis()
+            )
         )
         saveNodeToDb(node)
     }
@@ -202,7 +252,12 @@ class PersonalGrowthEngine @Inject constructor(
             properties = mapOf("contactName" to contactName, "preferredChannel" to channel, "count" to count.toString()),
             confidence = confidence,
             accessCount = count,
-            lastUpdated = System.currentTimeMillis()
+            lastUpdated = System.currentTimeMillis(),
+            origin = existing?.origin ?: MemoryOrigin(
+                kind = OriginKind.CONTACT_INTERACTION,
+                detail = channel,
+                createdAt = System.currentTimeMillis()
+            )
         )
         saveNodeToDb(node)
     }
@@ -226,7 +281,12 @@ class PersonalGrowthEngine @Inject constructor(
             properties = mapOf("time" to timeContext, "frequency" to frequencyHint, "count" to count.toString()),
             confidence = confidence,
             accessCount = count,
-            lastUpdated = System.currentTimeMillis()
+            lastUpdated = System.currentTimeMillis(),
+            origin = existing?.origin ?: MemoryOrigin(
+                kind = OriginKind.TASK_PATTERN,
+                detail = "$frequencyHint · $timeContext",
+                createdAt = System.currentTimeMillis()
+            )
         )
         saveNodeToDb(node)
     }
@@ -244,7 +304,12 @@ class PersonalGrowthEngine @Inject constructor(
             properties = mapOf("schedule" to dayOrTime, "count" to count.toString()),
             confidence = if (count >= 3) 0.85f else 0.60f,
             accessCount = count,
-            lastUpdated = System.currentTimeMillis()
+            lastUpdated = System.currentTimeMillis(),
+            origin = existing?.origin ?: MemoryOrigin(
+                kind = OriginKind.SCHEDULE_PATTERN,
+                detail = dayOrTime,
+                createdAt = System.currentTimeMillis()
+            )
         )
         saveNodeToDb(node)
     }
@@ -264,14 +329,24 @@ class PersonalGrowthEngine @Inject constructor(
             properties = mapOf("url" to url, "domain" to cleanDomain, "count" to count.toString()),
             confidence = if (count >= 5) 0.90f else 0.65f,
             accessCount = count,
-            lastUpdated = System.currentTimeMillis()
+            lastUpdated = System.currentTimeMillis(),
+            origin = existing?.origin ?: MemoryOrigin(
+                kind = OriginKind.WEBSITE_VISIT,
+                detail = cleanDomain,
+                createdAt = System.currentTimeMillis()
+            )
         )
         saveNodeToDb(node)
     }
 
     // ── LEVEL 4: SENSITIVE DATA (Encrypted Keystore Storage) ────────────
 
-    suspend fun recordSensitiveSecret(key: String, secretValue: String, label: String): Boolean {
+    suspend fun recordSensitiveSecret(
+        key: String,
+        secretValue: String,
+        label: String,
+        origin: MemoryOrigin? = null
+    ): Boolean {
         val success = sensitiveMemoryStore.write(key, secretValue)
         if (success) {
             val nodeId = "sensitive_$key"
@@ -282,7 +357,14 @@ class PersonalGrowthEngine @Inject constructor(
                 tier = MemoryTier.SENSITIVE,
                 summary = "Hardware-encrypted sensitive record ($label)",
                 confidence = 1.0f,
-                properties = mapOf("key" to key, "encrypted" to "true")
+                properties = mapOf("key" to key, "encrypted" to "true"),
+                // Provenance never carries the secret itself — only how the
+                // record came to be stored.
+                origin = origin ?: MemoryOrigin(
+                    kind = OriginKind.USER_EXPLICIT,
+                    detail = "Level 4 encrypted secret",
+                    createdAt = System.currentTimeMillis()
+                )
             )
             saveNodeToDb(node)
         }

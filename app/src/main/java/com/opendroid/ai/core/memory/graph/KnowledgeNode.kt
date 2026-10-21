@@ -16,5 +16,11 @@ data class KnowledgeNode(
     val confidence: Float = 1.0f,
     val accessCount: Int = 1,
     val lastUpdated: Long = System.currentTimeMillis(),
-    val ttlHours: Int = -1
+    val ttlHours: Int = -1,
+    /**
+     * Stored provenance ("why do you know this?"). Null on nodes written
+     * before provenance tracking existed — the UI must say so honestly
+     * rather than reconstruct a plausible-sounding origin.
+     */
+    val origin: MemoryOrigin? = null
 )
