@@ -18,10 +18,24 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+
+/**
+ * Thrown by persona-library mutations when the stored library value
+ * exists but cannot be decoded. Mutations refuse in this state (instead
+ * of writing over the unreadable value) so a corrupt store can never be
+ * silently turned into permanent data loss by the next create/update.
+ */
+class PersonaLibraryUnreadableException : IllegalStateException(
+    "Your saved persona library couldn't be read, so this change wasn't saved. " +
+        "Your existing personas have been left untouched."
+)
 
 private val Context.personaDataStore: DataStore<Preferences> by preferencesDataStore(name = "personas")
 
@@ -56,21 +70,52 @@ class PersonaRepository internal constructor(
     private val personasKey = stringPreferencesKey("personas_json")
     private val bindingsKey = stringPreferencesKey("session_persona_bindings_json")
 
+    private val _storageError = MutableStateFlow(false)
+
+    /**
+     * True while a stored library value exists but cannot be decoded.
+     * Reads degrade to an empty library (chat must not crash), but the
+     * state is surfaced here — and mutations refuse (see
+     * [PersonaLibraryUnreadableException]) — instead of the corruption
+     * being silent until a mutation makes the loss permanent.
+     */
+    val storageError: StateFlow<Boolean> = _storageError.asStateFlow()
+
     /** The full library (personas and quick commands), in insertion order. */
     val personas: Flow<List<Persona>> = dataStore.data.map { preferences -> decodePersonas(preferences) }
 
     /** sessionId → personaId for every chat with a persona bound. */
     val sessionBindings: Flow<Map<String, String>> = dataStore.data.map { preferences -> decodeBindings(preferences) }
 
+    /** Null when [raw] cannot be decoded as a persona list. */
+    private fun decodeStoredPersonas(raw: String): List<Persona>? = try {
+        json.decodeFromString<List<Persona>>(raw)
+    } catch (_: Exception) {
+        null
+    }
+
     private fun decodePersonas(preferences: Preferences): List<Persona> {
-        val raw = preferences[personasKey] ?: return PersonaStarters.starters()
-        return try {
-            json.decodeFromString<List<Persona>>(raw)
-        } catch (_: Exception) {
-            // A corrupt stored value must not crash chat: report an empty
-            // library; the next mutation rewrites the value cleanly.
-            emptyList()
+        val raw = preferences[personasKey] ?: run {
+            _storageError.value = false
+            return PersonaStarters.starters()
         }
+        val decoded = decodeStoredPersonas(raw)
+        _storageError.value = decoded == null
+        // A corrupt stored value must not crash chat: reads report an
+        // empty library (and storageError says why). The value itself is
+        // left untouched — only an explicit wipe may replace it.
+        return decoded ?: emptyList()
+    }
+
+    /**
+     * The library as a mutation's starting point. Unlike the read path,
+     * a present-but-undecodable value is an error here: building the
+     * mutation on an empty list and writing it back would permanently
+     * discard a library that was only unreadable, not gone.
+     */
+    private fun decodePersonasForWrite(preferences: Preferences): List<Persona> {
+        val raw = preferences[personasKey] ?: return PersonaStarters.starters()
+        return decodeStoredPersonas(raw) ?: throw PersonaLibraryUnreadableException()
     }
 
     private fun decodeBindings(preferences: Preferences): Map<String, String> {
@@ -103,7 +148,7 @@ class PersonaRepository internal constructor(
             updatedAt = now
         )
         dataStore.edit { preferences ->
-            preferences.writePersonas(decodePersonas(preferences) + persona)
+            preferences.writePersonas(decodePersonasForWrite(preferences) + persona)
         }
         return persona
     }
@@ -114,7 +159,7 @@ class PersonaRepository internal constructor(
         val cleanPrompt = PersonaValidation.normalizedPrompt(prompt)
         val now = System.currentTimeMillis()
         dataStore.edit { preferences ->
-            val current = decodePersonas(preferences)
+            val current = decodePersonasForWrite(preferences)
             if (current.none { it.id == id }) return@edit
             preferences.writePersonas(
                 current.map { entry ->
@@ -144,7 +189,7 @@ class PersonaRepository internal constructor(
     suspend fun duplicatePersona(id: String): Persona? {
         var copy: Persona? = null
         dataStore.edit { preferences ->
-            val current = decodePersonas(preferences)
+            val current = decodePersonasForWrite(preferences)
             val source = current.firstOrNull { it.id == id } ?: return@edit
             val now = System.currentTimeMillis()
             val duplicate = source.copy(
@@ -167,7 +212,7 @@ class PersonaRepository internal constructor(
      */
     suspend fun deletePersona(id: String) {
         dataStore.edit { preferences ->
-            val current = decodePersonas(preferences)
+            val current = decodePersonasForWrite(preferences)
             if (current.none { it.id == id }) return@edit
             preferences.writePersonas(current.filterNot { it.id == id })
             val bindings = decodeBindings(preferences)
@@ -229,7 +274,7 @@ class PersonaRepository internal constructor(
         }
         var added = 0
         dataStore.edit { preferences ->
-            val current = decodePersonas(preferences)
+            val current = decodePersonasForWrite(preferences)
             val merged = mergeImportedPersonas(current, payload.personas)
             added = merged.size - current.size
             preferences.writePersonas(merged)

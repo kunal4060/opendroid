@@ -87,6 +87,7 @@ fun PersonasScreen(
     val personas by viewModel.personas.collectAsState()
     val sessionBindings by viewModel.sessionBindings.collectAsState()
     val userMessage by viewModel.userMessage.collectAsState()
+    val storageError by viewModel.storageError.collectAsState()
 
     var editing by remember { mutableStateOf<Persona?>(null) }
     var creating by remember { mutableStateOf(false) }
@@ -97,6 +98,20 @@ fun PersonasScreen(
         userMessage?.let { message ->
             Toast.makeText(context, message, Toast.LENGTH_LONG).show()
             viewModel.clearUserMessage()
+        }
+    }
+
+    // The stored library exists but cannot be read: say so plainly
+    // instead of presenting an empty library as if the personas were
+    // simply gone. Changes stay refused until the store is readable
+    // again, so nothing gets overwritten in the meantime.
+    LaunchedEffect(storageError) {
+        if (storageError) {
+            Toast.makeText(
+                context,
+                "Your saved persona library couldn't be read. Changes are paused so nothing is overwritten.",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
