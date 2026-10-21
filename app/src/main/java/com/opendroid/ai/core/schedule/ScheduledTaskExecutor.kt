@@ -107,7 +107,15 @@ class ScheduledTaskExecutor @Inject constructor(
             return ExecutionResult.Skipped
         }
 
-        val claimed = store.tryClaim(taskId, now) ?: return ExecutionResult.Skipped
+        val claimed = store.tryClaim(taskId, now) ?: run {
+            // A scheduled lane losing the claim race is normal and stays
+            // silent. A MANUAL "run now" is a deliberate user tap: if the
+            // task cannot claim (paused, finished, already running), the
+            // tap must not vanish silently — surface why via the same
+            // notification channel every other run outcome uses.
+            if (manual) notifyManualRunRefused(task)
+            return ExecutionResult.Skipped
+        }
 
         val sessionId = ensureSession(claimed)
         postSessionMessage(
@@ -143,6 +151,23 @@ class ScheduledTaskExecutor @Inject constructor(
 
         finalizeRun(claimed, sessionId, occurrence, result)
         return result
+    }
+
+    /** Explains, via notification, why a manual run-now did not start. */
+    private fun notifyManualRunRefused(task: ScheduledTask) {
+        val reason = when {
+            !task.enabled ->
+                "\"${task.label}\" is paused, so it was not run. Resume it to run it again."
+            task.status == ScheduledTaskStatus.DONE ->
+                "\"${task.label}\" has already finished, so it was not run again."
+            task.status == ScheduledTaskStatus.MISSED ->
+                "\"${task.label}\" was missed and can no longer be run."
+            task.status == ScheduledTaskStatus.RUNNING ->
+                "\"${task.label}\" is already running."
+            else ->
+                "\"${task.label}\" could not be started right now."
+        }
+        notifier.notifyResult(task, false, reason)
     }
 
     private suspend fun runInstruction(task: ScheduledTask, sessionId: String): ExecutionResult {
