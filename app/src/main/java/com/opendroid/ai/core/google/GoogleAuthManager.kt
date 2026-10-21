@@ -22,6 +22,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -132,6 +133,11 @@ class GoogleAuthManager @Inject constructor(
                     "signing certificate is not registered in the Google Cloud project, " +
                     "authorization cannot succeed — see the setup steps."
             )
+        } catch (e: CancellationException) {
+            // awaitResult() surfaces coroutine cancellation at the await
+            // point; it must propagate, not become a Failed result returned
+            // into a dead scope.
+            throw e
         } catch (e: Exception) {
             return GoogleAuthorizeResult.Failed(e.message ?: "Google authorization failed.")
         }

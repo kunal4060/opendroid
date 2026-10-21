@@ -2,6 +2,7 @@ package com.opendroid.ai.core.google
 
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -51,20 +52,27 @@ class GmailApi @Inject constructor(
         )
         val refs = GmailJson.parseMessageRefs(listBody)
         return refs.mapNotNull { (id, _) ->
-            val metadataUrl = "$BASE_URL/users/me/messages/$id".toHttpUrl().newBuilder()
-                .addQueryParameter("format", "metadata")
-                .addQueryParameter("metadataHeaders", "Subject")
-                .addQueryParameter("metadataHeaders", "From")
-                .addQueryParameter("metadataHeaders", "Date")
-                .build()
-            val metadataBody = executeForBody(
-                Request.Builder()
-                    .url(metadataUrl)
-                    .header("Authorization", "Bearer $accessToken")
-                    .get()
+            // Per-message tolerance: one message deleted between the list
+            // and its metadata GET (404), or one transient 500, must skip
+            // that message — not abort the whole search with zero results.
+            runCatching {
+                val metadataUrl = "$BASE_URL/users/me/messages/$id".toHttpUrl().newBuilder()
+                    .addQueryParameter("format", "metadata")
+                    .addQueryParameter("metadataHeaders", "Subject")
+                    .addQueryParameter("metadataHeaders", "From")
+                    .addQueryParameter("metadataHeaders", "Date")
                     .build()
-            )
-            GmailJson.parseSummary(metadataBody)
+                val metadataBody = executeForBody(
+                    Request.Builder()
+                        .url(metadataUrl)
+                        .header("Authorization", "Bearer $accessToken")
+                        .get()
+                        .build()
+                )
+                GmailJson.parseSummary(metadataBody)
+            }.getOrElse { failure ->
+                if (failure is CancellationException) throw failure else null
+            }
         }
     }
 
