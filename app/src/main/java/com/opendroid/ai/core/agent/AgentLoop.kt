@@ -552,11 +552,14 @@ class AgentLoop @Inject constructor(
             val plan = buildSingleStepPlan(originalQuery, alias.action, alias.baseParams)
 
             planManager.startNewPlan(plan, context, PlanStatus.PROPOSED)
+            // Loop-2 Area2 #2: gate on the validated plan PlanManager
+            // stored (the one that will execute), not the raw alias plan.
+            val effectivePlan = planManager.currentPlan.value ?: plan
             val approval = settingsRepository.llmConfig.first().approvalSettings()
-            if (AutoApprovalPolicy.shouldAutoApprove(approval.mode, approval.grantedActions, plan)) {
-                executePlanLoop(plan, context, sessionId, autoApproved = true)
+            if (AutoApprovalPolicy.shouldAutoApprove(approval.mode, approval.grantedActions, effectivePlan)) {
+                executePlanLoop(effectivePlan, context, sessionId, autoApproved = true)
             } else {
-                proposePlan(plan, sessionId)
+                proposePlan(effectivePlan, sessionId)
             }
         } catch (e: CancellationException) {
             throw e
@@ -818,15 +821,24 @@ class AgentLoop @Inject constructor(
             }
 
             planManager.startNewPlan(plan, context, PlanStatus.PROPOSED)
+            // Loop-2 Area2 #2: startNewPlan stores the VALIDATED plan
+            // (PlanValidator substitutes unregistered actions, replaces a
+            // contact name with the resolved number, can insert an ASK_USER
+            // step) — and the validated plan is what executePlanLoop runs.
+            // The approval gate (auto-approval check + the PlanProposed
+            // sheet the user reads) must therefore be computed from
+            // PlanManager's stored copy, never the raw pre-validation plan,
+            // or the user approves one step set and a different one executes.
+            val effectivePlan = planManager.currentPlan.value ?: plan
             // Re-read after LLM work: user may have flipped mode or revoked grants
             // while planning was in flight; stale pre-LLM config must not auto-run.
             val liveConfig = settingsRepository.llmConfig.first()
             val approval = liveConfig.approvalSettings()
-            if (AutoApprovalPolicy.shouldAutoApprove(approval.mode, approval.grantedActions, plan)) {
-                recordAutoApprovedTrace(plan, approval.mode, sessionId)
-                executePlanLoop(plan, context, sessionId, autoApproved = true)
+            if (AutoApprovalPolicy.shouldAutoApprove(approval.mode, approval.grantedActions, effectivePlan)) {
+                recordAutoApprovedTrace(effectivePlan, approval.mode, sessionId)
+                executePlanLoop(effectivePlan, context, sessionId, autoApproved = true)
             } else {
-                proposePlan(plan, sessionId)
+                proposePlan(effectivePlan, sessionId)
             }
         } catch (e: CancellationException) {
             throw e
@@ -903,10 +915,11 @@ class AgentLoop @Inject constructor(
         // "yes", a double-tap, a surface still rendering an old proposal).
         val proposedState = _agentState.value as? AgentState.PlanProposed ?: return
         val proposedPlan = proposedState.plan
-        // Note: the state carries the pre-storage plan object (its own status
-        // field is the PENDING default) — the authoritative PROPOSED-status
-        // check happens under the lock below, against PlanManager's stored
-        // copy of this same planId.
+        // Note: since Loop-2 Area2 #2 the state carries PlanManager's
+        // stored, validated copy of the plan (status PROPOSED) — the same
+        // object that will execute. The under-lock revalidation below stays
+        // as the authoritative guard: it re-reads PlanManager's copy and
+        // checks planId + PROPOSED at execution time.
         // Consume the proposal synchronously, before launching: a second
         // approve arriving while this one is still starting finds no proposal
         // at the gate and is a no-op.
