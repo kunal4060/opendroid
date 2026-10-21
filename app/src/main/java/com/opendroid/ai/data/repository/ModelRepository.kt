@@ -137,7 +137,55 @@ class ModelRepository @Inject constructor(
         startDownload(model)
     }
 
-    suspend fun startDownload(model: OnDeviceModel) {
+    // ── A9: storage/RAM fit guidance + download gate ──────────────────
+
+    /** Total device RAM in bytes (0 when it cannot be read). */
+    fun deviceTotalRamBytes(): Long = try {
+        val activityManager =
+            context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+        val memoryInfo = android.app.ActivityManager.MemoryInfo()
+        activityManager?.getMemoryInfo(memoryInfo)
+        memoryInfo.totalMem
+    } catch (_: Exception) {
+        0L
+    }
+
+    /**
+     * Assesses whether [spec] fits on this device right now, using the same numbers
+     * the rest of the app uses: the model size is `spec.expectedSize` — the exact
+     * byte count [com.opendroid.ai.core.llm.ModelDownloadWorker] enforces — net of
+     * any partial download already on disk, and free space comes from the data
+     * volume (the same StatFs source as [getStorageInfoFlow]).
+     */
+    suspend fun assessDownloadFit(spec: OnDeviceModelSpec): ModelFitAssessment {
+        val entity = modelDao.getModelById(spec.id)
+        val alreadyFetched = if (entity?.status == ModelStatus.PAUSED) {
+            entity.downloadedSize
+        } else {
+            0L
+        }
+        val stat = StatFs(Environment.getDataDirectory().path)
+        return ModelFitPolicy.assess(
+            modelBytes = (spec.expectedSize - alreadyFetched).coerceAtLeast(0L),
+            freeBytes = stat.availableBlocksLong * stat.blockSizeLong,
+            totalStorageBytes = stat.blockCountLong * stat.blockSizeLong,
+            requiredRamBytes = OnDeviceModelRegistry.requiredRamBytes(spec),
+            totalRamBytes = deviceTotalRamBytes()
+        )
+    }
+
+    /** The gate decision for [spec] on this device, evaluated fresh. */
+    suspend fun evaluateDownloadGate(spec: OnDeviceModelSpec): ModelDownloadGate =
+        ModelFitPolicy.gate(assessDownloadFit(spec))
+
+    private fun humanBytes(bytes: Long): String {
+        if (bytes < 1024L * 1024L) return "$bytes B"
+        val gib = bytes.toDouble() / (1024.0 * 1024.0 * 1024.0)
+        if (gib >= 0.95) return String.format(java.util.Locale.US, "%.1f GB", gib)
+        return String.format(java.util.Locale.US, "%.0f MB", bytes.toDouble() / (1024.0 * 1024.0))
+    }
+
+    suspend fun startDownload(model: OnDeviceModel, fitConfirmed: Boolean = false) {
         val spec = OnDeviceModelRegistry.findById(model.id) ?: return
         modelDao.getModelById(spec.id) ?: return
         if (!spec.isManagedDownloadAvailable) {
@@ -147,7 +195,37 @@ class ModelRepository @Inject constructor(
             )
             return
         }
-        
+
+        // A9 gate — this is the single funnel every download traverses (fresh,
+        // resume, and interface callers alike), so no caller can bypass it.
+        // BLOCK always refuses; WARN refuses until the user has confirmed the
+        // tight-storage warning in the UI (fitConfirmed). The SHA-256 / READY
+        // integrity flow downstream is untouched.
+        when (val gate = evaluateDownloadGate(spec)) {
+            is ModelDownloadGate.Blocked -> {
+                val a = gate.assessment
+                modelDao.markDownloadFailed(
+                    spec.id,
+                    "Not enough storage: this model needs ${humanBytes(a.modelBytes)} " +
+                        "but only ${humanBytes(a.freeBytes)} is free."
+                )
+                return
+            }
+            is ModelDownloadGate.NeedsConfirmation -> {
+                if (!fitConfirmed) {
+                    val a = gate.assessment
+                    modelDao.markDownloadFailed(
+                        spec.id,
+                        "Storage is tight: downloading ${humanBytes(a.modelBytes)} leaves only " +
+                            "${humanBytes(a.remainingAfterBytes)} free. Confirmation required " +
+                            "before this download can start."
+                    )
+                    return
+                }
+            }
+            ModelDownloadGate.Proceed -> Unit
+        }
+
         val inputData = Data.Builder()
             // The worker resolves URL, path, byte size, and checksum from the immutable registry.
             // WorkManager input is transport data, not an integrity trust boundary.
@@ -422,9 +500,9 @@ class ModelRepository @Inject constructor(
         }
     }
 
-    suspend fun resumeDownload(model: OnDeviceModel) {
+    suspend fun resumeDownload(model: OnDeviceModel, fitConfirmed: Boolean = false) {
         if (modelDao.getModelById(model.id) == null) return
-        startDownload(model)
+        startDownload(model, fitConfirmed)
     }
 
     override suspend fun delete(model: OnDeviceModel) {

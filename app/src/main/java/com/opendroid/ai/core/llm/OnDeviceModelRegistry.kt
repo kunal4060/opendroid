@@ -62,7 +62,23 @@ data class OnDeviceModelSpec(
      * for a `...ekv1280.task` file. The LiteRT engine's `maxNumTokens` must be
      * sized from this — exceeding it crashes natively.
      */
-    val contextWindow: Int = 1280
+    val contextWindow: Int = 1280,
+    /**
+     * Container/runtime format shown next to the download size in the Model Manager
+     * (checklist A9), e.g. "LiteRT-LM" or "AI Core". Data, not string-scraping:
+     * catalogue entries set it explicitly; the default derives only from the backend.
+     */
+    val formatLabel: String = when (backend) {
+        OnDeviceBackend.AI_CORE -> "AI Core"
+        OnDeviceBackend.LITERT_LM -> "LiteRT-LM"
+    },
+    /**
+     * Published quantisation of the artifact, e.g. "INT4", "INT8", "Mixed 2/4/8-bit"
+     * (checklist A9). Catalogue entries record the publisher's value explicitly; for
+     * custom imports the label comes from [OnDeviceModelRegistry.quantLabelFromFilename]
+     * and stays blank when the filename carries no quantisation token — never guessed.
+     */
+    val quantLabel: String = ""
 ) {
     /** True only when the catalog has a complete, publisher-verifiable artifact record. */
     val isManagedDownloadAvailable: Boolean
@@ -113,8 +129,26 @@ object OnDeviceModelRegistry {
             expectedSize = expectedSize,
             authRequired = false,
             minSdk = minSdk,
-            contextWindow = contextWindow
+            contextWindow = contextWindow,
+            formatLabel = "LiteRT-LM",
+            // The imported file's real length is recorded as expectedSize at import
+            // time; the quantisation is only labelled when the filename states it.
+            quantLabel = quantLabelFromFilename(modelFilename)
         )
+    }
+
+    /**
+     * Quantisation label carried by a model filename ("…-int4.litertlm" → "INT4",
+     * "…_q8_ekv1280.task" → "INT8"). Returns "" when the filename has no quantisation
+     * token — used only for custom imports, whose publisher metadata is unknown.
+     */
+    fun quantLabelFromFilename(filename: String): String {
+        val name = filename.lowercase()
+        return when {
+            "int4" in name || "_q4" in name || "-q4" in name -> "INT4"
+            "int8" in name || "_q8" in name || "-q8" in name -> "INT8"
+            else -> ""
+        }
     }
 
     // ── AI Core models (existing, unchanged behaviour) ─────────────────
@@ -125,7 +159,8 @@ object OnDeviceModelRegistry {
             family = "Gemma 4",
             sizeLabel = "On-device",
             backend = OnDeviceBackend.AI_CORE,
-            isRecommended = true
+            isRecommended = true,
+            formatLabel = "AI Core"
         ),
         OnDeviceModelSpec(
             id = "gemma-3n-multimodal",
@@ -133,7 +168,8 @@ object OnDeviceModelRegistry {
             family = "Gemma 3n",
             sizeLabel = "On-device",
             backend = OnDeviceBackend.AI_CORE,
-            minSdk = 26
+            minSdk = 26,
+            formatLabel = "AI Core"
         )
     )
 
@@ -160,7 +196,11 @@ object OnDeviceModelRegistry {
             // The litert-community mirror is ungated: anonymous resolve returns the artifact.
             authRequired = false,
             minSdk = 31,
-            contextWindow = 4096
+            contextWindow = 4096,
+            formatLabel = "LiteRT-LM",
+            // Publisher model card: the Gemma 4 .litertlm builds use a mobile
+            // quantisation scheme mixing 2-bit, 4-bit and 8-bit weights.
+            quantLabel = "Mixed 2/4/8-bit"
         ),
         OnDeviceModelSpec(
             id = "gemma-4-e4b-it-litert",
@@ -185,7 +225,9 @@ object OnDeviceModelRegistry {
             // The litert-community mirror is ungated: anonymous resolve returns the artifact.
             authRequired = false,
             minSdk = 31,
-            contextWindow = 4096
+            contextWindow = 4096,
+            formatLabel = "LiteRT-LM",
+            quantLabel = "Mixed 2/4/8-bit"
         ),
         OnDeviceModelSpec(
             id = "gemma-3n-e2b-it-litert",
@@ -206,7 +248,9 @@ object OnDeviceModelRegistry {
             licenseUrl = "https://huggingface.co/google/gemma-3n-E2B-it-litert-lm",
             authRequired = true,
             minSdk = 31,
-            contextWindow = 4096
+            contextWindow = 4096,
+            formatLabel = "LiteRT-LM",
+            quantLabel = "INT4"
         ),
         OnDeviceModelSpec(
             id = "gemma-3n-e4b-it-litert",
@@ -227,7 +271,9 @@ object OnDeviceModelRegistry {
             licenseUrl = "https://huggingface.co/google/gemma-3n-E4B-it-litert-lm",
             authRequired = true,
             minSdk = 31,
-            contextWindow = 4096
+            contextWindow = 4096,
+            formatLabel = "LiteRT-LM",
+            quantLabel = "INT4"
         ),
         OnDeviceModelSpec(
             id = "qwen-2.5-0.5b-it-litert",
@@ -249,7 +295,9 @@ object OnDeviceModelRegistry {
             // devices that cannot (or choose not to) configure a Hugging Face token.
             isRecommended = true,
             minSdk = 26,
-            contextWindow = 1280
+            contextWindow = 1280,
+            formatLabel = "LiteRT-LM",
+            quantLabel = "INT8"
         )
     )
 
@@ -283,6 +331,22 @@ object OnDeviceModelRegistry {
     }
 
     /**
+     * The registry's RAM requirement heuristic for a model, in bytes (0 = no
+     * requirement). This is the single implementation: [checkDeviceMemoryCompatibility]
+     * enforces it and the A9 fit policy ([ModelFitPolicy]) surfaces it — the two
+     * must never drift apart.
+     */
+    fun requiredRamBytes(spec: OnDeviceModelSpec): Long {
+        val gib = 1024L * 1024L * 1024L
+        return when {
+            spec.expectedSize >= 3 * gib -> 8 * gib  // e.g. Gemma 4 E4B (~3.66 GB)
+            spec.expectedSize >= 2 * gib -> 6 * gib  // e.g. Gemma 4 E2B (~2.58 GB)
+            spec.expectedSize >= 1 * gib -> 4 * gib
+            else -> 0L
+        }
+    }
+
+    /**
      * Checks if the device has enough system RAM to load the model.
      * Throws IllegalStateException if the device memory is insufficient.
      */
@@ -293,15 +357,11 @@ object OnDeviceModelRegistry {
             activityManager.getMemoryInfo(memoryInfo)
             val totalRam = memoryInfo.totalMem
             val totalRamGb = totalRam.toDouble() / (1024 * 1024 * 1024)
-            
-            val requiredRamGb = when {
-                spec.expectedSize >= 3.0 * 1024 * 1024 * 1024L -> 8.0  // e.g. Gemma 4 E4B (~3.66 GB)
-                spec.expectedSize >= 2.0 * 1024 * 1024 * 1024L -> 6.0  // e.g. Gemma 4 E2B (~2.58 GB)
-                spec.expectedSize >= 1.0 * 1024 * 1024 * 1024L -> 4.0
-                else -> 0.0
-            }
-            
-            if (requiredRamGb > 0.0 && totalRamGb < requiredRamGb) {
+
+            val requiredRamBytes = requiredRamBytes(spec)
+            val requiredRamGb = requiredRamBytes.toDouble() / (1024 * 1024 * 1024)
+
+            if (requiredRamBytes > 0L && totalRam < requiredRamBytes) {
                 val modelName = spec.displayName
                 throw IllegalStateException(
                     "Insufficient device memory: $modelName requires at least ${String.format("%.1f", requiredRamGb)} GB of system RAM, but your device only has ${String.format("%.1f", totalRamGb)} GB RAM. " +

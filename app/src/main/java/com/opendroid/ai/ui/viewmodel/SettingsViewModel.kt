@@ -751,14 +751,29 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun downloadModel(modelId: String) {
+    fun downloadModel(modelId: String, fitConfirmed: Boolean = false) {
         viewModelScope.launch {
             val spec = com.opendroid.ai.core.llm.OnDeviceModelRegistry.findById(modelId)
             spec?.let {
-                modelRepository.startDownload(it)
+                modelRepository.startDownload(it, fitConfirmed)
             }
         }
     }
+
+    /**
+     * A9: synchronously evaluates the storage-fit gate for [modelId] on this device
+     * (fresh StatFs read via the repository), so the UI can show the confirmation /
+     * blocked dialog before any download starts. Null when the model is unknown.
+     */
+    fun downloadGate(modelId: String): com.opendroid.ai.core.llm.ModelDownloadGate? {
+        val spec = com.opendroid.ai.core.llm.OnDeviceModelRegistry.findById(modelId) ?: return null
+        return kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+            modelRepository.evaluateDownloadGate(spec)
+        }
+    }
+
+    /** A9: device total RAM for the per-row RAM guidance line. */
+    fun deviceTotalRamBytes(): Long = modelRepository.deviceTotalRamBytes()
 
     fun pauseDownload(modelId: String) {
         viewModelScope.launch {
@@ -769,11 +784,11 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun resumeDownload(modelId: String) {
+    fun resumeDownload(modelId: String, fitConfirmed: Boolean = false) {
         viewModelScope.launch {
             val spec = com.opendroid.ai.core.llm.OnDeviceModelRegistry.findById(modelId)
             spec?.let {
-                modelRepository.resumeDownload(it)
+                modelRepository.resumeDownload(it, fitConfirmed)
             }
         }
     }
