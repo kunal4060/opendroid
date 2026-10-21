@@ -26,8 +26,11 @@ import com.opendroid.ai.data.db.entities.UnknownActionEntity
 import com.opendroid.ai.data.db.entities.ModelEntity
 import com.opendroid.ai.data.db.entities.CrashLogEntity
 import com.opendroid.ai.data.db.dao.HabitDao
+import com.opendroid.ai.data.db.dao.ResearchDao
 import com.opendroid.ai.data.db.entities.HabitEventEntity
 import com.opendroid.ai.data.db.entities.HabitRoutineEntity
+import com.opendroid.ai.data.db.entities.ResearchRunEntity
+import com.opendroid.ai.data.db.entities.ResearchSourceEntity
 import com.opendroid.ai.data.db.entities.SocialAccountEntity
 import com.opendroid.ai.data.db.entities.SocialPostEntity
 import com.opendroid.ai.data.db.entities.SocialCommentEntity
@@ -67,9 +70,11 @@ import androidx.room.TypeConverters
         SocialAnalyticsSnapshotEntity::class,
         SocialCampaignEntity::class,
         SocialAutomationRuleEntity::class,
-        SocialAuditLogEntity::class
+        SocialAuditLogEntity::class,
+        ResearchSourceEntity::class,
+        ResearchRunEntity::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -93,6 +98,7 @@ abstract class OpenDroidDatabase : RoomDatabase() {
     abstract fun socialCampaignDao(): SocialCampaignDao
     abstract fun socialAutomationRuleDao(): SocialAutomationRuleDao
     abstract fun socialAuditLogDao(): SocialAuditLogDao
+    abstract fun researchDao(): ResearchDao
 
     companion object {
         // Id of the single session that pre-existing conversation rows are
@@ -287,6 +293,41 @@ abstract class OpenDroidDatabase : RoomDatabase() {
                 database.execSQL("ALTER TABLE conversations ADD COLUMN imageBase64 TEXT DEFAULT NULL")
                 database.execSQL("ALTER TABLE conversations ADD COLUMN attachmentMimeType TEXT DEFAULT NULL")
                 database.execSQL("ALTER TABLE conversations ADD COLUMN attachmentName TEXT DEFAULT NULL")
+            }
+        }
+
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Feature D3 (web research with citations): the two research
+                // tables. Purely additive - research_sources holds one row
+                // per source actually fetched in a run (the citation rows),
+                // research_runs ties a run to its chat/message so the chat
+                // layer can resolve which stored sources an answer cites.
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS research_sources (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        messageId TEXT NOT NULL,
+                        position INTEGER NOT NULL,
+                        url TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        snippet TEXT NOT NULL,
+                        fetchedAt INTEGER NOT NULL,
+                        contentHash TEXT NOT NULL
+                    )
+                """)
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_research_sources_messageId ON research_sources(messageId)"
+                )
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS research_runs (
+                        runId TEXT PRIMARY KEY NOT NULL,
+                        sessionId TEXT NOT NULL,
+                        messageId TEXT NOT NULL,
+                        query TEXT NOT NULL,
+                        answerText TEXT NOT NULL,
+                        createdAt INTEGER NOT NULL
+                    )
+                """)
             }
         }
 

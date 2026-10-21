@@ -67,6 +67,32 @@ object AppModule {
         return AndroidAppLockStore(context)
     }
 
+    // ── Web research (D3) ────────────────────────────────────────────
+
+    @Provides
+    @Singleton
+    fun provideResearchSettingsStore(
+        @ApplicationContext context: Context
+    ): com.opendroid.ai.core.research.ResearchSettingsStore {
+        return com.opendroid.ai.core.research.AndroidResearchSettingsStore(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideSearchProviderFactory(
+        client: OkHttpClient
+    ): com.opendroid.ai.core.research.SearchProviderFactory {
+        return com.opendroid.ai.core.research.DefaultSearchProviderFactory(client)
+    }
+
+    @Provides
+    @Singleton
+    fun provideResearchAnswerer(
+        llmProviderFactory: dagger.Lazy<com.opendroid.ai.core.llm.LLMProviderFactory>
+    ): com.opendroid.ai.core.research.ResearchAnswerer {
+        return com.opendroid.ai.core.research.LlmResearchAnswerer(llmProviderFactory)
+    }
+
     @Provides
     @Singleton
     fun provideAppLockManager(appLockStore: AppLockStore): AppLockManager {

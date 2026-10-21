@@ -299,6 +299,9 @@ dependencies {
     // without native PDF support. Android's PdfRenderer only rasterises
     // pages - it cannot extract text. Apache-2.0.
     implementation 'com.tom-roush:pdfbox-android:1.8.10.0'
+    // Web research (D3): on-device page-text extraction for the snippet-only
+    // search providers (Brave, SearXNG). MIT-licensed.
+    implementation 'org.jsoup:jsoup:1.18.3'
 
     // Testing
     testImplementation 'junit:junit:4.13.2'
