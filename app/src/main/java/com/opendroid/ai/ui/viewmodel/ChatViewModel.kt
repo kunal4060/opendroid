@@ -55,6 +55,7 @@ class ChatViewModel @Inject constructor(
     private val modelFetcher: dagger.Lazy<ModelFetcher>,
     private val routingStatusRepository: RoutingStatusRepository,
     private val providerSetupReadiness: ProviderSetupReadiness,
+    private val pendingAssistantCommand: com.opendroid.ai.core.assistant.PendingAssistantCommand,
     private val textToSpeechEngine: com.opendroid.ai.core.voice.TextToSpeechEngine
 ) : ViewModel() {
 
@@ -71,6 +72,18 @@ class ChatViewModel @Inject constructor(
     val providerSetupNeeded: StateFlow<Boolean> = providerSetupReadiness.canAnswer
         .map { canAnswer -> !canAnswer }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    /**
+     * C3: a command parked by an assistant invocation (ACTION_ASSIST),
+     * waiting for ChatScreen to deliver it through [sendMessage] — the
+     * same path as typed input, including the offline-no-route guard. The
+     * screen only exists once the app-lock gate has opened, so a parked
+     * command can never bypass the lock.
+     */
+    val pendingAssistantQuery: StateFlow<String?> = pendingAssistantCommand.pendingQuery
+
+    /** Clears the parked assistant command; returns it so the caller can send it exactly once. */
+    fun consumePendingAssistantQuery(): String? = pendingAssistantCommand.consume()
 
     // Scoped to whichever session is current; re-collects automatically when the
     // user switches chats since the repository's flow is driven off the same

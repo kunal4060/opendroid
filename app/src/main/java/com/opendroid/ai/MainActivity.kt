@@ -1,6 +1,7 @@
 package com.opendroid.ai
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.WindowManager
@@ -13,6 +14,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import com.opendroid.ai.core.assistant.AssistantIntentParser
+import com.opendroid.ai.core.assistant.PendingAssistantCommand
 import com.opendroid.ai.core.security.AppLockManager
 import com.opendroid.ai.core.service.OpenDroidService
 import com.opendroid.ai.data.repository.SettingsRepository
@@ -35,9 +38,16 @@ class MainActivity : FragmentActivity() {
 
     @Inject lateinit var appLockManager: AppLockManager
 
+    @Inject lateinit var pendingAssistantCommand: PendingAssistantCommand
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableOpenDroidEdgeToEdge(isDarkTheme = true)
         super.onCreate(savedInstanceState)
+
+        // C3: an assistant invocation (ACTION_ASSIST via AssistActivity)
+        // may carry a command — park it for the chat to deliver once it is
+        // composed (i.e. after the lock gate, never around it).
+        handleAssistantLaunch(intent)
 
         // Start foreground assistant service only if RECORD_AUDIO permission is granted
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
@@ -83,6 +93,22 @@ class MainActivity : FragmentActivity() {
                 }
             }
         }
+    }
+
+    // singleTask: warm assistant invocations arrive here instead of
+    // stacking a second MainActivity.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleAssistantLaunch(intent)
+    }
+
+    private fun handleAssistantLaunch(launchIntent: Intent?) {
+        val parsed = AssistantIntentParser.parse(
+            launchIntent?.action,
+            AssistantIntentParser.extrasOf(launchIntent)
+        )
+        parsed.query?.let { pendingAssistantCommand.offer(it) }
     }
 
     override fun onDestroy() {

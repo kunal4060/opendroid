@@ -2489,6 +2489,11 @@ fun SettingsScreen(
                 AppLockSettingsSection(viewModel = viewModel)
             }
 
+            // Default assistant (C3): role status + RoleManager request
+            item {
+                AssistantSettingsSection()
+            }
+
             // Privacy Policy link card
             item {
                 Card(
