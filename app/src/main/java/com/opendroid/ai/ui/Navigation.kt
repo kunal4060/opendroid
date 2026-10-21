@@ -413,7 +413,12 @@ fun MainDashboard(
                 label = "DashboardTabTransition"
             ) { tab ->
                 when (tab) {
-                    Screen.Chat -> ChatScreen(viewModel = chatViewModel)
+                    Screen.Chat -> ChatScreen(
+                        viewModel = chatViewModel,
+                        // The A10 setup banner's way out: the Settings tab is
+                        // where providers are configured.
+                        onNavigateToProviderSetup = { currentTab = Screen.Settings }
+                    )
                     Screen.Plan -> PlanScreen(viewModel = planViewModel)
                     Screen.Memory -> MemoryScreen(viewModel = memoryViewModel)
                     Screen.Social -> SocialScreen(viewModel = socialViewModel)

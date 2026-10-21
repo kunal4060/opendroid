@@ -200,6 +200,9 @@ dependencies {
     // bump this build has not taken; 1.18.0 stays until compileSdk moves to 37.
     implementation 'androidx.core:core-ktx:1.18.0'
     implementation 'androidx.documentfile:documentfile:1.0.1'
+    // Custom Tabs: onboarding's free-Gemini-key card (A10) opens AI Studio's
+    // key page in one.
+    implementation 'androidx.browser:browser:1.8.0'
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.7'
     implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7'
     // ProcessLifecycleOwner drives the app-lock gate (A5): the whole process

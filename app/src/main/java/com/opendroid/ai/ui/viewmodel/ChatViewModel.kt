@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.opendroid.ai.core.agent.AgentLoop
 import com.opendroid.ai.core.agent.AgentState
+import com.opendroid.ai.core.llm.ProviderSetupReadiness
 import com.opendroid.ai.core.llm.RoutingStatus
 import com.opendroid.ai.core.llm.RoutingStatusRepository
 import com.opendroid.ai.core.agent.ChatErrorPrimaryAction
@@ -40,6 +41,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -52,11 +54,23 @@ class ChatViewModel @Inject constructor(
     private val modelRepository: ModelRepository,
     private val modelFetcher: dagger.Lazy<ModelFetcher>,
     private val routingStatusRepository: RoutingStatusRepository,
+    private val providerSetupReadiness: ProviderSetupReadiness,
     private val textToSpeechEngine: com.opendroid.ai.core.voice.TextToSpeechEngine
 ) : ViewModel() {
 
     val llmConfig: StateFlow<LLMConfig> = settingsRepository.llmConfig
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), LLMConfig())
+
+    /**
+     * The A10 limited state: true while no usable AI provider is configured, so
+     * Chat shows its persistent setup banner instead of letting sends fail
+     * against a provider that was never set up. Driven by the same readiness
+     * state onboarding uses, so the banner clears the moment any setup path —
+     * onboarding, Settings, or a finished on-device download — lands.
+     */
+    val providerSetupNeeded: StateFlow<Boolean> = providerSetupReadiness.canAnswer
+        .map { canAnswer -> !canAnswer }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     // Scoped to whichever session is current; re-collects automatically when the
     // user switches chats since the repository's flow is driven off the same
