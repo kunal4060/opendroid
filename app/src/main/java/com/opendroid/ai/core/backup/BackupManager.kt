@@ -304,6 +304,78 @@ class BackupManager @Inject constructor(
     }
 
     private fun restoreCredentials(credentials: CredentialsBackup) {
+        // Snapshot the current stores first: if anything below fails, the
+        // pre-restore contents are written back so a failed credential
+        // restore leaves the stores as they were (audit-4 #2).
+        val previous = snapshotCredentials()
+        // Replace semantics (see the class doc): both stores are cleared
+        // BEFORE the backup's values are written. This still runs in the
+        // abort-early phase — credentials are applied first, before any
+        // user data — so a clear failure aborts with nothing touched, and
+        // a credential the backup does not carry (e.g. a compromised key
+        // the user is restoring specifically to evict) cannot silently
+        // survive, as it did when restore was merge-only.
+        clearCredentialStores(previous)
+        val failures = writeCredentials(credentials)
+        if (failures.isNotEmpty()) {
+            runCatching { clearCredentialStores(previous) }
+            runCatching { writeCredentials(previous) }
+            throw BackupRestoreException(
+                "Your credentials could not be restored (${failures.joinToString()}). " +
+                    "Nothing else was restored."
+            )
+        }
+    }
+
+    /** Reads the current credential stores into the backup shape, for rollback. */
+    private fun snapshotCredentials(): CredentialsBackup {
+        val apiKeys = when (val result = providerCredentialStore.readProviderApiKeys()) {
+            is CredentialStoreResult.Success -> result.value
+            else -> throw BackupRestoreException(
+                "Your stored credentials could not be read, so the restore was not started. " +
+                    "Nothing was restored."
+            )
+        }
+        fun readOptional(id: ProviderCredentialId): String? =
+            (providerCredentialStore.read(id) as? CredentialStoreResult.Success)?.value
+        return CredentialsBackup(
+            providerApiKeys = apiKeys,
+            elevenLabsApiKey = readOptional(ProviderCredentialId.ElevenLabsApiKey),
+            huggingFaceToken = readOptional(ProviderCredentialId.HuggingFaceToken),
+            sensitiveMemories = sensitiveMemoryStore.getAllDecrypted()
+        )
+    }
+
+    /**
+     * Removes everything [current] names from both credential stores, plus
+     * the two fixed credentials. Throws before any backup value is written
+     * when a removal fails, so the restore aborts with the stores intact.
+     */
+    private fun clearCredentialStores(current: CredentialsBackup) {
+        val failures = ArrayList<String>()
+        for (provider in current.providerApiKeys.keys) {
+            val id = runCatching { ProviderCredentialId.ApiKey(provider) }.getOrNull()
+            if (id == null || providerCredentialStore.remove(id) !is CredentialStoreResult.Success) {
+                failures += provider
+            }
+        }
+        if (providerCredentialStore.remove(ProviderCredentialId.ElevenLabsApiKey)
+            !is CredentialStoreResult.Success
+        ) failures += "ElevenLabs"
+        if (providerCredentialStore.remove(ProviderCredentialId.HuggingFaceToken)
+            !is CredentialStoreResult.Success
+        ) failures += "Hugging Face"
+        if (!sensitiveMemoryStore.clearAll()) failures += "sensitive memories"
+        if (failures.isNotEmpty()) {
+            throw BackupRestoreException(
+                "Your existing credentials could not be cleared (${failures.joinToString()}), " +
+                    "so the restore was not started. Nothing was restored."
+            )
+        }
+    }
+
+    /** Writes [credentials] into both stores; returns the names that failed. */
+    private fun writeCredentials(credentials: CredentialsBackup): List<String> {
         val failures = ArrayList<String>()
         for ((provider, key) in credentials.providerApiKeys) {
             val id = runCatching { ProviderCredentialId.ApiKey(provider) }.getOrNull()
@@ -324,12 +396,7 @@ class BackupManager @Inject constructor(
         for ((key, value) in credentials.sensitiveMemories) {
             if (!sensitiveMemoryStore.write(key, value)) failures += "a sensitive memory"
         }
-        if (failures.isNotEmpty()) {
-            throw BackupRestoreException(
-                "Your credentials could not be restored (${failures.joinToString()}). " +
-                    "Nothing else was restored."
-            )
-        }
+        return failures
     }
 
     /**
