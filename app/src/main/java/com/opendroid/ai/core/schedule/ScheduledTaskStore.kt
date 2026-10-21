@@ -121,6 +121,17 @@ class ScheduledTaskStore @Inject constructor(
         claimed
     }
 
+    /**
+     * Removes every schedule and the sync-dismissal bookkeeping. Used by the
+     * A6 wipe: with the document gone, the boot receiver and the sweep lane
+     * find nothing to re-arm. Callers disarm live alarms first
+     * ([ScheduledTaskScheduler.cancel] per task) — clearing the store alone
+     * would leave already-registered alarms pointing at vanished tasks.
+     */
+    suspend fun clearAll() = mutex.withLock {
+        dataStore.edit { prefs -> prefs.clear() }
+    }
+
     /** Records that the user deleted the sync-materialised task for [sourceKey]. */
     suspend fun dismissSource(sourceKey: String, cronExpression: String?) = mutex.withLock {
         mutate { state ->

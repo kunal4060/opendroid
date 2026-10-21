@@ -2949,8 +2949,10 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(6.dp))
                     listOf(
                         "• Chats, memories & the knowledge graph",
-                        "• Plans, macros, routines & history",
+                        "• Plans, macros, routines, scheduled tasks & history",
                         "• AI provider API keys & social account tokens",
+                        "• Your app lock PIN & external automation token",
+                        "• Your connected Google account (Gmail & Calendar)",
                         "• Your profile (name & date of birth)",
                         "• All app settings",
                         "• Downloaded on-device models & workspace files"

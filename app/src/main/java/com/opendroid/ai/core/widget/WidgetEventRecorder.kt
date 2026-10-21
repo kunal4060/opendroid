@@ -35,4 +35,9 @@ object WidgetEventRecorder {
     /** When the last briefing was generated, or null if none ever was. */
     fun lastBriefingAt(context: Context): Flow<Long?> =
         context.widgetMetaStore.data.map { prefs -> prefs[LAST_BRIEFING_AT] }
+
+    /** Erases the ledger. Used by the A6 wipe. */
+    suspend fun clearAll(context: Context) {
+        context.widgetMetaStore.edit { prefs -> prefs.clear() }
+    }
 }
