@@ -64,26 +64,55 @@ class SocialRuleEngine @Inject constructor(
                     replyEngine.generateReply(comment, postContext).replyText
                 }
 
-                // Autonomous reply allowed ONLY IF:
-                // 1. Global AutomationLevel is AUTONOMOUS
-                // 2. Rule does not require human approval
-                // 3. Rule confidence threshold is met
-                // 4. Topic is not sensitive
-                val canAutoReply = automationLevel == AutomationLevel.AUTONOMOUS &&
-                        !rule.requireHumanApproval &&
-                        rule.confidenceThreshold >= 0.90f
-
-                return if (canAutoReply) {
-                    RuleEvaluationResult.AutoReply(rule, replyText, rule.confidenceThreshold)
-                } else {
-                    RuleEvaluationResult.NeedsHumanApproval(
+                // The rule's actionType decides what "fire" means. Only
+                // AUTO_REPLY may ever send; every other action the Add
+                // Rule dialog offers resolves to a draft for a human,
+                // no matter the automation level or confidence — a
+                // draft-only rule must never auto-reply.
+                return when (rule.actionType) {
+                    "DRAFT_REPLY_NOTIFY" -> RuleEvaluationResult.NeedsHumanApproval(
                         rule = rule,
                         suggestedReply = replyText,
-                        reason = if (automationLevel != AutomationLevel.AUTONOMOUS) {
-                            "Automation level is ${automationLevel.name} (Requires approval)"
+                        reason = "Rule '${rule.name}' is set to Draft & notify: the reply was drafted for your review, not sent."
+                    )
+                    "ESCALATE_TO_HUMAN" -> RuleEvaluationResult.NeedsHumanApproval(
+                        rule = rule,
+                        suggestedReply = replyText,
+                        reason = "Rule '${rule.name}' is set to Escalate to human: nothing was sent automatically."
+                    )
+                    "AUTO_SCHEDULE" -> RuleEvaluationResult.NeedsHumanApproval(
+                        rule = rule,
+                        suggestedReply = replyText,
+                        reason = "Rule '${rule.name}' is set to Auto schedule: replies are drafted for your confirmation instead of being sent or scheduled automatically."
+                    )
+                    "AUTO_REPLY" -> {
+                        // Autonomous reply allowed ONLY IF:
+                        // 1. Global AutomationLevel is AUTONOMOUS
+                        // 2. Rule does not require human approval
+                        // 3. Rule confidence threshold is met
+                        // 4. Topic is not sensitive
+                        val canAutoReply = automationLevel == AutomationLevel.AUTONOMOUS &&
+                                !rule.requireHumanApproval &&
+                                rule.confidenceThreshold >= 0.90f
+
+                        if (canAutoReply) {
+                            RuleEvaluationResult.AutoReply(rule, replyText, rule.confidenceThreshold)
                         } else {
-                            "Rule '${rule.name}' requires explicit human verification"
+                            RuleEvaluationResult.NeedsHumanApproval(
+                                rule = rule,
+                                suggestedReply = replyText,
+                                reason = if (automationLevel != AutomationLevel.AUTONOMOUS) {
+                                    "Automation level is ${automationLevel.name} (Requires approval)"
+                                } else {
+                                    "Rule '${rule.name}' requires explicit human verification"
+                                }
+                            )
                         }
+                    }
+                    else -> RuleEvaluationResult.NeedsHumanApproval(
+                        rule = rule,
+                        suggestedReply = replyText,
+                        reason = "Rule '${rule.name}' has an unrecognised action ('${rule.actionType}'); the reply was drafted, not sent."
                     )
                 }
             }

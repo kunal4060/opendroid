@@ -203,6 +203,86 @@ class SocialRuleEngineTest {
     }
 
     @Test
+    fun `draft-only rule never auto-replies even under autonomous high confidence`() = runBlocking {
+        val rule = SocialAutomationRule(
+            id = "rule-draft",
+            name = "Price Draft",
+            isEnabled = true,
+            triggerType = "KEYWORD_MATCH",
+            keywords = listOf("price"),
+            actionType = "DRAFT_REPLY_NOTIFY",
+            replyTemplate = "Pricing details coming right up!",
+            confidenceThreshold = 0.95f,
+            requireHumanApproval = false
+        )
+        socialRepository.saveRule(rule)
+
+        val result = ruleEngine.evaluateComment(
+            comment = createComment(content = "What is the price of the pro plan?"),
+            automationLevel = AutomationLevel.AUTONOMOUS
+        )
+
+        assertTrue(result is RuleEvaluationResult.NeedsHumanApproval)
+        val approval = result as RuleEvaluationResult.NeedsHumanApproval
+        assertEquals("rule-draft", approval.rule?.id)
+        assertTrue(approval.reason.contains("Draft", ignoreCase = true))
+        assertEquals("Pricing details coming right up!", approval.suggestedReply)
+    }
+
+    @Test
+    fun `escalate rule never auto-replies`() = runBlocking {
+        val rule = SocialAutomationRule(
+            id = "rule-escalate",
+            name = "Escalate Praise",
+            isEnabled = true,
+            triggerType = "SENTIMENT_POSITIVE",
+            keywords = emptyList(),
+            actionType = "ESCALATE_TO_HUMAN",
+            confidenceThreshold = 0.95f,
+            requireHumanApproval = false
+        )
+        socialRepository.saveRule(rule)
+
+        val result = ruleEngine.evaluateComment(
+            comment = createComment(
+                content = "Love the new update, great work!",
+                sentiment = Sentiment.POSITIVE
+            ),
+            automationLevel = AutomationLevel.AUTONOMOUS
+        )
+
+        assertTrue(result is RuleEvaluationResult.NeedsHumanApproval)
+        val approval = result as RuleEvaluationResult.NeedsHumanApproval
+        assertEquals("rule-escalate", approval.rule?.id)
+        assertTrue(approval.reason.contains("Escalate", ignoreCase = true))
+    }
+
+    @Test
+    fun `auto-schedule rule drafts instead of sending`() = runBlocking {
+        val rule = SocialAutomationRule(
+            id = "rule-schedule",
+            name = "Schedule Replies",
+            isEnabled = true,
+            triggerType = "KEYWORD_MATCH",
+            keywords = listOf("roadmap"),
+            actionType = "AUTO_SCHEDULE",
+            confidenceThreshold = 0.95f,
+            requireHumanApproval = false
+        )
+        socialRepository.saveRule(rule)
+
+        val result = ruleEngine.evaluateComment(
+            comment = createComment(content = "Is there a roadmap for this year?"),
+            automationLevel = AutomationLevel.AUTONOMOUS
+        )
+
+        assertTrue(result is RuleEvaluationResult.NeedsHumanApproval)
+        val approval = result as RuleEvaluationResult.NeedsHumanApproval
+        assertEquals("rule-schedule", approval.rule?.id)
+        assertTrue(approval.reason.contains("Auto schedule", ignoreCase = true))
+    }
+
+    @Test
     fun `rule for different platform is ignored`() = runBlocking {
         val rule = SocialAutomationRule(
             id = "rule-discord",
