@@ -42,10 +42,19 @@ class McpServer @Inject constructor(
      * action/terminal call (routinely tens of seconds), so a single-threaded
      * accept/handle loop starved every other MCP client behind one slow
      * request.
+     *
+     * This is a `var`, recreated by [start] after a [stop]: stop() shuts the
+     * pool down, and this server is a @Singleton — reusing the shut-down
+     * executor made every post-restart connection throw
+     * RejectedExecutionException in the accept loop, so the server accepted
+     * sockets that were never answered until the process died.
      */
-    private val clientExecutor: ExecutorService = Executors.newFixedThreadPool(MAX_CLIENT_WORKERS) { runnable ->
-        Thread(runnable, "OpenDroid-MCP-Client").apply { isDaemon = true }
-    }
+    private var clientExecutor: ExecutorService = newClientExecutor()
+
+    private fun newClientExecutor(): ExecutorService =
+        Executors.newFixedThreadPool(MAX_CLIENT_WORKERS) { runnable ->
+            Thread(runnable, "OpenDroid-MCP-Client").apply { isDaemon = true }
+        }
 
     @Synchronized
     fun start() {
@@ -53,6 +62,9 @@ class McpServer @Inject constructor(
         val previous = serverThread
         if (previous != null && previous.isAlive) {
             previous.join(JOIN_TIMEOUT_MS)
+        }
+        if (clientExecutor.isShutdown) {
+            clientExecutor = newClientExecutor()
         }
         running.set(true)
         serverThread = Thread(::serve, THREAD_NAME).also { it.start() }
