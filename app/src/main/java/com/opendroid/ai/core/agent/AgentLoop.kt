@@ -1021,6 +1021,20 @@ class AgentLoop @Inject constructor(
     }
 
     /**
+     * Session id the in-flight task is pinned to, or null when no task is
+     * currently running. Audit-2 #17: lets session-scoped UI actions (chat
+     * regenerate/retry) tell "my chat's task" apart from another chat's
+     * before touching [cancelCurrentTask] — the loop is a singleton, so
+     * its one job may belong to any session or surface.
+     */
+    fun currentTaskSessionId(): String? =
+        if (currentJob?.isActive == true) {
+            activeTaskSessionId.takeIf { it.isNotEmpty() }
+        } else {
+            null
+        }
+
+    /**
      * Cancels whatever the agent is currently doing - a running plan, a query in
      * flight, or a pending "waiting for user input" prompt - and returns the loop
      * to Idle. Safe to call when nothing is running: when there is no job to
@@ -1042,20 +1056,6 @@ class AgentLoop @Inject constructor(
      * even starts unwinding. [planManager.currentPlan] is a plain StateFlow
      * read, not suspending, so this capture is safe to do here.
      */
-    /**
-     * Session id the in-flight task is pinned to, or null when no task is
-     * currently running. Audit-2 #17: lets session-scoped UI actions (chat
-     * regenerate/retry) tell "my chat's task" apart from another chat's
-     * before touching [cancelCurrentTask] — the loop is a singleton, so
-     * its one job may belong to any session or surface.
-     */
-    fun currentTaskSessionId(): String? =
-        if (currentJob?.isActive == true) {
-            activeTaskSessionId.takeIf { it.isNotEmpty() }
-        } else {
-            null
-        }
-
     fun cancelCurrentTask() {
         val jobToCancel = currentJob
         currentJob = null

@@ -1071,8 +1071,7 @@ class ChatViewModel @Inject constructor(
      * or swallow the resend), deletes that message and every message after it in the
      * current session so the conversation visibly rewinds, then sends the edited text
      * as a fresh query.
-     */
-    /**
+     *
      * Returns whether the resend was actually dispatched (audit-2 #13) —
      * false when the text is blank or the no-route guard refuses, so the
      * caller can keep the user's draft and edit session instead of clearing
