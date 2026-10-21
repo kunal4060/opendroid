@@ -20,13 +20,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.opendroid.ai.social.core.analytics.AnalyticsSummary
+import com.opendroid.ai.social.domain.model.PostStatus
 import com.opendroid.ai.social.domain.model.SocialAccount
+import com.opendroid.ai.social.domain.model.SocialPlatform
 import com.opendroid.ai.social.domain.model.SocialPost
 import com.opendroid.ai.ui.components.DonutChart
 import com.opendroid.ai.ui.components.SimpleBarChart
 import com.opendroid.ai.ui.components.SimpleLineChart
 import com.opendroid.ai.ui.theme.AppTheme
 import com.opendroid.ai.ui.theme.JetBrainsMonoFamily
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun SocialAnalyticsTab(
@@ -37,6 +42,61 @@ fun SocialAnalyticsTab(
 ) {
     val theme = AppTheme.colors
     var selectedRangeDays by remember { mutableStateOf(7) }
+
+    // Every series below is derived from the real posts in the selected
+    // range (this tab previously rendered hardcoded constant lists and
+    // the range chips changed nothing). Published posts are bucketed
+    // into 7 equal slices of the range; per-post reach/impressions are
+    // the stored values synced from the platforms.
+    val rangeData = remember(selectedRangeDays, posts) {
+        val now = System.currentTimeMillis()
+        val rangeMillis = selectedRangeDays * 86_400_000L
+        val rangeStart = now - rangeMillis
+        val inRange = posts.filter {
+            it.status == PostStatus.PUBLISHED &&
+                (it.publishedTime ?: it.createdAt) >= rangeStart
+        }
+        val bucketCount = 7
+        val bucketMillis = (rangeMillis / bucketCount).coerceAtLeast(1L)
+        fun bucketOf(time: Long): Int =
+            ((time - rangeStart) / bucketMillis).toInt().coerceIn(0, bucketCount - 1)
+        val labelFormat = SimpleDateFormat("d MMM", Locale.getDefault())
+        val labels = (0 until bucketCount).map {
+            labelFormat.format(Date(rangeStart + it * bucketMillis))
+        }
+        val reachPerBucket = FloatArray(bucketCount)
+        val impressionsPerBucket = FloatArray(bucketCount)
+        for (post in inRange) {
+            val idx = bucketOf(post.publishedTime ?: post.createdAt)
+            reachPerBucket[idx] += post.reach.toFloat()
+            impressionsPerBucket[idx] += post.impressions.toFloat()
+        }
+        val cumulativeReach = reachPerBucket.runningFold(0f) { acc, v -> acc + v }.drop(1)
+
+        // Platform share by reach (post counts when no reach recorded).
+        val reachByPlatform = inRange.groupBy { it.platform }
+            .mapValues { (_, ps) -> ps.sumOf { it.reach }.toFloat() }
+        val shareBasis: Map<SocialPlatform, Float> =
+            if (reachByPlatform.values.sum() > 0f) {
+                reachByPlatform
+            } else {
+                inRange.groupBy { it.platform }.mapValues { (_, ps) -> ps.size.toFloat() }
+            }
+        val sortedShares = shareBasis.entries.sortedByDescending { it.value }
+        val topShares = sortedShares.take(3).map { it.key as SocialPlatform? to it.value }
+        val othersTotal = sortedShares.drop(3).sumOf { it.value.toDouble() }.toFloat()
+        val donutEntries: List<Pair<SocialPlatform?, Float>> =
+            topShares + (if (othersTotal > 0f) listOf(null to othersTotal) else emptyList())
+        val donutTotal = donutEntries.sumOf { it.second.toDouble() }.toFloat()
+
+        AnalyticsRangeData(
+            bucketLabels = labels,
+            cumulativeReachSeries = if (inRange.isEmpty()) emptyList() else cumulativeReach,
+            impressionsSeries = if (inRange.isEmpty()) emptyList() else impressionsPerBucket.toList(),
+            donutEntries = donutEntries,
+            donutTotal = donutTotal
+        )
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
@@ -118,17 +178,14 @@ fun SocialAnalyticsTab(
                 colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Audience Growth Trend", color = theme.textPrimary, style = MaterialTheme.typography.titleSmall)
+                    Text("Reach Growth Trend", color = theme.textPrimary, style = MaterialTheme.typography.titleSmall)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("Daily follower trajectory over the period", color = theme.textTertiary, style = MaterialTheme.typography.labelMedium)
+                    Text("Cumulative reach of posts published in the period", color = theme.textTertiary, style = MaterialTheme.typography.labelMedium)
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    val trendPoints = listOf(120f, 135f, 150f, 175f, 210f, 240f, 290f)
-                    val trendLabels = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-
                     SimpleLineChart(
-                        dataPoints = trendPoints,
-                        labels = trendLabels,
+                        dataPoints = rangeData.cumulativeReachSeries,
+                        labels = rangeData.bucketLabels,
                         modifier = Modifier.fillMaxWidth().height(140.dp),
                         lineColor = theme.accentNeonGreen,
                         gridColor = theme.borderColor
@@ -146,20 +203,25 @@ fun SocialAnalyticsTab(
                 colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Daily Impressions & Reach", color = theme.textPrimary, style = MaterialTheme.typography.titleSmall)
+                    Text("Impressions by Period Slice", color = theme.textPrimary, style = MaterialTheme.typography.titleSmall)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text("Organic post visibility across all channels", color = theme.textTertiary, style = MaterialTheme.typography.labelMedium)
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    val barValues = listOf(450f, 620f, 890f, 1200f, 950f, 1400f, 1800f)
-                    val barLabels = listOf("M", "T", "W", "T", "F", "S", "S")
-
-                    SimpleBarChart(
-                        values = barValues,
-                        labels = barLabels,
-                        modifier = Modifier.fillMaxWidth().height(140.dp),
-                        barColor = theme.accentInfo
-                    )
+                    if (rangeData.impressionsSeries.isEmpty()) {
+                        Text(
+                            "No published posts in this range.",
+                            color = theme.textSecondary,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    } else {
+                        SimpleBarChart(
+                            values = rangeData.impressionsSeries,
+                            labels = rangeData.bucketLabels,
+                            modifier = Modifier.fillMaxWidth().height(140.dp),
+                            barColor = theme.accentInfo
+                        )
+                    }
                 }
             }
         }
@@ -173,7 +235,7 @@ fun SocialAnalyticsTab(
                 colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Audience Share by Platform", color = theme.textPrimary, style = MaterialTheme.typography.titleSmall)
+                    Text("Reach Share by Platform", color = theme.textPrimary, style = MaterialTheme.typography.titleSmall)
                     Spacer(modifier = Modifier.height(14.dp))
 
                     Row(
@@ -190,16 +252,32 @@ fun SocialAnalyticsTab(
                         )
 
                         DonutChart(
-                            proportions = listOf(45f, 25f, 20f, 10f),
+                            proportions = rangeData.donutEntries.map { it.second },
                             colors = donutColors,
                             modifier = Modifier.size(100.dp)
                         )
 
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            LegendItem("X (Twitter)", "45%", theme.accentNeonGreen)
-                            LegendItem("Telegram", "25%", theme.accentInfo)
-                            LegendItem("LinkedIn", "20%", theme.accentOrange)
-                            LegendItem("Discord / Others", "10%", theme.textSecondary)
+                            if (rangeData.donutEntries.isEmpty()) {
+                                Text(
+                                    "No published posts in this range.",
+                                    color = theme.textSecondary,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            } else {
+                                rangeData.donutEntries.forEachIndexed { index, (platform, value) ->
+                                    val pct = if (rangeData.donutTotal > 0f) {
+                                        (value / rangeData.donutTotal * 100f).toInt()
+                                    } else {
+                                        0
+                                    }
+                                    LegendItem(
+                                        label = platform?.displayName ?: "Others",
+                                        percent = "$pct%",
+                                        color = donutColors[index % donutColors.size]
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -292,6 +370,16 @@ private fun LegendItem(label: String, percent: String, color: Color) {
         Text(percent, color = theme.textSecondary, fontFamily = JetBrainsMonoFamily, fontSize = 11.sp, fontWeight = FontWeight.Bold)
     }
 }
+
+/** Real per-range series for the analytics charts, derived from stored posts. */
+private data class AnalyticsRangeData(
+    val bucketLabels: List<String>,
+    val cumulativeReachSeries: List<Float>,
+    val impressionsSeries: List<Float>,
+    /** (platform, share value); a null platform is the aggregated "Others". */
+    val donutEntries: List<Pair<SocialPlatform?, Float>>,
+    val donutTotal: Float
+)
 
 private fun formatCount(count: Long): String {
     return when {

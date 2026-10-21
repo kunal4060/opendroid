@@ -74,23 +74,35 @@ class AgentCommandRunner @Inject constructor(
         sessionId: String,
         timeoutMillis: Long = DEFAULT_TIMEOUT_MILLIS
     ): Outcome = runMutex.withLock {
+        // Snapshot the state BEFORE starting this run: a fast run can
+        // pass through Thinking and land in a terminal state before the
+        // collector below subscribes, and StateFlow then replays only
+        // that latest value — with `started` never observed, the run
+        // would hang until the timeout and be misreported as TimedOut.
+        // A terminal state that differs from this pre-run snapshot is
+        // this run's own outcome and counts even when `started` was
+        // never seen; an identical replay is the previous turn's.
+        val preRunState = agentLoop.agentState.value
         agentLoop.processQuery(instruction, context, explicitSessionId = sessionId)
 
-        // A terminal state only counts once THIS run has actually started
-        // (Thinking/ExecutingPlan seen): agentState is a shared StateFlow
-        // and may still hold the previous turn's Speaking/Error replay when
-        // processQuery is called. PlanProposed needs no such guard beyond
-        // `started` in practice — processQueryLocked always passes through
-        // Thinking first — so one predicate handles both phases.
+        // A terminal state counts once THIS run has actually started
+        // (Thinking/ExecutingPlan seen) or when it is not the pre-run
+        // replay (see above). agentState is a shared StateFlow and may
+        // still hold the previous turn's Speaking/Error when processQuery
+        // is called; PlanProposed needs no extra guard — a parked plan
+        // from an earlier turn compares equal to the snapshot only if
+        // this run re-parked the identical plan, which processQuery's
+        // fresh plan never is.
         var started = false
         val terminal = withTimeoutOrNull(timeoutMillis) {
             agentLoop.agentState.first { state ->
                 if (state is AgentState.Thinking || state is AgentState.ExecutingPlan) {
                     started = true
                 }
-                started && (state is AgentState.Speaking ||
+                val isTerminal = state is AgentState.Speaking ||
                     state is AgentState.Error ||
-                    state is AgentState.PlanProposed)
+                    state is AgentState.PlanProposed
+                isTerminal && (started || state != preRunState)
             }
         }
 

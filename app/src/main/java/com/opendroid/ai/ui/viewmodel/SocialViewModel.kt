@@ -234,6 +234,31 @@ class SocialViewModel @Inject constructor(
         }
     }
 
+    /** Composer "Post Now": create the post and publish it immediately. */
+    fun createAndPublishPostNow(
+        platform: SocialPlatform,
+        content: String,
+        contentType: ContentType = ContentType.ANNOUNCEMENT
+    ) {
+        viewModelScope.launch {
+            val account = socialRepository.getAccountByPlatform(platform)
+            val draft = socialManager.createDraft(
+                accountId = account?.id ?: "pending",
+                platform = platform,
+                content = content,
+                contentType = contentType
+            )
+            _isGenerating.value = true
+            val result = socialManager.publishPost(draft.id)
+            _isGenerating.value = false
+            if (result.isSuccess) {
+                _statusMessage.value = "Published successfully!"
+            } else {
+                _statusMessage.value = "Publication failed: ${result.exceptionOrNull()?.message}"
+            }
+        }
+    }
+
     fun publishPostNow(postId: String) {
         viewModelScope.launch {
             _isGenerating.value = true

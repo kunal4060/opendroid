@@ -6,6 +6,7 @@ enum class PermissionCardId {
     SMS_TELEPHONY,
     CONTACTS_CALENDAR,
     CAMERA,
+    BLUETOOTH,
     NOTIFICATIONS,
     STORAGE,
     WRITE_SETTINGS,
@@ -22,7 +23,8 @@ enum class CardStatus {
 
 fun visibleCards(sdkInt: Int): List<PermissionCardId> =
     PermissionCardId.entries.filter { card ->
-        card != PermissionCardId.NOTIFICATIONS || sdkInt >= 33
+        (card != PermissionCardId.NOTIFICATIONS || sdkInt >= 33) &&
+            (card != PermissionCardId.BLUETOOTH || sdkInt >= 31)
     }
 
 fun runtimePermissions(
@@ -55,6 +57,18 @@ fun runtimePermissions(
     PermissionCardId.CAMERA -> listOf(
         "android.permission.CAMERA",
     )
+
+    // Runtime permissions since API 31; the Bluetooth toggle actions
+    // fail with SecurityException without BLUETOOTH_CONNECT, so these
+    // must be requestable like every other runtime permission.
+    PermissionCardId.BLUETOOTH -> if (sdkInt >= 31) {
+        listOf(
+            "android.permission.BLUETOOTH_CONNECT",
+            "android.permission.BLUETOOTH_SCAN",
+        )
+    } else {
+        emptyList()
+    }
 
     PermissionCardId.NOTIFICATIONS -> if (sdkInt >= 33) {
         listOf("android.permission.POST_NOTIFICATIONS")
@@ -117,13 +131,20 @@ fun cardStatus(
     }
 }
 
+/**
+ * Blocked means Android will not show the dialog again: asked before
+ * and rationale is definitively false. A null rationale means
+ * "unknown" (no Activity in the context chain to ask) — that must NOT
+ * read as blocked, or every asked-but-ungranted permission instantly
+ * looks permanently denied.
+ */
 @Suppress("UNUSED_PARAMETER")
 fun isBlocked(
     permission: String,
     granted: Boolean,
     asked: Boolean,
     showRationale: Boolean?,
-): Boolean = !granted && asked && showRationale != true
+): Boolean = !granted && asked && showRationale == false
 
 sealed interface GrantAllState {
     data object Idle : GrantAllState
@@ -371,6 +392,7 @@ private fun settingsPathName(card: PermissionCardId): String = when (card) {
     PermissionCardId.SMS_TELEPHONY -> "SMS & telephony"
     PermissionCardId.CONTACTS_CALENDAR -> "Contacts & calendar"
     PermissionCardId.CAMERA -> "Camera"
+    PermissionCardId.BLUETOOTH -> "Bluetooth"
     PermissionCardId.NOTIFICATIONS -> "Notifications"
     PermissionCardId.STORAGE -> "Files and media"
     PermissionCardId.WRITE_SETTINGS -> "Modify system settings"

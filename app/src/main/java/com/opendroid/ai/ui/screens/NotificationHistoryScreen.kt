@@ -56,6 +56,35 @@ fun NotificationHistoryScreen(
 
     val themeColors = AppTheme.colors
 
+    var showClearConfirmation by remember { mutableStateOf(false) }
+
+    if (showClearConfirmation) {
+        // One tap on the trash icon used to delete the entire
+        // notification history — including the auto-reply audit
+        // record. Confirm first (CrashLogScreen's pattern).
+        AlertDialog(
+            onDismissRequest = { showClearConfirmation = false },
+            title = { Text("Delete all notification history?") },
+            text = {
+                Text("This removes every stored notification — including the record of auto-replies — from this device. It cannot be undone.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showClearConfirmation = false
+                    scope.launch { notificationDao.clearAll() }
+                }) {
+                    Text("Delete", color = themeColors.accentRed)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearConfirmation = false }) { Text("Cancel") }
+            },
+            containerColor = themeColors.surface,
+            titleContentColor = themeColors.textPrimary,
+            textContentColor = themeColors.textSecondary
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -66,9 +95,7 @@ fun NotificationHistoryScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        scope.launch { notificationDao.clearAll() }
-                    }) {
+                    IconButton(onClick = { showClearConfirmation = true }) {
                         Icon(Icons.Default.Delete, contentDescription = "Clear All", tint = themeColors.textSecondary)
                     }
                 },

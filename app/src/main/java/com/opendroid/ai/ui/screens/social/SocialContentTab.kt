@@ -31,6 +31,7 @@ fun SocialContentTab(
     isGenerating: Boolean,
     onGeneratePost: (String, SocialPlatform, Tone, ContentType) -> Unit,
     onCreateDraft: (SocialPlatform, String, ContentType, Long?) -> Unit,
+    onPostNow: (SocialPlatform, String, ContentType) -> Unit,
     onApprovePost: (String, Boolean) -> Unit,
     onPublishPostNow: (String) -> Unit,
     onSchedulePost: (String, Long) -> Unit,
@@ -324,7 +325,11 @@ fun SocialContentTab(
                         Button(
                             onClick = {
                                 if (currentContent.isNotBlank()) {
-                                    onCreateDraft(selectedPlatform, currentContent, selectedContentType, null)
+                                    // Dedicated post-now path (creates
+                                    // the post AND publishes it) — this
+                                    // button used to call onCreateDraft,
+                                    // so the post silently stayed a draft.
+                                    onPostNow(selectedPlatform, currentContent, selectedContentType)
                                     currentContent = ""
                                     topicInput = ""
                                 }

@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -43,11 +44,19 @@ fun OnboardingScreen(
 
     var stage by remember { mutableStateOf(OnboardingStage.INTRODUCTION) }
     var showError by remember { mutableStateOf(false) }
+    var dobInvalid by remember { mutableStateOf(false) }
 
-    // A user returning to a stored profile skips straight past the introduction, as before.
+    // A user returning to a stored profile skips straight past the
+    // introduction, as before — but only ONCE per screen session: if
+    // they navigate back to fix a typo'd name/DOB, the skip must not
+    // instantly throw them forward again (the old one-way trap).
+    var autoSkipHandled by remember { mutableStateOf(false) }
     LaunchedEffect(uiState.isLoading) {
-        if (!uiState.isLoading && uiState.name.isNotBlank() && uiState.dateOfBirth.isNotBlank()) {
+        if (!autoSkipHandled && !uiState.isLoading &&
+            uiState.name.isNotBlank() && uiState.dateOfBirth.isNotBlank()
+        ) {
             stage = OnboardingStage.PERMISSION_PROMPT
+            autoSkipHandled = true
         }
     }
 
@@ -63,6 +72,27 @@ fun OnboardingScreen(
                     }
                     Text(titleText, color = TextPrimary, style = MaterialTheme.typography.titleLarge)
                 },
+                navigationIcon = {
+                    // Stages are no longer one-way: back returns to the
+                    // previous stage (right back to Introduction, where
+                    // a saved name/DOB can be corrected).
+                    if (stage != OnboardingStage.INTRODUCTION) {
+                        IconButton(onClick = {
+                            stage = when (stage) {
+                                OnboardingStage.PERMISSION_PROMPT -> OnboardingStage.INTRODUCTION
+                                OnboardingStage.PERMISSIONS -> OnboardingStage.PERMISSION_PROMPT
+                                OnboardingStage.PROVIDER -> OnboardingStage.PERMISSIONS
+                                OnboardingStage.INTRODUCTION -> OnboardingStage.INTRODUCTION
+                            }
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.ArrowBack,
+                                contentDescription = "Back",
+                                tint = TextPrimary
+                            )
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBackground)
             )
         },
@@ -74,13 +104,22 @@ fun OnboardingScreen(
                     name = uiState.name,
                     onNameChange = { viewModel.onNameChange(it); showError = false },
                     dob = uiState.dateOfBirth,
-                    onDobChange = { viewModel.onDateOfBirthChange(it); showError = false },
+                    onDobChange = { viewModel.onDateOfBirthChange(it); showError = false; dobInvalid = false },
                     showError = showError,
+                    dobInvalid = dobInvalid,
                     profileMustBeReentered = uiState.profileMustBeReentered,
                     storageError = uiState.storageError,
                     onContinue = {
+                        // The DOB is free text: validate it as a real,
+                        // non-future MM/DD/YYYY date (same non-lenient
+                        // parser as the picker) instead of accepting
+                        // any non-blank string into the encrypted
+                        // profile.
+                        val dobMillis = parseDobToUtcMillis(uiState.dateOfBirth)
                         if (uiState.name.isBlank() || uiState.dateOfBirth.isBlank()) {
                             showError = true
+                        } else if (dobMillis == null || dobMillis > System.currentTimeMillis()) {
+                            dobInvalid = true
                         } else {
                             // The stage only advances once the profile is encrypted at rest.
                             viewModel.saveProfile { stage = OnboardingStage.PERMISSION_PROMPT }
@@ -129,7 +168,8 @@ private fun IntroductionPanel(
     onContinue: () -> Unit,
     modifier: Modifier = Modifier,
     profileMustBeReentered: Boolean = false,
-    storageError: Boolean = false
+    storageError: Boolean = false,
+    dobInvalid: Boolean = false
 ) {
     Column(
         modifier = modifier
@@ -268,6 +308,16 @@ private fun IntroductionPanel(
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = "Please enter both your name and birth date.",
+                color = AccentRed,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+
+        if (dobInvalid) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Please enter a valid birth date as MM/DD/YYYY — it cannot be in the future.",
                 color = AccentRed,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold

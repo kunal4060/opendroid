@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.opendroid.ai.core.routine.HabitRoutineEngine
-import com.opendroid.ai.data.db.dao.HabitDao
 import com.opendroid.ai.data.models.HabitEvent
 import com.opendroid.ai.data.models.HabitRoutine
 import com.opendroid.ai.data.models.PlanStep
@@ -17,8 +16,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class RoutineViewModel @Inject constructor(
-    private val habitRoutineEngine: HabitRoutineEngine,
-    private val habitDao: HabitDao
+    private val habitRoutineEngine: HabitRoutineEngine
 ) : ViewModel() {
 
     val suggestedRoutines: StateFlow<List<HabitRoutine>> = habitRoutineEngine.suggestedRoutinesFlow
@@ -66,7 +64,15 @@ class RoutineViewModel @Inject constructor(
 
     fun deleteRoutine(routineId: String) {
         viewModelScope.launch {
-            habitDao.deleteRoutine(routineId)
+            // Through the engine, not the DAO: the linked macro and its
+            // mirrored scheduled task must die with the routine row.
+            habitRoutineEngine.deleteRoutine(routineId)
+        }
+    }
+
+    fun activateTemplate(templateId: String) {
+        viewModelScope.launch {
+            habitRoutineEngine.activateTemplate(templateId)
         }
     }
 }

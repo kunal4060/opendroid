@@ -9,6 +9,9 @@ import com.opendroid.ai.core.memory.graph.MemoryOrigin
 import com.opendroid.ai.core.memory.graph.MemoryTier
 import com.opendroid.ai.core.memory.graph.OriginKind
 import com.opendroid.ai.core.memory.graph.PersonalGrowthEngine
+import com.opendroid.ai.core.schedule.MacroScheduleSync
+import com.opendroid.ai.core.schedule.ScheduledTaskScheduler
+import com.opendroid.ai.core.schedule.ScheduledTaskStore
 import com.opendroid.ai.core.widget.WidgetEventRecorder
 import com.opendroid.ai.data.db.dao.HabitDao
 import com.opendroid.ai.data.db.dao.MacroDao
@@ -17,7 +20,11 @@ import com.opendroid.ai.data.db.entities.HabitEventEntity
 import com.opendroid.ai.data.db.entities.HabitRoutineEntity
 import com.opendroid.ai.data.db.entities.MacroEntity
 import com.opendroid.ai.data.models.*
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.android.qualifiers.ApplicationContext
+import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -32,10 +39,17 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
-enum class RoutineTimeBucket(val startHour: Int, val endHour: Int, val label: String, val cronHour: Int) {
-    EARLY_MORNING(5, 7, "6:30 AM", 6),
+enum class RoutineTimeBucket(
+    val startHour: Int,
+    val endHour: Int,
+    val label: String,
+    val cronHour: Int,
+    /** Minute component of the generated cron: the :30 buckets' labels promise half-past times. */
+    val cronMinute: Int = 0
+) {
+    EARLY_MORNING(5, 7, "6:30 AM", 6, cronMinute = 30),
     MORNING(8, 11, "9:00 AM", 9),
-    MIDDAY(12, 14, "12:30 PM", 12),
+    MIDDAY(12, 14, "12:30 PM", 12, cronMinute = 30),
     AFTERNOON(15, 17, "4:00 PM", 16),
     EVENING(18, 20, "7:00 PM", 19),
     NIGHT(21, 23, "10:00 PM", 22)
@@ -55,14 +69,87 @@ class HabitRoutineEngine @Inject constructor(
     private val macroDao: MacroDao,
     private val notificationDao: NotificationDao,
     private val personalGrowthEngine: dagger.Lazy<PersonalGrowthEngine>,
-    private val actionSequenceExecutor: dagger.Lazy<ActionSequenceExecutor>
+    private val actionSequenceExecutor: dagger.Lazy<ActionSequenceExecutor>,
+    // Schedule collaborators for the delete/template paths below. Hilt
+    // supplies these in production; the defaults resolve the same
+    // singletons through an entry point so direct constructions (tests)
+    // keep compiling and working.
+    private val scheduledTaskStore: dagger.Lazy<ScheduledTaskStore> = dagger.Lazy {
+        EntryPointAccessors.fromApplication(context, RoutineEngineEntryPoint::class.java)
+            .scheduledTaskStore()
+    },
+    private val scheduledTaskScheduler: dagger.Lazy<ScheduledTaskScheduler> = dagger.Lazy {
+        EntryPointAccessors.fromApplication(context, RoutineEngineEntryPoint::class.java)
+            .scheduledTaskScheduler()
+    },
+    private val macroScheduleSync: dagger.Lazy<MacroScheduleSync> = dagger.Lazy {
+        EntryPointAccessors.fromApplication(context, RoutineEngineEntryPoint::class.java)
+            .macroScheduleSync()
+    }
 ) {
+
+    /** Entry point backing the default schedule collaborators above. */
+    @EntryPoint
+    @InstallIn(SingletonComponent::class)
+    interface RoutineEngineEntryPoint {
+        fun scheduledTaskStore(): ScheduledTaskStore
+        fun scheduledTaskScheduler(): ScheduledTaskScheduler
+        fun macroScheduleSync(): MacroScheduleSync
+    }
     companion object {
         private const val TAG = "HabitRoutineEngine"
         private const val DEBOUNCE_MS = 5000L // 5s debounce for identical app switches
         private const val SESSION_WINDOW_MS = 30 * 60 * 1000L // 30 minutes session clustering
         private val json = Json { ignoreUnknownKeys = true; prettyPrint = false }
     }
+
+    /** A pre-built template offered on the Routines screen. */
+    private data class RoutineTemplate(
+        val name: String,
+        val description: String,
+        val triggerLabel: String,
+        val triggerCron: String,
+        val steps: List<PlanStep>
+    )
+
+    /** The templates behind the Routines screen's template cards (ids match the screen's). */
+    private val routineTemplates: Map<String, RoutineTemplate> = mapOf(
+        "morning" to RoutineTemplate(
+            name = "Morning Routine",
+            description = "Read calendar → Summarize today's meetings → Check notifications → Task list → Morning briefing",
+            triggerLabel = "Every weekday at 9:00 AM",
+            triggerCron = "0 9 * * 1-5",
+            steps = listOf(
+                PlanStep(stepId = "step_1", order = 1, description = "Read calendar", action = "LIST_CALENDAR_TODAY", params = emptyMap()),
+                PlanStep(stepId = "step_2", order = 2, description = "Summarize today's meetings", action = "GET_MORNING_BRIEFING", params = mapOf("section" to "schedule")),
+                PlanStep(stepId = "step_3", order = 3, description = "Check important notifications", action = "READ_NOTIFICATIONS", params = mapOf("count" to "5")),
+                PlanStep(stepId = "step_4", order = 4, description = "Prepare task list", action = "READ_NOTES", params = emptyMap()),
+                PlanStep(stepId = "step_5", order = 5, description = "Give morning briefing", action = "GET_MORNING_BRIEFING", params = mapOf("section" to "full", "speak" to "true"))
+            )
+        ),
+        "work_focus" to RoutineTemplate(
+            name = "Work Focus Routine",
+            description = "Open Slack → Check Calendar → Read important notifications",
+            triggerLabel = "Every weekday at 9:30 AM",
+            triggerCron = "30 9 * * 1-5",
+            steps = listOf(
+                PlanStep(stepId = "step_1", order = 1, description = "Open Slack", action = "OPEN_APP", params = mapOf("appName" to "Slack")),
+                PlanStep(stepId = "step_2", order = 2, description = "Check calendar", action = "LIST_CALENDAR_TODAY", params = emptyMap()),
+                PlanStep(stepId = "step_3", order = 3, description = "Read important notifications", action = "READ_NOTIFICATIONS", params = mapOf("count" to "5"))
+            )
+        ),
+        "evening" to RoutineTemplate(
+            name = "Evening Wrap-up",
+            description = "Check tomorrow's calendar → Check unread notifications → Daily summary",
+            triggerLabel = "Daily at 9:00 PM",
+            triggerCron = "0 21 * * *",
+            steps = listOf(
+                PlanStep(stepId = "step_1", order = 1, description = "Check tomorrow's calendar", action = "LIST_CALENDAR_WEEK", params = emptyMap()),
+                PlanStep(stepId = "step_2", order = 2, description = "Check unread notifications", action = "READ_NOTIFICATIONS", params = mapOf("count" to "5")),
+                PlanStep(stepId = "step_3", order = 3, description = "Evening summary", action = "GET_MORNING_BRIEFING", params = mapOf("section" to "evening"))
+            )
+        )
+    )
 
     private val engineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var lastRecordedPackage: String? = null
@@ -287,7 +374,11 @@ class HabitRoutineEngine @Inject constructor(
         val confidence = (repetitionCount.toFloat() / 14f).coerceIn(0.6f, 0.95f)
 
         val triggerLabel = if (isWeekdayOnly) "Every weekday at $bucketLabel" else "Daily at $bucketLabel"
-        val triggerCron = if (isWeekdayOnly) "0 $cronHour * * 1-5" else "0 $cronHour * * *"
+        // The cron minute must match the label (EARLY_MORNING/MIDDAY are
+        // labelled :30): building "0 <hour>" unconditionally fired those
+        // routines 30 minutes earlier than the user approved.
+        val cronMinute = bucket.cronMinute
+        val triggerCron = if (isWeekdayOnly) "$cronMinute $cronHour * * 1-5" else "$cronMinute $cronHour * * *"
 
         val isMorning = bucket == RoutineTimeBucket.MORNING || bucket == RoutineTimeBucket.EARLY_MORNING
         val hasEmail = frequentActions.any { it.contains("Gmail", ignoreCase = true) || it.contains("Email", ignoreCase = true) }
@@ -484,6 +575,86 @@ class HabitRoutineEngine @Inject constructor(
                 macroDao.insertMacro(macro.copy(isEnabled = isEnabled))
             }
         }
+    }
+
+    /**
+     * Deletes a routine AND everything that would keep it alive: the
+     * linked macro is deleted and the scheduled task mirrored from that
+     * macro is removed with its alarm cancelled. Deleting only the
+     * routine row (the old behaviour) left the macro's `cron:` trigger
+     * live, so MacroScheduleSync kept the "deleted" routine firing on
+     * schedule with no row left anywhere to stop it.
+     */
+    suspend fun deleteRoutine(routineId: String) {
+        val entity = habitDao.getRoutineById(routineId)
+        habitDao.deleteRoutine(routineId)
+        val macroId = entity?.macroId ?: return
+        macroDao.deleteMacro(macroId)
+        val store = scheduledTaskStore.get()
+        val sourceKey = "${MacroScheduleSync.SOURCE_PREFIX}$macroId"
+        for (task in store.snapshot().filter { it.sourceKey == sourceKey }) {
+            store.delete(task.id)
+            scheduledTaskScheduler.get().cancel(task.id)
+        }
+    }
+
+    /**
+     * Activates one of the pre-built templates from the Routines screen:
+     * actually creates and persists the routine (status APPROVED) and its
+     * macro, then mirrors the macro into the scheduler. Previously the
+     * Activate buttons only re-ran habit detection and toasted
+     * "activated!" — no routine or macro was ever created.
+     * Idempotent: re-activating an already-active template is a no-op.
+     * Returns false for an unknown template id.
+     */
+    suspend fun activateTemplate(templateId: String): Boolean {
+        val template = routineTemplates[templateId] ?: return false
+        val routineId = "routine_template_$templateId"
+        val existing = habitDao.getRoutineById(routineId)
+        if (existing != null &&
+            (existing.status == RoutineStatus.APPROVED.name || existing.status == RoutineStatus.ACTIVE.name)
+        ) {
+            return true
+        }
+        val macroId = existing?.macroId ?: UUID.randomUUID().toString()
+        val stepsJson = json.encodeToString(template.steps)
+        macroDao.insertMacro(
+            MacroEntity(
+                id = macroId,
+                name = template.name,
+                trigger = "cron:${template.triggerCron}",
+                stepsJson = stepsJson,
+                isSystem = false,
+                isEnabled = true
+            )
+        )
+        habitDao.insertRoutine(
+            HabitRoutineEntity(
+                id = routineId,
+                name = template.name,
+                description = template.description,
+                triggerLabel = template.triggerLabel,
+                triggerCron = template.triggerCron,
+                detectedActionsJson = "[]",
+                suggestedStepsJson = stepsJson,
+                repetitionCount = 0,
+                confidence = 1.0f,
+                status = RoutineStatus.APPROVED.name,
+                suggestionMessage = "",
+                createdAt = System.currentTimeMillis(),
+                lastDetectedAt = System.currentTimeMillis(),
+                lastExecutedAt = null,
+                macroId = macroId
+            )
+        )
+        // Mirror the new macro into a real scheduled task right away
+        // (the sweep would do it within 15 minutes anyway).
+        try {
+            macroScheduleSync.get().sync()
+        } catch (e: Exception) {
+            Log.w(TAG, "Template activated but schedule sync deferred to sweep: ${e.message}")
+        }
+        return true
     }
 
     /**

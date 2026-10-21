@@ -13,7 +13,11 @@ import com.opendroid.ai.data.repository.ConversationRepository
 import com.opendroid.ai.data.repository.MemoryRepository
 import com.opendroid.ai.data.repository.SettingsRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import java.time.ZoneId
@@ -58,6 +62,11 @@ class ScheduledTaskExecutor @Inject constructor(
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
+    companion object {
+        /** Claim heartbeat interval: well under the store's 30-min stuck-run window. */
+        private const val CLAIM_HEARTBEAT_MILLIS: Long = 5L * 60L * 1000L
+    }
+
     sealed interface ExecutionResult {
         data class Ran(val summary: String) : ExecutionResult
         data class AwaitingApproval(val blockedActions: List<String>) : ExecutionResult
@@ -68,9 +77,13 @@ class ScheduledTaskExecutor @Inject constructor(
     }
 
     /**
-     * Fires [taskId] once. [occurrenceMillis] is the scheduled occurrence
-     * being fired (from the sweep's due-check); null means a manual
-     * "run now", which bypasses due/staleness checks but still claims.
+     * Fires [taskId] once. [occurrenceMillis] is the occurrence the
+     * enqueueing lane believed was due; it is treated as advisory only —
+     * for non-manual runs the due occurrence is always re-derived at
+     * execution time, so a worker deferred by Doze past the freshness
+     * window never executes a stale occurrence. Null + [manual] means a
+     * manual "run now", which bypasses due/staleness checks but still
+     * claims.
      */
     suspend fun executeTask(
         taskId: String,
@@ -81,17 +94,17 @@ class ScheduledTaskExecutor @Inject constructor(
         val now = System.currentTimeMillis()
         val zone = ZoneId.systemDefault()
 
+        // Execution-time revalidation for BOTH lanes: the sweep's explicit
+        // occurrence is not trusted blindly (the worker may start hours
+        // after it was enqueued), and the alarm lane recomputes the same
+        // way. dueOccurrence applies the freshness windows (1h recurring /
+        // 24h one-shot) and the already-fired check.
         val occurrence: Long? = when {
             manual -> null
-            occurrenceMillis != null -> occurrenceMillis
             else -> NextFireCalculator.dueOccurrence(task, now, zone)
         }
-        if (!manual) {
-            // The alarm lane can wake us after the sweep already fired this
-            // occurrence (or after it went stale): nothing to do.
-            if (occurrence == null || occurrence == task.lastFiredOccurrenceMillis) {
-                return ExecutionResult.Skipped
-            }
+        if (!manual && occurrence == null) {
+            return ExecutionResult.Skipped
         }
 
         val claimed = store.tryClaim(taskId, now) ?: return ExecutionResult.Skipped
@@ -104,9 +117,25 @@ class ScheduledTaskExecutor @Inject constructor(
         )
 
         val result: ExecutionResult = try {
-            when (claimed.kind) {
-                ScheduledTaskKind.INSTRUCTION -> runInstruction(claimed, sessionId)
-                ScheduledTaskKind.MACRO -> runMacro(claimed, sessionId)
+            // Keep the claim fresh while the run executes: without a
+            // heartbeat, a run longer than the store's stuck-claim window
+            // (macros have no execution timeout of their own) could be
+            // reclaimed by the other lane and executed twice concurrently.
+            coroutineScope {
+                val heartbeat = launch {
+                    while (isActive) {
+                        delay(CLAIM_HEARTBEAT_MILLIS)
+                        store.touchClaim(taskId, System.currentTimeMillis())
+                    }
+                }
+                try {
+                    when (claimed.kind) {
+                        ScheduledTaskKind.INSTRUCTION -> runInstruction(claimed, sessionId)
+                        ScheduledTaskKind.MACRO -> runMacro(claimed, sessionId)
+                    }
+                } finally {
+                    heartbeat.cancel()
+                }
             }
         } catch (e: Exception) {
             ExecutionResult.Failed(e.localizedMessage ?: "Unknown error while running the scheduled task.")
@@ -192,38 +221,26 @@ class ScheduledTaskExecutor @Inject constructor(
                 } else {
                     ScheduledTaskStatus.ARMED
                 }
-                notifier.notifyResult(task.copy(sessionId = sessionId), true, summary)
             }
             is ExecutionResult.AwaitingApproval -> {
                 summary = "Waiting for your approval — nothing was executed."
                 success = false
                 newStatus = ScheduledTaskStatus.AWAITING_APPROVAL
-                postSessionMessage(
-                    sessionId,
-                    if (result.blockedActions.isNotEmpty()) {
-                        "⏸ This scheduled run needs your approval before it can run: " +
-                            result.blockedActions.joinToString(", ") +
-                            ". Review and approve the plan here, or adjust Auto mode in Settings."
-                    } else {
-                        "⏸ This scheduled run needs your input before it can continue. Reply here to continue it."
-                    }
-                )
-                notifier.notifyApprovalNeeded(
-                    task.copy(sessionId = sessionId),
-                    result.blockedActions
-                )
             }
             is ExecutionResult.Failed -> {
                 summary = result.message
                 success = false
                 newStatus = ScheduledTaskStatus.FAILED
-                notifier.notifyResult(task.copy(sessionId = sessionId), false, summary)
             }
             ExecutionResult.Skipped -> return
         }
 
         val oneShotFinished = task.recurrence == ScheduleRecurrence.ONCE &&
             (newStatus == ScheduledTaskStatus.DONE || newStatus == ScheduledTaskStatus.FAILED)
+        // If the task was deleted while this run executed, the update
+        // finds nothing: do NOT fall back to the stale claimed snapshot —
+        // arming from it would resurrect an alarm (and post notifications)
+        // for a task that no longer exists.
         val updated = store.update(task.id) { current ->
             current.copy(
                 status = newStatus,
@@ -234,7 +251,28 @@ class ScheduledTaskExecutor @Inject constructor(
                 lastFiredOccurrenceMillis = occurrenceMillis ?: current.lastFiredOccurrenceMillis,
                 lastResultSummary = summary
             )
-        } ?: task
+        } ?: return
+
+        when (result) {
+            is ExecutionResult.Ran ->
+                notifier.notifyResult(updated, true, summary)
+            is ExecutionResult.AwaitingApproval -> {
+                postSessionMessage(
+                    sessionId,
+                    if (result.blockedActions.isNotEmpty()) {
+                        "⏸ This scheduled run needs your approval before it can run: " +
+                            result.blockedActions.joinToString(", ") +
+                            ". Review and approve the plan here, or adjust Auto mode in Settings."
+                    } else {
+                        "⏸ This scheduled run needs your input before it can continue. Reply here to continue it."
+                    }
+                )
+                notifier.notifyApprovalNeeded(updated, result.blockedActions)
+            }
+            is ExecutionResult.Failed ->
+                notifier.notifyResult(updated, false, summary)
+            ExecutionResult.Skipped -> Unit // handled above
+        }
 
         // Every firing lands in the existing task-history store, keyed by
         // the schedule so the Logs tab shows scheduled runs alongside

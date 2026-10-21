@@ -728,6 +728,7 @@ private fun cardTitle(card: PermissionCardId): String = when (card) {
     PermissionCardId.SMS_TELEPHONY -> "SMS & Telephony"
     PermissionCardId.CONTACTS_CALENDAR -> "Contacts & Calendar"
     PermissionCardId.CAMERA -> "Camera"
+    PermissionCardId.BLUETOOTH -> "Bluetooth"
     PermissionCardId.NOTIFICATIONS -> "Notifications"
     PermissionCardId.STORAGE -> "Storage / Workspace"
     PermissionCardId.WRITE_SETTINGS -> "System Settings Control"
@@ -742,6 +743,8 @@ private fun cardDescription(card: PermissionCardId): String = when (card) {
         "Needed to resolve recipient names and manage events."
 
     PermissionCardId.CAMERA -> "Needed for image input and vision capabilities."
+    PermissionCardId.BLUETOOTH ->
+        "Needed to toggle Bluetooth and talk to nearby devices on Android 12+."
     PermissionCardId.NOTIFICATIONS ->
         "Needed to post system notifications and service status."
 

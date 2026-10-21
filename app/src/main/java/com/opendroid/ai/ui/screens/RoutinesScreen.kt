@@ -199,7 +199,7 @@ fun RoutinesScreen(
                     description = "Read calendar → Summarize today's meetings → Check notifications → Task list → Morning briefing",
                     trigger = "Every weekday at 9:00 AM",
                     onActivate = {
-                        viewModel.triggerDetection()
+                        viewModel.activateTemplate("morning")
                         Toast.makeText(context, "Morning Routine template activated!", Toast.LENGTH_SHORT).show()
                     }
                 )
@@ -211,7 +211,7 @@ fun RoutinesScreen(
                     description = "Open Slack → Check Calendar → Read important notifications",
                     trigger = "Every weekday at 9:30 AM",
                     onActivate = {
-                        viewModel.triggerDetection()
+                        viewModel.activateTemplate("work_focus")
                         Toast.makeText(context, "Work Focus template activated!", Toast.LENGTH_SHORT).show()
                     }
                 )
@@ -223,7 +223,7 @@ fun RoutinesScreen(
                     description = "Check tomorrow's calendar → Check unread notifications → Daily summary",
                     trigger = "Daily at 9:00 PM",
                     onActivate = {
-                        viewModel.triggerDetection()
+                        viewModel.activateTemplate("evening")
                         Toast.makeText(context, "Evening Wrap-up template activated!", Toast.LENGTH_SHORT).show()
                     }
                 )

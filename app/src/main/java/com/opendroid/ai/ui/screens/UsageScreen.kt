@@ -193,8 +193,21 @@ private fun UsageTotalsCard(state: UsageDashboardState) {
             StatLine("Total tokens", formatCount(state.totalTokens))
             StatLine(
                 "Estimated cost",
-                state.totalCostUsd?.let { formatUsd(it) } ?: "—"
+                state.totalCostUsd?.let { total ->
+                    // A priced-subset sum presented as THE total
+                    // understates spend: mark it partial whenever any
+                    // paid row in range has no known price.
+                    formatUsd(total) + if (state.hasUnpricedPaidRows) " *" else ""
+                } ?: "—"
             )
+            if (state.hasUnpricedPaidRows) {
+                Text(
+                    text = "* Partial total: ${state.unpricedPaidRowCount} model(s) in this range " +
+                        "have no known price and are excluded. Tap \"Edit price\" on a model to price it.",
+                    fontSize = 11.sp,
+                    color = TextSecondary
+                )
+            }
         }
     }
 }
