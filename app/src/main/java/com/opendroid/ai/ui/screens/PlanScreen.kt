@@ -1,5 +1,9 @@
 package com.opendroid.ai.ui.screens
 
+import android.app.Activity
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -16,17 +20,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.opendroid.ai.core.templates.TemplateExport
+import com.opendroid.ai.core.templates.TemplateFormat
 import com.opendroid.ai.data.models.Plan
 import com.opendroid.ai.data.models.PlanStatus
 import com.opendroid.ai.data.models.PlanStep
 import com.opendroid.ai.data.models.StepStatus
+import com.opendroid.ai.ui.templates.TemplateFileIo
 import com.opendroid.ai.ui.theme.*
 import com.opendroid.ai.ui.components.PlanStepCard
 import com.opendroid.ai.ui.viewmodel.PlanViewModel
+import com.opendroid.ai.ui.viewmodel.TemplateShareViewModel
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -35,11 +46,54 @@ import java.util.Locale
 @Composable
 fun PlanScreen(
     viewModel: PlanViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    templateViewModel: TemplateShareViewModel = hiltViewModel()
 ) {
     val currentPlan by viewModel.currentPlan.collectAsState()
     val planHistory by viewModel.planHistory.collectAsState()
-    
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // ---- C6 template export (save-to-file via SAF / share sheet) ----
+    var pendingExport by remember { mutableStateOf<TemplateExport?>(null) }
+    var transferMessage by remember { mutableStateOf<String?>(null) }
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val export = pendingExport
+        pendingExport = null
+        val uri = result.data?.data
+        if (result.resultCode != Activity.RESULT_OK || uri == null || export == null) {
+            return@rememberLauncherForActivityResult // picker cancelled
+        }
+        scope.launch {
+            try {
+                TemplateFileIo.writeExport(context, uri, export)
+                transferMessage = "Template saved: ${export.fileName}"
+            } catch (e: Exception) {
+                transferMessage = "Export failed: ${e.localizedMessage ?: "unknown error"}"
+            }
+        }
+    }
+
+    fun startExport(plan: Plan) {
+        val export = templateViewModel.planExport(plan)
+        pendingExport = export
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = TemplateFormat.MIME_TYPE
+            putExtra(Intent.EXTRA_TITLE, export.fileName)
+        }
+        exportLauncher.launch(intent)
+    }
+
+    fun sharePlan(plan: Plan) {
+        val export = templateViewModel.planExport(plan)
+        if (!TemplateFileIo.shareExport(context, export)) {
+            transferMessage = "Share failed: could not prepare the template file."
+        }
+    }
+
     var selectedPlanId by remember { mutableStateOf<String?>(null) }
     val displayPlan = if (selectedPlanId != null) {
         planHistory.find { it.planId == selectedPlanId } ?: currentPlan
@@ -83,7 +137,9 @@ fun PlanScreen(
                         plan = displayPlan!!,
                         isCurrentActive = isCurrentActivePlan,
                         onClearSelection = { selectedPlanId = null },
-                        onStop = { viewModel.stopTask() }
+                        onStop = { viewModel.stopTask() },
+                        onExportTemplate = { startExport(displayPlan!!) },
+                        onShareTemplate = { sharePlan(displayPlan!!) }
                     )
                 }
 
@@ -142,6 +198,23 @@ fun PlanScreen(
             }
         }
     }
+
+    // C6: one-shot export outcome message
+    transferMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { transferMessage = null },
+            containerColor = CardBackground,
+            titleContentColor = TextPrimary,
+            textContentColor = TextPrimary,
+            title = { Text("Template Transfer", fontWeight = FontWeight.Bold, fontSize = 15.sp) },
+            text = { Text(message, fontSize = 13.sp) },
+            confirmButton = {
+                TextButton(onClick = { transferMessage = null }) {
+                    Text("OK", color = AccentCyan, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -149,7 +222,9 @@ fun PlanHeaderCard(
     plan: Plan,
     isCurrentActive: Boolean,
     onClearSelection: () -> Unit,
-    onStop: () -> Unit
+    onStop: () -> Unit,
+    onExportTemplate: (() -> Unit)? = null,
+    onShareTemplate: (() -> Unit)? = null
 ) {
     Card(
         modifier = Modifier
@@ -234,6 +309,33 @@ fun PlanHeaderCard(
                 Column(horizontalAlignment = Alignment.End) {
                     Text("Estimated duration", fontSize = 10.sp, color = TextSecondary)
                     Text(plan.estimatedDuration, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                }
+            }
+
+            // C6: share this plan as a portable template file
+            if (onExportTemplate != null || onShareTemplate != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Divider(color = BorderColor)
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (onExportTemplate != null) {
+                        TextButton(onClick = onExportTemplate) {
+                            Icon(imageVector = Icons.Default.FileUpload, contentDescription = "Export Template", modifier = Modifier.size(16.dp), tint = AccentCyan)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Export Template", fontSize = 11.sp, color = AccentCyan, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    if (onShareTemplate != null) {
+                        TextButton(onClick = onShareTemplate) {
+                            Icon(imageVector = Icons.Default.Share, contentDescription = "Share Template", modifier = Modifier.size(16.dp), tint = AccentCyan)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Share", fontSize = 11.sp, color = AccentCyan, fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
 
