@@ -121,7 +121,8 @@ class SchedulesViewModel @Inject constructor(
             macroId = macro.id,
             macroName = macro.name,
             recurrence = recurrence,
-            hour = minute,
+            hour = hour,
+            minute = minute,
             dayOfWeek = dayOfWeek,
             dateEpochDay = dateEpochDay,
             createdAtMillis = System.currentTimeMillis()

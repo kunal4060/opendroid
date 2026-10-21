@@ -235,6 +235,7 @@ private fun CreateScheduleCard(
     var dateEpochDay by remember { mutableStateOf(LocalDate.now().plusDays(1).toEpochDay()) }
     var showDatePicker by remember { mutableStateOf(false) }
     var confirmation by remember { mutableStateOf<String?>(null) }
+    var formError by remember { mutableStateOf<String?>(null) }
 
     Card(
         modifier = Modifier
@@ -366,6 +367,22 @@ private fun CreateScheduleCard(
             Button(
                 enabled = canCreate,
                 onClick = {
+                    // A one-shot in the past can never fire (no next
+                    // occurrence exists), so confirming it would be a lie:
+                    // validate the combined date+time before creating.
+                    if (recurrence == ScheduleRecurrence.ONCE) {
+                        val fireAt = LocalDate.ofEpochDay(dateEpochDay)
+                            .atTime(hour, minute)
+                            .atZone(ZoneId.systemDefault())
+                            .toInstant()
+                            .toEpochMilli()
+                        if (fireAt <= System.currentTimeMillis()) {
+                            formError = "That date and time are in the past — a one-time schedule can only fire in the future."
+                            confirmation = null
+                            return@Button
+                        }
+                    }
+                    formError = null
                     val effectiveDayOfWeek = if (recurrence == ScheduleRecurrence.WEEKLY) dayOfWeek else null
                     val effectiveDate = if (recurrence == ScheduleRecurrence.ONCE) dateEpochDay else null
                     when (kind) {
@@ -382,6 +399,10 @@ private fun CreateScheduleCard(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Add schedule")
+            }
+            formError?.let {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(it, fontSize = 11.sp, color = AccentRed, lineHeight = 16.sp)
             }
             confirmation?.let {
                 Spacer(modifier = Modifier.height(8.dp))
