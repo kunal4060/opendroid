@@ -56,6 +56,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -68,6 +69,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -90,8 +94,10 @@ import com.opendroid.ai.ui.viewmodel.GoogleUiEvent
 import com.opendroid.ai.ui.viewmodel.GoogleUiState
 import java.text.SimpleDateFormat
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.util.TimeZone
 import java.util.Date
 import java.util.Locale
 
@@ -144,6 +150,21 @@ fun GoogleAccountScreen(
 
     LaunchedEffect(activity) {
         activity?.let { viewModel.onShown(it) }
+    }
+
+    // Refresh on resume too: granting READ_CALENDAR from Android
+    // Settings (after denying the in-app dialog) and returning used to
+    // leave the stale "Grant calendar permission" card and an empty
+    // list until the screen was re-entered from scratch.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, activity) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                activity?.let { viewModel.onShown(it) }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     var showCreateEvent by remember { mutableStateOf(false) }
@@ -270,7 +291,20 @@ fun GoogleAccountScreen(
                 }
             }
 
-            if (state.calendarEvents.isEmpty()) {
+            // Only claim "no events" when that is actually known: a
+            // loaded source, not still loading, and (for the device
+            // source) the permission that makes events readable. Before
+            // this guard the message also flashed pre-load and sat
+            // under the grant-permission card claiming an empty
+            // calendar that was merely unreadable.
+            val calendarKnownEmpty = state.calendarEvents.isEmpty() &&
+                !state.loading &&
+                when (state.calendarSource) {
+                    CalendarEventSource.GOOGLE_API -> true
+                    CalendarEventSource.DEVICE -> state.localCalendarPermissionGranted
+                    null -> false
+                }
+            if (calendarKnownEmpty) {
                 item {
                     GoogleInfoCard(
                         text = if (state.calendarSource == CalendarEventSource.GOOGLE_API) {
@@ -280,7 +314,7 @@ fun GoogleAccountScreen(
                         }
                     )
                 }
-            } else {
+            } else if (state.calendarEvents.isNotEmpty()) {
                 items(state.calendarEvents, key = { it.source.name + it.id + it.startMillis }) { event ->
                     GoogleEventCard(event = event)
                 }
@@ -841,8 +875,16 @@ private fun CreateGoogleEventDialog(
     var description by remember { mutableStateOf("") }
     var location by remember { mutableStateOf("") }
 
-    val now = remember { System.currentTimeMillis() }
-    var dateMillis by remember { mutableLongStateOf(now) }
+    // dateMillis is a Material3 date-picker value: the UTC midnight of
+    // the picked date. Initialise it to the UTC midnight of the LOCAL
+    // today and format the label in UTC too — initialising to the raw
+    // current instant and labelling in the local zone made an untouched
+    // picker create the event on the previous/next day near midnight.
+    var dateMillis by remember {
+        mutableLongStateOf(
+            LocalDate.now().atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        )
+    }
     var startHour by remember { mutableIntStateOf(10) }
     var startMinute by remember { mutableIntStateOf(0) }
     var endHour by remember { mutableIntStateOf(11) }
@@ -850,7 +892,9 @@ private fun CreateGoogleEventDialog(
     var picker by remember { mutableStateOf<String?>(null) } // "date" | "start" | "end"
 
     val dateLabel = remember(dateMillis) {
-        SimpleDateFormat("EEE, d MMM yyyy", Locale.getDefault()).format(Date(dateMillis))
+        SimpleDateFormat("EEE, d MMM yyyy", Locale.getDefault()).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }.format(Date(dateMillis))
     }
 
     AlertDialog(
@@ -898,8 +942,17 @@ private fun CreateGoogleEventDialog(
                     val date = Instant.ofEpochMilli(dateMillis).atZone(ZoneOffset.UTC).toLocalDate()
                     val zone = ZoneId.systemDefault()
                     val start = date.atTime(startHour, startMinute).atZone(zone).toInstant().toEpochMilli()
-                    var end = date.atTime(endHour, endMinute).atZone(zone).toInstant().toEpochMilli()
-                    if (end <= start) end = start + 60 * 60 * 1000L
+                    // An end at or before the start is an overnight
+                    // event (23:00 → 01:00): roll the end to the next
+                    // day instead of silently rewriting it to start+1h,
+                    // which created 23:00 → 00:00 — neither the entered
+                    // time nor an error.
+                    val endDate = if (endHour * 60 + endMinute <= startHour * 60 + startMinute) {
+                        date.plusDays(1)
+                    } else {
+                        date
+                    }
+                    val end = endDate.atTime(endHour, endMinute).atZone(zone).toInstant().toEpochMilli()
                     onCreate(
                         NewCalendarEvent(
                             title = title.trim(),
