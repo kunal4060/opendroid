@@ -361,10 +361,16 @@ class SocialViewModel @Inject constructor(
     fun refreshAll() {
         viewModelScope.launch {
             _isGenerating.value = true
-            socialManager.syncAllAccounts()
+            val result = socialManager.syncAllAccounts()
             loadAnalyticsAndInsights()
             _isGenerating.value = false
-            _statusMessage.value = "Refreshed social data."
+            // Report what the sync actually did — never claim a refresh
+            // succeeded when an account sync failed.
+            _statusMessage.value = if (result.isSuccess) {
+                "Refreshed social data."
+            } else {
+                "Refresh failed: ${result.exceptionOrNull()?.message ?: "account sync failed"}"
+            }
         }
     }
 }
