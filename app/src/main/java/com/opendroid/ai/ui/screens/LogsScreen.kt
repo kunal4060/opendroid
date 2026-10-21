@@ -36,7 +36,7 @@ fun LogsScreen(
     modifier: Modifier = Modifier
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Execution Logs", "Action Errors")
+    val tabs = listOf("Audit Log", "Action Errors")
 
     val history by viewModel.taskHistory.collectAsState()
     val actionErrors by viewModel.unknownActions.collectAsState()
@@ -60,7 +60,7 @@ fun LogsScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "SYSTEM LOGS",
+                        text = "AUDIT LOG",
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary,
@@ -136,34 +136,15 @@ fun LogsScreen(
                     .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
                 if (selectedTab == 0) {
-                    if (history.isNotEmpty()) {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                            contentPadding = PaddingValues(bottom = 24.dp)
-                        ) {
-                            items(history) { log ->
-                                HistoryLogCard(
-                                    log = log,
-                                    onSaveAsMacro = if (log.id in saveableLogIds) {
-                                        {
-                                            selectedPlanForMacro = log.planId
-                                            macroName = "${log.description.take(40).ifBlank { "Completed task" }} macro"
-                                            macroSaveError = null
-                                        }
-                                    } else {
-                                        null
-                                    }
-                                )
-                            }
+                    AuditLogTab(
+                        viewModel = viewModel,
+                        saveableLogIds = saveableLogIds,
+                        onSaveAsMacro = { log ->
+                            selectedPlanForMacro = log.planId
+                            macroName = "${log.description.take(40).ifBlank { "Completed task" }} macro"
+                            macroSaveError = null
                         }
-                    } else {
-                        EmptyStateView(
-                            title = "No executions recorded yet",
-                            subtitle = "Every step OpenDroid executes is archived here.",
-                            icon = Icons.Default.Info
-                        )
-                    }
+                    )
                 } else {
                     if (actionErrors.isNotEmpty()) {
                         LazyColumn(
@@ -412,152 +393,3 @@ fun UnknownActionCard(error: UnknownActionEntity) {
     }
 }
 
-@Composable
-fun HistoryLogCard(
-    log: TaskHistoryEntity,
-    onSaveAsMacro: (() -> Unit)? = null
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()) }
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(
-                1.dp,
-                if (log.success) AccentCyan.copy(alpha = 0.25f) else AccentRed.copy(alpha = 0.25f),
-                RoundedCornerShape(12.dp)
-            ),
-        colors = CardDefaults.cardColors(containerColor = CardBackground)
-    ) {
-        Column(
-            modifier = Modifier
-                .clickable { expanded = !expanded }
-                .padding(14.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Success Badge
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(if (log.success) AccentCyan.copy(alpha = 0.15f) else AccentRed.copy(alpha = 0.15f))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        text = if (log.success) "SUCCESS" else "FAILED",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (log.success) AccentCyan else AccentRed,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-
-                Text(
-                    text = dateFormat.format(Date(log.timestamp)),
-                    fontSize = 10.sp,
-                    color = TextSecondary,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            Text(
-                text = log.description,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = TextPrimary
-            )
-            
-            Spacer(modifier = Modifier.height(4.dp))
-            
-            Text(
-                text = "Module: ${log.actionType}",
-                fontSize = 11.sp,
-                color = AccentPurple,
-                fontFamily = FontFamily.Monospace
-            )
-
-            onSaveAsMacro?.let { save ->
-                Spacer(modifier = Modifier.height(10.dp))
-                Button(
-                    onClick = save,
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentPurple),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Save completed task as macro", fontSize = 11.sp)
-                }
-            }
-
-            AnimatedVisibility(visible = expanded) {
-                Column(modifier = Modifier.padding(top = 12.dp)) {
-                    Divider(color = BorderColor, modifier = Modifier.padding(vertical = 4.dp))
-                    
-                    if (log.paramsJson.isNotBlank() && log.paramsJson != "{}") {
-                        Text("Parameters:", fontSize = 11.sp, color = TextSecondary)
-                        Text(
-                            text = log.paramsJson,
-                            fontSize = 11.sp,
-                            color = TextPrimary,
-                            fontFamily = FontFamily.Monospace,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(DarkBackground)
-                                .padding(8.dp)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                    }
-
-                    if (log.resultData != null) {
-                        Text("Execution Result Data:", fontSize = 11.sp, color = TextSecondary)
-                        Text(
-                            text = log.resultData,
-                            fontSize = 11.sp,
-                            color = AccentCyan,
-                            fontFamily = FontFamily.Monospace,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(DarkBackground)
-                                .padding(8.dp)
-                        )
-                    }
-
-                    if (log.errorMessage != null) {
-                        Text("Diagnostic Error Log:", fontSize = 11.sp, color = TextSecondary)
-                        Text(
-                            text = log.errorMessage,
-                            fontSize = 11.sp,
-                            color = AccentRed,
-                            fontFamily = FontFamily.Monospace,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(AccentRed.copy(alpha = 0.05f))
-                                .border(1.dp, AccentRed.copy(alpha = 0.2f), RoundedCornerShape(6.dp))
-                                .padding(8.dp)
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Icon(
-                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    contentDescription = "Expand info",
-                    tint = TextSecondary,
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-        }
-    }
-}

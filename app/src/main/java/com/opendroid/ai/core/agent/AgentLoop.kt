@@ -11,6 +11,7 @@ import com.opendroid.ai.core.llm.LatencyBudgetStatus
 import com.opendroid.ai.core.llm.ResponseFormat
 import com.opendroid.ai.core.llm.prompts.PlanningPrompts
 import com.opendroid.ai.core.memory.MemoryManager
+import com.opendroid.ai.core.memory.AuditLog
 import com.opendroid.ai.core.memory.ExecutionHistoryPrivacy
 import com.opendroid.ai.data.models.AutoMode
 import com.opendroid.ai.data.models.ChatMessage
@@ -870,9 +871,58 @@ class AgentLoop @Inject constructor(
     }
 
     fun rejectProposedPlan() {
+        // Capture the proposed plan BEFORE clearing it: rejecting a plan at
+        // the approval gate is an auditable event (B4). The denied steps are
+        // written to task_history through the same sink executions use, so
+        // the audit log shows denials alongside successes and failures
+        // instead of the rejection vanishing without a trace. The plan is
+        // taken from the PlanProposed state itself — PlanManager deliberately
+        // keeps the last FINISHED plan around for the Plan tab, and logging
+        // that stale plan as "denied" would falsify the log; only a plan
+        // actually sitting at the approval gate counts as denied.
+        val deniedPlan = (_agentState.value as? AgentState.PlanProposed)?.plan
         proposedPlanSessionId = null
         planManager.clearPlan()
         _agentState.value = AgentState.Idle
+        if (deniedPlan != null) {
+            scope.launch { logPlanDenial(deniedPlan) }
+        }
+    }
+
+    /**
+     * Records a user-rejected plan in `task_history`: one row per step that
+     * never ran, with `success = false` and the denial marker as the error
+     * message ([AuditLog.DENIED_MESSAGE]) — the same shape an execution
+     * failure takes, so the audit viewer's outcome derivation and the DAO's
+     * filtered query both pick these rows up as DENIED. Descriptions and
+     * params go through the same redaction as real executions (the
+     * repository sink re-applies it, exactly as on the execution path).
+     * Best-effort like every other history write in this class: a logging
+     * failure must never break the rejection itself.
+     */
+    private suspend fun logPlanDenial(plan: Plan) {
+        for (record in AuditLog.deniedStepRecords(plan)) {
+            try {
+                val canonicalActionName = actionDispatcher.canonicalActionName(record.actionType)
+                memoryManager.logTaskExecution(
+                    stepId = record.stepId,
+                    planId = record.planId,
+                    description = ExecutionHistoryPrivacy.sanitizeDescription(
+                        canonicalActionName,
+                        record.description
+                    ),
+                    actionType = record.actionType,
+                    params = ExecutionHistoryPrivacy.sanitizeParams(canonicalActionName, record.params),
+                    success = false,
+                    resultData = null,
+                    errorMessage = AuditLog.DENIED_MESSAGE
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.e("AgentLoop", "Failed to log plan denial: ${e.localizedMessage}")
+            }
+        }
     }
 
     /**

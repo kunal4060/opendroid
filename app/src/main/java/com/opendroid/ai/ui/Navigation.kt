@@ -297,7 +297,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
     object Memory : Screen("memory", "Memory", Icons.Default.Star)
     object Social : Screen("social", "Social", Icons.Default.Share)
     object Macros : Screen("macros", "Macros", Icons.Default.Build)
-    object History : Screen("history", "Logs", Icons.Default.History)
+    object History : Screen("history", "Audit Log", Icons.Default.History)
     object Settings : Screen("settings", "Settings", Icons.Default.Settings)
 }
 
