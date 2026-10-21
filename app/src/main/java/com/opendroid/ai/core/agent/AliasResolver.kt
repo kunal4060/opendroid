@@ -329,8 +329,19 @@ object AliasResolver {
             return ActionHint("PLAY_YOUTUBE", mapOf("query" to query))
         }
 
+        // 1c. Compound-intent guard (audit-2 #14) — runs BEFORE the dynamic
+        //     extractions below. Previously brightness/volume extraction ran
+        //     first, so "set brightness to 30 and send a message to mom"
+        //     silently amputated the request: only the brightness changed,
+        //     the message was never planned or sent, yet the fast-path result
+        //     read as success for the whole request. A compound input belongs
+        //     to the LLM planner, which can build every part of it.
+        val hasCompoundIntent = compoundIntentWords.any { word -> lower.contains(word) }
+        if (hasCompoundIntent) {
+            return null
+        }
+
         // 2. Dynamic brightness extraction — "set brightness to 30%", "brightness 60", etc.
-        //    This runs BEFORE compound-intent guard so the LLM doesn't need to handle it.
         if (lower.contains("brightness")) {
             val numberMatch = Regex("""\d+""").find(lower)
             if (numberMatch != null) {
@@ -352,19 +363,40 @@ object AliasResolver {
             }
         }
 
-        // 4. Skip partial matching if input has compound intent
-        //    e.g., "open whatsapp and send message to dad" should NOT match "open whatsapp"
-        //    — it needs the LLM to generate SEND_WHATSAPP with contact+message params
-        val hasCompoundIntent = compoundIntentWords.any { word -> lower.contains(word) }
-        if (hasCompoundIntent) {
-            return null
-        }
+        // 4. (Compound-intent guard moved up to 1c — see audit-2 #14.)
 
-        // 5. Longest partial match — only for simple, single-intent inputs
+        // 5. Longest partial match — only for simple, single-intent inputs.
+        //    Audit-2 #15: match on WORD boundaries — an alias's tokens must
+        //    appear as a contiguous run of whole words in the input's
+        //    tokens. The old raw substring `contains` fired aliases from
+        //    inside unrelated words ("flash" in "flashcards", "light" in
+        //    "daylight"). Single-word aliases additionally require a short
+        //    command (<= 3 tokens): a lone keyword buried in a full
+        //    sentence ("my camera is broken, what should I do") is a
+        //    mention, not a command — multi-word aliases keep matching
+        //    inside longer phrasings ("can you take a screenshot for me").
+        val cleanedTokens = tokenizeForAliasMatch(cleaned)
+        val lowerTokens = tokenizeForAliasMatch(lower)
         return aliases.entries
-            .filter { (key, _) -> cleaned.contains(key) || lower.contains(key) }
+            .filter { (key, _) ->
+                aliasMatchesTokens(key, cleanedTokens) || aliasMatchesTokens(key, lowerTokens)
+            }
             .maxByOrNull { it.key.length }
             ?.value
+    }
+
+    /** Splits text into lowercase word tokens for boundary-safe alias matching. */
+    private fun tokenizeForAliasMatch(text: String): List<String> =
+        text.lowercase().split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }
+
+    /** True when [key]'s tokens appear as a contiguous run inside [inputTokens]. */
+    private fun aliasMatchesTokens(key: String, inputTokens: List<String>): Boolean {
+        val keyTokens = tokenizeForAliasMatch(key)
+        if (keyTokens.isEmpty() || keyTokens.size > inputTokens.size) return false
+        if (keyTokens.size == 1 && inputTokens.size > 3) return false
+        return (0..inputTokens.size - keyTokens.size).any { start ->
+            inputTokens.subList(start, start + keyTokens.size) == keyTokens
+        }
     }
 
     // ── Alarm shortcut helpers ──────────────────────────
