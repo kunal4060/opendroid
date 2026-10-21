@@ -36,8 +36,11 @@ import com.opendroid.ai.ui.components.ModelPickerUiState
 import com.opendroid.ai.ui.components.PickerModelOption
 import com.opendroid.ai.ui.components.PickerProviderOption
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -55,7 +58,8 @@ class ChatViewModel @Inject constructor(
     private val modelFetcher: dagger.Lazy<ModelFetcher>,
     private val routingStatusRepository: RoutingStatusRepository,
     private val providerSetupReadiness: ProviderSetupReadiness,
-    private val textToSpeechEngine: com.opendroid.ai.core.voice.TextToSpeechEngine
+    private val textToSpeechEngine: com.opendroid.ai.core.voice.TextToSpeechEngine,
+    private val habitRoutineEngine: com.opendroid.ai.core.routine.HabitRoutineEngine
 ) : ViewModel() {
 
     val llmConfig: StateFlow<LLMConfig> = settingsRepository.llmConfig
@@ -648,6 +652,56 @@ class ChatViewModel @Inject constructor(
     /** Chip tap: Off <-> Auto only. YOLO is entered solely from Settings behind
      *  its warning dialog and exits to OFF from here (tapping the red chip is
      *  an explicit "get me out of YOLO", which is always safe). */
+    // ── External launches (C1) ────────────────────────────────────────
+    // The widget's mic button and the launcher's "Voice command" shortcut
+    // land here (via ExternalIntentRouter → MainDashboard): ChatScreen
+    // collects this and runs its normal permission-checked listening start,
+    // so an outside tap behaves exactly like tapping the in-app mic.
+
+    // Replay 1, deliberately: a widget tap can land while ChatScreen is not
+    // composed yet (cold start through splash/lock), and the request must
+    // survive until the collector appears. ChatScreen calls
+    // [onVoiceInputRequestHandled] after acting on each emission, which
+    // clears the replay slot so a later recomposition never replays a
+    // stale "start listening".
+    private val _voiceInputRequests = MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1)
+
+    /** Requests to open voice input, emitted by external launches. */
+    val voiceInputRequests: SharedFlow<Unit> = _voiceInputRequests.asSharedFlow()
+
+    /** Asks the chat UI to start voice input as soon as it is composed. */
+    fun requestVoiceInput() {
+        _voiceInputRequests.tryEmit(Unit)
+    }
+
+    /** Clears the replayed voice request once ChatScreen has acted on it. */
+    fun onVoiceInputRequestHandled() {
+        _voiceInputRequests.resetReplayCache()
+    }
+
+    /**
+     * Surfaces a morning briefing in the current chat: generates it through
+     * [com.opendroid.ai.core.routine.HabitRoutineEngine] — the same call the
+     * agent's GET_MORNING_BRIEFING action makes — and appends it as an agent
+     * message, so the widget/shortcut "Brief me" lands on real content in a
+     * real conversation instead of a toast that evaporates.
+     */
+    fun showMorningBriefing() {
+        viewModelScope.launch {
+            val briefing = runCatching { habitRoutineEngine.generateMorningBriefing() }
+                .getOrNull()
+                ?.takeIf { it.isNotBlank() }
+                ?: return@launch
+            conversationRepository.insertMessage(
+                com.opendroid.ai.data.models.ChatMessage(
+                    id = java.util.UUID.randomUUID().toString(),
+                    text = briefing,
+                    sender = com.opendroid.ai.data.models.ChatMessage.Sender.AGENT
+                )
+            )
+        }
+    }
+
     fun cycleAutoMode() {
         viewModelScope.launch {
             settingsRepository.updateConfig { current ->

@@ -283,6 +283,49 @@ fun ChatScreen(
         }
     }
 
+    // Starts listening exactly like the FloatingOrb tap does (permission
+    // check first, partial transcripts merged into the draft on error). The
+    // orb keeps its own inline copy; this one serves external launches (C1).
+    fun startVoiceInput() {
+        if (isListening) return
+        val audioPerm = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECORD_AUDIO
+        )
+        if (audioPerm == PackageManager.PERMISSION_GRANTED) {
+            isListening = true
+            voiceError = null
+            transcriptionText = ""
+            speechRecognizer.startListening(
+                onResult = { text ->
+                    isListening = false
+                    mergeDictatedText(text)
+                    transcriptionText = ""
+                },
+                onPartialResult = { partial ->
+                    transcriptionText = partial
+                },
+                onError = { err ->
+                    isListening = false
+                    mergeDictatedText(transcriptionText)
+                    transcriptionText = ""
+                    voiceError = err
+                }
+            )
+        } else {
+            recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    // Widget mic / "Voice command" shortcut (C1): when the dashboard routes
+    // an external VoiceCommand launch here, begin listening immediately.
+    LaunchedEffect(Unit) {
+        viewModel.voiceInputRequests.collect {
+            startVoiceInput()
+            viewModel.onVoiceInputRequestHandled()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(

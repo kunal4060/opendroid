@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Static launcher shortcuts (C1), referenced by the android.app.shortcuts
+    meta-data on MainActivity.
+
+    Each intent speaks the ExternalLaunch wire format spelled out in
+    core/launch/ExternalLaunchCodec.kt (same action + extras) — the values
+    here must move together with that file. targetPackage is the
+    applicationId; targetClass is MainActivity's fully-qualified name.
+    Dynamic shortcuts for recent routines/macros are published in code by
+    widget/DynamicShortcutPublisher.kt.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="voice_command"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_mic"
+        android:shortcutShortLabel="@string/shortcut_voice_short"
+        android:shortcutLongLabel="@string/shortcut_voice_long">
+        <intent
+            android:action="com.opendroid.ai.action.EXTERNAL_LAUNCH"
+            android:targetPackage="com.opendroid.aiagent"
+            android:targetClass="com.opendroid.ai.MainActivity">
+            <extra
+                android:name="com.opendroid.ai.extra.LAUNCH_KIND"
+                android:value="voice" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="new_chat"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_chat"
+        android:shortcutShortLabel="@string/shortcut_new_chat_short"
+        android:shortcutLongLabel="@string/shortcut_new_chat_long">
+        <intent
+            android:action="com.opendroid.ai.action.EXTERNAL_LAUNCH"
+            android:targetPackage="com.opendroid.aiagent"
+            android:targetClass="com.opendroid.ai.MainActivity">
+            <extra
+                android:name="com.opendroid.ai.extra.LAUNCH_KIND"
+                android:value="new_chat" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="morning_briefing"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_briefing"
+        android:shortcutShortLabel="@string/shortcut_briefing_short"
+        android:shortcutLongLabel="@string/shortcut_briefing_long">
+        <intent
+            android:action="com.opendroid.ai.action.EXTERNAL_LAUNCH"
+            android:targetPackage="com.opendroid.aiagent"
+            android:targetClass="com.opendroid.ai.MainActivity">
+            <extra
+                android:name="com.opendroid.ai.extra.LAUNCH_KIND"
+                android:value="morning_briefing" />
+        </intent>
+    </shortcut>
+</shortcuts>

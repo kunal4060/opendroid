@@ -1,6 +1,7 @@
 package com.opendroid.ai
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.WindowManager
@@ -13,6 +14,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import com.opendroid.ai.core.launch.ExternalIntentRouter
+import com.opendroid.ai.core.launch.ExternalIntents
 import com.opendroid.ai.core.security.AppLockManager
 import com.opendroid.ai.core.service.OpenDroidService
 import com.opendroid.ai.data.repository.SettingsRepository
@@ -35,9 +38,17 @@ class MainActivity : FragmentActivity() {
 
     @Inject lateinit var appLockManager: AppLockManager
 
+    @Inject lateinit var externalIntentRouter: ExternalIntentRouter
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableOpenDroidEdgeToEdge(isDarkTheme = true)
         super.onCreate(savedInstanceState)
+
+        // External entry points (C1 widget + shortcuts; C2/C3/C7 reuse this):
+        // the launch intent is handed to the router, and the navigation layer
+        // honours it once splash/onboarding — and the A5 lock gate above the
+        // NavHost — have resolved. The plain launcher intent parses to null.
+        ExternalIntents.fromIntent(intent)?.let { externalIntentRouter.submit(it) }
 
         // Start foreground assistant service only if RECORD_AUDIO permission is granted
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
@@ -83,6 +94,17 @@ class MainActivity : FragmentActivity() {
                 }
             }
         }
+    }
+
+    /**
+     * Warm-start twin of the onCreate hand-off: with `singleTask`, widget and
+     * shortcut taps while the app is running arrive here instead of creating
+     * a second activity.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        ExternalIntents.fromIntent(intent)?.let { externalIntentRouter.submit(it) }
     }
 
     override fun onDestroy() {

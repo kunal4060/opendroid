@@ -30,9 +30,14 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.opendroid.ai.core.launch.ExternalIntentRouter
+import com.opendroid.ai.core.launch.ExternalIntentRouterEntryPoint
+import com.opendroid.ai.core.launch.ExternalLaunch
 import com.opendroid.ai.ui.screens.*
 import com.opendroid.ai.ui.theme.*
 import com.opendroid.ai.ui.viewmodel.*
+import dagger.hilt.android.EntryPointAccessors
+import kotlinx.coroutines.launch
 
 /**
  * Route names of the top-level navigation graph.
@@ -80,6 +85,20 @@ fun NavHostController.navigateAfterOnboarding() {
 fun OpenDroidNavigation(
     navController: NavHostController = rememberNavController()
 ) {
+    // External launches (C1): MainActivity submits widget/shortcut intents to
+    // the router; the pending one is handed to the dashboard, which is the
+    // first destination that can honour it. While the app is locked this
+    // whole graph is not composed (see MainActivity), so launches queue in
+    // the router behind the A5 gate instead of bypassing it.
+    val appContext = LocalContext.current.applicationContext
+    val externalIntentRouter = remember {
+        EntryPointAccessors.fromApplication(
+            appContext,
+            ExternalIntentRouterEntryPoint::class.java
+        ).externalIntentRouter()
+    }
+    val pendingExternalLaunch by externalIntentRouter.pending.collectAsState()
+
     NavHost(
         navController = navController,
         startDestination = OpenDroidRoutes.SPLASH,
@@ -170,6 +189,10 @@ fun OpenDroidNavigation(
                 },
                 onNavigateToRoutines = {
                     navController.navigate(OpenDroidRoutes.ROUTINES)
+                },
+                pendingExternalLaunch = pendingExternalLaunch,
+                onExternalLaunchHandled = { sequence ->
+                    externalIntentRouter.consume(sequence)
                 }
             )
         }
@@ -300,7 +323,9 @@ fun MainDashboard(
     onNavigateToNotificationHistory: () -> Unit = {},
     onNavigateToPermissions: () -> Unit = {},
     onNavigateToCrashLog: () -> Unit = {},
-    onNavigateToRoutines: () -> Unit = {}
+    onNavigateToRoutines: () -> Unit = {},
+    pendingExternalLaunch: ExternalIntentRouter.Pending? = null,
+    onExternalLaunchHandled: (Long) -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -335,6 +360,45 @@ fun MainDashboard(
     val macroViewModel: MacroViewModel = hiltViewModel()
     val historyViewModel: HistoryViewModel = hiltViewModel()
     val settingsViewModel: SettingsViewModel = hiltViewModel()
+
+    // External launches (C1 widget/shortcuts): honoured once, as soon as the
+    // dashboard is composed — which is after splash routing and the app-lock
+    // gate, so an outside tap can never jump either queue. Voice/new-chat/
+    // briefing act on the chat tab; routine/macro launches run headlessly
+    // through AgentCommandRunner, the same engine paths the UI uses.
+    val dashboardScope = rememberCoroutineScope()
+    val agentCommandRunner = remember {
+        EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            com.opendroid.ai.widget.OpenDroidWidgetEntryPoint::class.java
+        ).agentCommandRunner()
+    }
+    LaunchedEffect(pendingExternalLaunch?.sequence) {
+        val pending = pendingExternalLaunch ?: return@LaunchedEffect
+        when (val launch = pending.launch) {
+            ExternalLaunch.OpenChat -> currentTab = Screen.Chat
+            ExternalLaunch.VoiceCommand -> {
+                currentTab = Screen.Chat
+                chatViewModel.requestVoiceInput()
+            }
+            ExternalLaunch.NewChat -> {
+                currentTab = Screen.Chat
+                chatViewModel.newChat()
+            }
+            ExternalLaunch.MorningBriefing -> {
+                currentTab = Screen.Chat
+                chatViewModel.showMorningBriefing()
+            }
+            ExternalLaunch.OpenRoutines -> onNavigateToRoutines()
+            is ExternalLaunch.RunRoutine -> dashboardScope.launch {
+                agentCommandRunner.runRoutine(launch.routineId)
+            }
+            is ExternalLaunch.RunMacro -> dashboardScope.launch {
+                agentCommandRunner.runMacro(launch.macroId)
+            }
+        }
+        onExternalLaunchHandled(pending.sequence)
+    }
 
     val tabs = listOf(
         Screen.Chat,

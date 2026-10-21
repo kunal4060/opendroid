@@ -9,6 +9,7 @@ import com.opendroid.ai.core.memory.graph.MemoryOrigin
 import com.opendroid.ai.core.memory.graph.MemoryTier
 import com.opendroid.ai.core.memory.graph.OriginKind
 import com.opendroid.ai.core.memory.graph.PersonalGrowthEngine
+import com.opendroid.ai.core.widget.WidgetEventRecorder
 import com.opendroid.ai.data.db.dao.HabitDao
 import com.opendroid.ai.data.db.dao.MacroDao
 import com.opendroid.ai.data.db.dao.NotificationDao
@@ -535,6 +536,15 @@ class HabitRoutineEngine @Inject constructor(
 
         // 3. Motivation / Productivity
         sb.append("✨ Have a focused and productive day!")
+
+        // Stamp the widget event ledger (C1): the home-screen widget shows
+        // "last briefing" from this, and a briefing leaves no Room trace of
+        // its own. Best-effort — a failed stamp must never fail a briefing.
+        try {
+            WidgetEventRecorder.recordBriefingGenerated(context)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to record briefing for widget: ${e.message}")
+        }
         return sb.toString()
     }
 
