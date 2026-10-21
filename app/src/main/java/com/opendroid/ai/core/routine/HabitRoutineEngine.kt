@@ -539,6 +539,18 @@ class HabitRoutineEngine @Inject constructor(
             Log.w(TAG, "Failed to record approved routine in PKG: ${e.message}")
         }
 
+        // Mirror the new macro into a real scheduled task right away,
+        // exactly like activateTemplate does. Without this the mirrored
+        // task only appears at the next 15-minute sweep (or when the
+        // Schedules screen opens); if Doze defers that sweep past the
+        // first occurrence's freshness window, the routine's first run
+        // is silently skipped.
+        try {
+            macroScheduleSync.get().sync()
+        } catch (e: Exception) {
+            Log.w(TAG, "Routine approved but schedule sync deferred to sweep: ${e.message}")
+        }
+
         return try {
             val steps = json.decodeFromString<List<PlanStep>>(entity.suggestedStepsJson)
             Macro(
