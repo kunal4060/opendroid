@@ -93,6 +93,7 @@ fun SettingsScreen(
     onNavigateToActionLearning: () -> Unit = {},
     onNavigateToPersonas: () -> Unit = {},
     onNavigateToKnowledgeBase: () -> Unit = {},
+    onNavigateToGoogle: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val config by viewModel.llmConfig.collectAsState()
@@ -2652,6 +2653,11 @@ fun SettingsScreen(
             // MCP Servers (D5): remote MCP client — servers, tools, grants
             item {
                 McpServersSection()
+            }
+
+            // Connected accounts (D6): Google Calendar + Gmail via official APIs
+            item {
+                GoogleAccountSettingsCard(onClick = onNavigateToGoogle)
             }
 
             // Privacy Policy link card
