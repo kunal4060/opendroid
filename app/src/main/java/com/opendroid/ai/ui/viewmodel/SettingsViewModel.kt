@@ -8,6 +8,7 @@ import com.opendroid.ai.data.models.effectiveGrantedActions
 import com.opendroid.ai.data.models.withActiveProvider
 import com.opendroid.ai.data.models.withSelectedModel
 import com.opendroid.ai.data.repository.SettingsRepository
+import com.opendroid.ai.ui.theme.AccentTheme
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -713,6 +714,26 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             settingsRepository.updateConfig { current ->
                 current.copy(isDarkMode = enabled)
+            }
+        }
+    }
+
+    /** Persists the accent preset (an [AccentTheme] name in LLMConfig). */
+    fun updateAccentTheme(theme: AccentTheme) {
+        _llmConfig.value = _llmConfig.value.copy(accentTheme = theme.name)
+        viewModelScope.launch {
+            settingsRepository.updateConfig { current ->
+                current.copy(accentTheme = theme.name)
+            }
+        }
+    }
+
+    /** Persists the Material You dynamic-colour toggle. */
+    fun updateDynamicColor(enabled: Boolean) {
+        _llmConfig.value = _llmConfig.value.copy(useDynamicColor = enabled)
+        viewModelScope.launch {
+            settingsRepository.updateConfig { current ->
+                current.copy(useDynamicColor = enabled)
             }
         }
     }

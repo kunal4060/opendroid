@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -59,7 +60,10 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import android.content.Context
+import android.os.Build
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -1952,6 +1956,122 @@ fun SettingsScreen(
                                     checkedTrackColor = TextPrimary.copy(alpha = 0.5f)
                                 )
                             )
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(BorderColor)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // ── Accent colour picker (A4) ──────────────────────
+                        // Writes LLMConfig.accentTheme via the ViewModel →
+                        // DataStore; MainActivity feeds it back into
+                        // OpenDroidTheme, which re-resolves every accent
+                        // token — the whole app re-skins on recomposition.
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = "Accent Colour",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = if (config.useDynamicColor) {
+                                    "Dynamic Colour is on — wallpaper colours override the accent."
+                                } else {
+                                    "Applied across the whole app, instantly."
+                                },
+                                fontSize = 12.sp,
+                                color = TextSecondary
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                AccentTheme.entries.forEach { theme ->
+                                    val values = theme.values(config.isDarkMode)
+                                    val selected = !config.useDynamicColor &&
+                                        AccentTheme.fromId(config.accentTheme) == theme
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape)
+                                            .background(values.marks)
+                                            .border(
+                                                width = if (selected) 2.dp else 1.dp,
+                                                color = if (selected) TextPrimary else BorderColor,
+                                                shape = CircleShape
+                                            )
+                                            .clickable(enabled = !config.useDynamicColor) {
+                                                viewModel.updateAccentTheme(theme)
+                                            }
+                                            .semantics { contentDescription = theme.displayName },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (selected) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Check,
+                                                contentDescription = null,
+                                                tint = values.onFill,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = AccentTheme.fromId(config.accentTheme).displayName,
+                                fontSize = 12.sp,
+                                color = TextSecondary
+                            )
+                        }
+
+                        // Material You exists only on Android 12 (API 31)+ —
+                        // the toggle is offered only where the platform
+                        // supports it.
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(1.dp)
+                                    .background(BorderColor)
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Dynamic Colour",
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = TextPrimary
+                                    )
+                                    Text(
+                                        text = "Material You — take accent colours from your wallpaper (Android 12+).",
+                                        fontSize = 12.sp,
+                                        color = TextSecondary
+                                    )
+                                }
+                                Switch(
+                                    checked = config.useDynamicColor,
+                                    onCheckedChange = { viewModel.updateDynamicColor(it) },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = TextPrimary,
+                                        checkedTrackColor = TextPrimary.copy(alpha = 0.5f)
+                                    )
+                                )
+                            }
                         }
                         }
                         }
