@@ -1,5 +1,7 @@
 package com.opendroid.ai.core.memory
 
+import android.util.Log
+import com.opendroid.ai.core.memory.graph.PersonalGrowthEngine
 import com.opendroid.ai.data.models.ChatMessage
 import com.opendroid.ai.data.models.Memory
 import com.opendroid.ai.data.models.MemoryType
@@ -9,9 +11,12 @@ import javax.inject.Singleton
 
 @Singleton
 class MemoryExtractor @Inject constructor(
-    private val memoryRepository: MemoryRepository
+    private val memoryRepository: MemoryRepository,
+    private val personalGrowthEngine: PersonalGrowthEngine
 ) {
     companion object {
+        private const val TAG = "MemoryExtractor"
+
         private val MEMORY_BLACKLIST = listOf(
             "is not registered",
             "invalid_action",
@@ -52,7 +57,15 @@ class MemoryExtractor @Inject constructor(
         Regex("my phone number is ([0-9+\\-]+)", RegexOption.IGNORE_CASE) to "user_phone"
     )
 
-    suspend fun extractFacts(messages: List<ChatMessage>) {
+    /**
+     * Extracts facts from [messages]. [sessionId] is the chat session the
+     * messages belong to (when the caller knows it — the agent layer does);
+     * it is stored as provenance on the knowledge-graph node recorded for
+     * each fact, so the Memory screen can later answer "why do you know
+     * this?" with the real extraction path. Additive: existing callers that
+     * don't know a session pass nothing.
+     */
+    suspend fun extractFacts(messages: List<ChatMessage>, sessionId: String? = null) {
         messages.forEach { msg ->
             if (msg.sender == ChatMessage.Sender.USER) {
                 // Heuristic pattern checking
@@ -61,9 +74,7 @@ class MemoryExtractor @Inject constructor(
                     if (match != null) {
                         val value = match.groupValues[1].trim()
                         if (shouldStoreInSemanticMemory(key) && shouldStoreInSemanticMemory(value)) {
-                            memoryRepository.saveMemory(
-                                Memory(key = key, value = value, type = MemoryType.SEMANTIC)
-                            )
+                            storeExtractedFact(key, value, msg, sessionId)
                         }
                     }
                 }
@@ -73,9 +84,7 @@ class MemoryExtractor @Inject constructor(
                 if (wifeMatch != null) {
                     val value = wifeMatch.groupValues[1].trim()
                     if (shouldStoreInSemanticMemory("wife_name") && shouldStoreInSemanticMemory(value)) {
-                        memoryRepository.saveMemory(
-                            Memory(key = "wife_name", value = value, type = MemoryType.SEMANTIC)
-                        )
+                        storeExtractedFact("wife_name", value, msg, sessionId)
                     }
                 }
 
@@ -83,12 +92,38 @@ class MemoryExtractor @Inject constructor(
                 if (husbandMatch != null) {
                     val value = husbandMatch.groupValues[1].trim()
                     if (shouldStoreInSemanticMemory("husband_name") && shouldStoreInSemanticMemory(value)) {
-                        memoryRepository.saveMemory(
-                            Memory(key = "husband_name", value = value, type = MemoryType.SEMANTIC)
-                        )
+                        storeExtractedFact("husband_name", value, msg, sessionId)
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * Persists an extracted fact exactly as before (plain semantic row) and
+     * additionally records its provenance in the knowledge graph. The plain
+     * row has no field for origin, so without the graph node a chat-learned
+     * fact could never show where it came from. A provenance failure must
+     * never lose the fact itself, hence the guarded second write.
+     */
+    private suspend fun storeExtractedFact(
+        key: String,
+        value: String,
+        sourceMessage: ChatMessage,
+        sessionId: String?
+    ) {
+        memoryRepository.saveMemory(
+            Memory(key = key, value = value, type = MemoryType.SEMANTIC)
+        )
+        try {
+            personalGrowthEngine.recordChatExtractedFact(
+                factKey = key,
+                factValue = value,
+                sessionId = sessionId,
+                sourceMessageTimestamp = sourceMessage.timestamp
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to record provenance for extracted fact '$key': ${e.message}")
         }
     }
 }

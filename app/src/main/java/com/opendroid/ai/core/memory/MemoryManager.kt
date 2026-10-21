@@ -54,13 +54,19 @@ class MemoryManager @Inject constructor(
         workingMemory.addMessage(message)
         episodicMemory.storeMessage(message, sessionId)
 
-        // Automatically extract facts from the latest conversation turn
+        // Automatically extract facts from the latest conversation turn.
+        // The session id travels with the extraction so facts learned here
+        // carry real provenance (see MemoryExtractor).
         val recent = conversationRepository.getLastMessages(sessionId, 5)
-        extractFacts(recent)
+        extractFacts(recent, sessionId)
     }
 
     suspend fun extractFacts(conversation: List<ChatMessage>) {
         memoryExtractor.extractFacts(conversation)
+    }
+
+    suspend fun extractFacts(conversation: List<ChatMessage>, sessionId: String?) {
+        memoryExtractor.extractFacts(conversation, sessionId)
     }
 
     suspend fun recall(query: String): List<Memory> {

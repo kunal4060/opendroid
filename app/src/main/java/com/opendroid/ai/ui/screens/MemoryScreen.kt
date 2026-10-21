@@ -13,6 +13,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
@@ -29,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.opendroid.ai.core.memory.graph.KnowledgeCategory
 import com.opendroid.ai.core.memory.graph.KnowledgeNode
+import com.opendroid.ai.core.memory.graph.MemoryProvenance
 import com.opendroid.ai.core.memory.graph.MemoryTier
 import com.opendroid.ai.data.models.ChatMessage
 import com.opendroid.ai.data.models.Macro
@@ -36,9 +40,14 @@ import com.opendroid.ai.data.models.Memory
 import com.opendroid.ai.data.models.MemoryType
 import com.opendroid.ai.ui.theme.*
 import com.opendroid.ai.ui.viewmodel.MemoryViewModel
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+/** Storage-key prefix for knowledge-graph node rows; mirrors PersonalGrowthEngine. */
+private const val PKG_NODE_KEY_PREFIX = "pkg_node_"
 
 enum class MemoryScreenTab(val title: String) {
     GROWTH_GRAPH("GROWTH GRAPH"),
@@ -656,7 +665,17 @@ fun SemanticMemoryView(
                 items(filteredMemories) { mem ->
                     MemoryItemCard(
                         memory = mem,
-                        onDelete = { viewModel.deleteMemory(mem.key) }
+                        onDelete = {
+                            // Knowledge-graph node rows must be deleted through
+                            // the engine: a plain row delete would leave a
+                            // Level 4 secret in the Keystore, and the node
+                            // would resurrect from it in the next snapshot.
+                            if (mem.key.startsWith(PKG_NODE_KEY_PREFIX)) {
+                                viewModel.deleteKnowledgeNode(mem.key.removePrefix(PKG_NODE_KEY_PREFIX))
+                            } else {
+                                viewModel.deleteMemory(mem.key)
+                            }
+                        }
                     )
                 }
             }
@@ -718,6 +737,7 @@ fun MemoryItemCard(
                     fontSize = 9.sp,
                     color = TextSecondary
                 )
+                MemoryRowProvenance(memory = memory, onDelete = onDelete)
             }
             Spacer(modifier = Modifier.width(16.dp))
             IconButton(onClick = onDelete) {
@@ -726,6 +746,150 @@ fun MemoryItemCard(
                     contentDescription = "Delete Memory",
                     tint = TextSecondary.copy(alpha = 0.6f)
                 )
+            }
+        }
+    }
+}
+
+/**
+ * "Why do you know this?" for a knowledge-graph node. The text comes from the
+ * node's stored origin ([MemoryProvenance]) — if none was recorded, the panel
+ * says so instead of inventing one. Delete goes through the same real path as
+ * the card's delete (PersonalGrowthEngine.deleteNode via the ViewModel), so a
+ * memory deleted here is gone from the graph and from recall.
+ */
+@Composable
+fun MemoryProvenancePanel(
+    node: KnowledgeNode,
+    onDelete: () -> Unit
+) {
+    val dateFormat = remember { SimpleDateFormat("d MMM yyyy, h:mm a", Locale.getDefault()) }
+    val formatDate: (Long) -> String = remember(dateFormat) {
+        { millis -> dateFormat.format(Date(millis)) }
+    }
+
+    val rows = buildList {
+        node.origin?.let { origin ->
+            if (origin.createdAt > 0L) add("First learned" to formatDate(origin.createdAt))
+            origin.sessionId?.let { add("Chat session" to it) }
+        }
+        add("Last updated" to formatDate(node.lastUpdated))
+        if (node.accessCount > 1) add("Times observed" to node.accessCount.toString())
+        if (node.tier == MemoryTier.LEARNED_PATTERN) {
+            add("Confidence" to "${(node.confidence * 100).toInt()}%")
+        }
+    }
+
+    ProvenanceExpander(
+        headline = MemoryProvenance.headline(node, formatDate),
+        rows = rows,
+        onDelete = onDelete
+    )
+}
+
+/**
+ * Provenance for a plain semantic-memory row (Semantic tab). Rows that are
+ * actually knowledge-graph nodes carry their origin inside the node JSON and
+ * get the full panel; other rows never had their creation path recorded, so
+ * they get the honest fallback — no reconstructed story.
+ */
+@Composable
+fun MemoryRowProvenance(
+    memory: Memory,
+    onDelete: () -> Unit
+) {
+    val node = remember(memory.key, memory.value) {
+        if (memory.key.startsWith(PKG_NODE_KEY_PREFIX)) {
+            try {
+                Json { ignoreUnknownKeys = true }.decodeFromString<KnowledgeNode>(memory.value)
+            } catch (e: Exception) {
+                null
+            }
+        } else {
+            null
+        }
+    }
+
+    if (node != null) {
+        MemoryProvenancePanel(node = node, onDelete = onDelete)
+    } else {
+        ProvenanceExpander(
+            headline = MemoryProvenance.NOT_RECORDED_HEADLINE,
+            rows = emptyList(),
+            onDelete = onDelete
+        )
+    }
+}
+
+@Composable
+private fun ProvenanceExpander(
+    headline: String,
+    rows: List<Pair<String, String>>,
+    onDelete: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        TextButton(
+            onClick = { expanded = !expanded },
+            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.HelpOutline,
+                contentDescription = null,
+                tint = AccentCyan,
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = "Why do you know this?",
+                fontSize = 11.sp,
+                color = AccentCyan,
+                fontFamily = FontFamily.Monospace
+            )
+            Icon(
+                imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = if (expanded) "Hide origin" else "Show origin",
+                tint = AccentCyan,
+                modifier = Modifier.size(14.dp)
+            )
+        }
+
+        AnimatedVisibility(visible = expanded) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 4.dp, top = 2.dp, bottom = 2.dp)
+            ) {
+                Text(
+                    text = headline,
+                    fontSize = 12.sp,
+                    color = TextPrimary
+                )
+                rows.forEach { (label, value) ->
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Text(
+                        text = "$label: $value",
+                        fontSize = 10.sp,
+                        color = TextSecondary,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDelete) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = null,
+                            tint = AccentRed,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Delete this memory", fontSize = 11.sp, color = AccentRed)
+                    }
+                }
             }
         }
     }
@@ -1242,6 +1406,9 @@ fun KnowledgeNodeCard(
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(6.dp))
+            MemoryProvenancePanel(node = node, onDelete = onDelete)
 
             if (node.tier == MemoryTier.LEARNED_PATTERN) {
                 Spacer(modifier = Modifier.height(10.dp))

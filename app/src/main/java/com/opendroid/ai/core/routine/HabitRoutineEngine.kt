@@ -5,7 +5,9 @@ import android.util.Log
 import com.opendroid.ai.actions.base.ActionResult
 import com.opendroid.ai.core.agent.ActionSequenceExecutor
 import com.opendroid.ai.core.memory.graph.KnowledgeCategory
+import com.opendroid.ai.core.memory.graph.MemoryOrigin
 import com.opendroid.ai.core.memory.graph.MemoryTier
+import com.opendroid.ai.core.memory.graph.OriginKind
 import com.opendroid.ai.core.memory.graph.PersonalGrowthEngine
 import com.opendroid.ai.data.db.dao.HabitDao
 import com.opendroid.ai.data.db.dao.MacroDao
@@ -237,7 +239,14 @@ class HabitRoutineEngine @Inject constructor(
                     label = routine.name,
                     summary = "Detected routine: ${routine.name} (${routine.triggerLabel}) - ${routine.description}",
                     category = KnowledgeCategory.TASK_ROUTINE,
-                    properties = mapOf("routineId" to routine.id, "confidence" to routine.confidence.toString())
+                    properties = mapOf("routineId" to routine.id, "confidence" to routine.confidence.toString()),
+                    // This node is machine-detected, not user-stated — its
+                    // provenance must not claim the user asked for it.
+                    origin = MemoryOrigin(
+                        kind = OriginKind.TASK_PATTERN,
+                        detail = "Detected routine · ${routine.triggerLabel}",
+                        createdAt = System.currentTimeMillis()
+                    )
                 )
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to update PKG for routine ${routine.id}: ${e.message}")
