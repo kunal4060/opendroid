@@ -65,6 +65,7 @@ object OpenDroidRoutes {
     const val SOCIAL = "social"
     const val PERSONAS = "personas"
     const val SCHEDULES = "schedules"
+    const val KNOWLEDGE_BASE = "knowledge_base"
 }
 
 /**
@@ -209,6 +210,9 @@ fun OpenDroidNavigation(
                 },
                 onNavigateToSchedules = {
                     navController.navigate(OpenDroidRoutes.SCHEDULES)
+                },
+                onNavigateToKnowledgeBase = {
+                    navController.navigate(OpenDroidRoutes.KNOWLEDGE_BASE)
                 },
                 pendingExternalLaunch = pendingExternalLaunch,
                 onExternalLaunchClaim = { launch ->
@@ -355,6 +359,16 @@ fun OpenDroidNavigation(
                 }
             )
         }
+
+        composable(OpenDroidRoutes.KNOWLEDGE_BASE) {
+            val knowledgeBaseViewModel: KnowledgeBaseViewModel = hiltViewModel()
+            KnowledgeBaseScreen(
+                viewModel = knowledgeBaseViewModel,
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
     }
 }
 
@@ -386,6 +400,7 @@ fun MainDashboard(
     onNavigateToActionLearning: () -> Unit = {},
     onNavigateToPersonas: () -> Unit = {},
     onNavigateToSchedules: () -> Unit = {},
+    onNavigateToKnowledgeBase: () -> Unit = {},
     pendingExternalLaunch: ExternalLaunch? = null,
     onExternalLaunchClaim: (ExternalLaunch) -> Boolean = { false }
 ) {
@@ -591,7 +606,8 @@ fun MainDashboard(
                         onNavigateToCrashLog = onNavigateToCrashLog,
                         onNavigateToRoutines = onNavigateToRoutines,
                         onNavigateToActionLearning = onNavigateToActionLearning,
-                        onNavigateToPersonas = onNavigateToPersonas
+                        onNavigateToPersonas = onNavigateToPersonas,
+                        onNavigateToKnowledgeBase = onNavigateToKnowledgeBase
                     )
                 }
             }

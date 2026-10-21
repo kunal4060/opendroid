@@ -144,6 +144,7 @@ fun ChatScreen(
     // persona bound to this chat (null = default prompt).
     val personas by viewModel.personas.collectAsState()
     val activePersona by viewModel.activePersona.collectAsState()
+    val documentsScopeEnabled by viewModel.documentsScopeEnabled.collectAsState()
     var showPersonaPicker by remember { mutableStateOf(false) }
     // A10 limited state: no usable provider configured (e.g. onboarding's
     // provider stage was skipped) — the banner stays until setup exists.
@@ -722,6 +723,16 @@ fun ChatScreen(
                     ResearchModeChip(
                         active = researchMode,
                         onToggle = { viewModel.setResearchMode(!researchMode) }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    // Documents scope chip (D4): while on, sends are
+                    // grounded in the local knowledge base with cited
+                    // excerpts appended by the view model.
+                    com.opendroid.ai.ui.components.DocumentsScopeChip(
+                        enabled = documentsScopeEnabled,
+                        onClick = {
+                            viewModel.setDocumentsScopeEnabled(!documentsScopeEnabled)
+                        }
                     )
                 }
 

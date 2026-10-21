@@ -23,6 +23,7 @@ import com.opendroid.ai.core.llm.ModelFetcher
 import com.opendroid.ai.core.llm.OnDeviceBackend
 import com.opendroid.ai.core.llm.OnDeviceModelRegistry
 import com.opendroid.ai.core.llm.ProviderCatalog
+import com.opendroid.ai.core.rag.KnowledgeBaseRepository
 import com.opendroid.ai.core.share.SharedContent
 import com.opendroid.ai.core.share.SharedImageRef
 import com.opendroid.ai.core.share.SharedImageStore
@@ -82,7 +83,8 @@ class ChatViewModel @Inject constructor(
     private val pendingAssistantCommand: com.opendroid.ai.core.assistant.PendingAssistantCommand,
     private val researchChatRunner: com.opendroid.ai.core.research.ResearchChatRunner,
     private val researchRepository: com.opendroid.ai.core.research.ResearchRepository,
-    private val voiceSessionStateStore: com.opendroid.ai.core.voice.VoiceSessionStateStore
+    private val voiceSessionStateStore: com.opendroid.ai.core.voice.VoiceSessionStateStore,
+    private val knowledgeBaseRepository: KnowledgeBaseRepository
 ) : ViewModel() {
 
     val llmConfig: StateFlow<LLMConfig> = settingsRepository.llmConfig
@@ -916,6 +918,19 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    // ── Document scope (D4) ─────────────────────────────────────────
+    // The "Ask my documents" chip: while on, plain sends are grounded in
+    // the local knowledge base — retrieved, cited excerpts are appended
+    // to the outgoing query (the same injection shape B1 uses for file
+    // text). In-memory only; the scope is a per-session-of-use choice.
+
+    private val _documentsScopeEnabled = MutableStateFlow(false)
+    val documentsScopeEnabled: StateFlow<Boolean> = _documentsScopeEnabled
+
+    fun setDocumentsScopeEnabled(enabled: Boolean) {
+        _documentsScopeEnabled.value = enabled
+    }
+
     /**
      * Sends [query] through the agent. Returns false without dispatching
      * when there is currently no route that could answer — offline with no
@@ -936,6 +951,21 @@ class ChatViewModel @Inject constructor(
             return sendResearchMessage(query, sessionId, configOverrideFor(session))
         }
         if (pendingImages.isEmpty()) {
+            if (_documentsScopeEnabled.value) {
+                val override = configOverrideFor(session)
+                viewModelScope.launch {
+                    val contextBlock = runCatching {
+                        knowledgeBaseRepository.buildChatContext(query)
+                    }.getOrNull()
+                    val grounded = if (contextBlock != null) {
+                        "$query\n\n$contextBlock"
+                    } else {
+                        query
+                    }
+                    agentLoop.processQuery(grounded, context, sessionId, override)
+                }
+                return true
+            }
             agentLoop.processQuery(query, context, sessionId, configOverrideFor(session))
             return true
         }
