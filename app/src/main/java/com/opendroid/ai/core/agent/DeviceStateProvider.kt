@@ -20,6 +20,8 @@ import java.util.Locale
 import java.util.TimeZone
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Reads REAL device sensor state for WiFi, connectivity, battery,
@@ -41,6 +43,26 @@ class DeviceStateProvider @Inject constructor(
 
     // Listener for state changes — set by WorkingMemory to receive updates
     var onStateChanged: (() -> Unit)? = null
+
+    // Live connectivity as a Flow, kept current by the NetworkCallback below.
+    // Seeded from a direct read so collectors start from the truth, then driven
+    // by callback events (airplane mode, WiFi/cellular handover, ...).
+    private val _isOnline = MutableStateFlow(isInternetAvailable())
+
+    /** True while the device has validated internet connectivity. */
+    val isOnline: StateFlow<Boolean> = _isOnline
+
+    init {
+        // The callback machinery existed but nothing ever registered it, so
+        // onStateChanged never fired in production. Register here — this is a
+        // singleton, so the callback lives for the process lifetime; the
+        // registration itself is guarded against double-registration.
+        registerListeners()
+    }
+
+    private fun refreshConnectivityFlow() {
+        _isOnline.value = isInternetAvailable()
+    }
 
     // ── WiFi ────────────────────────────────────────────
 
@@ -322,11 +344,13 @@ class DeviceStateProvider @Inject constructor(
 
         override fun onAvailable(network: Network) {
             Log.d(TAG, "Network became available")
+            refreshConnectivityFlow()
             onStateChanged?.invoke()
         }
 
         override fun onLost(network: Network) {
             Log.d(TAG, "Network lost")
+            refreshConnectivityFlow()
             onStateChanged?.invoke()
         }
 
@@ -335,11 +359,13 @@ class DeviceStateProvider @Inject constructor(
             networkCapabilities: NetworkCapabilities
         ) {
             Log.d(TAG, "Network capabilities changed")
+            refreshConnectivityFlow()
             onStateChanged?.invoke()
         }
     }
 
     fun registerListeners() {
+        if (registeredNetworkCallback != null) return
         try {
             val connectivityManager = context
                 .getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager

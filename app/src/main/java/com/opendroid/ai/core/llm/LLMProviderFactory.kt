@@ -2,6 +2,7 @@ package com.opendroid.ai.core.llm
 
 import android.util.Log
 import com.opendroid.ai.actions.ActionDispatcher
+import com.opendroid.ai.core.agent.ActionRiskPolicy
 import com.opendroid.ai.core.agent.ActionSchema
 import com.opendroid.ai.core.agent.DeviceStateProvider
 import com.opendroid.ai.core.agent.IntentClassifier
@@ -45,6 +46,7 @@ class LLMProviderFactory @Inject constructor(
     private val liteRTLMProvider: Provider<LiteRTLMProvider>,
     private val hybridOnDeviceProvider: Provider<HybridOnDeviceProvider>,
     private val settingsRepository: SettingsRepository,
+    private val lastServedProviderTracker: LastServedProviderTracker,
     private val onDeviceLatencyTracker: OnDeviceLatencyTracker,
     private val actionDispatcher: dagger.Lazy<ActionDispatcher>,
     private val intentClassifier: dagger.Lazy<IntentClassifier>,
@@ -79,7 +81,8 @@ class LLMProviderFactory @Inject constructor(
         return WrappedLLMProvider(
             delegate = rawProvider,
             configProvider = { settingsRepository.llmConfig.first() },
-            requestRewriter = ::rewriteRequestIfNeeded
+            requestRewriter = ::rewriteRequestIfNeeded,
+            onServed = { servedName -> lastServedProviderTracker.record(servedName) }
         )
     }
 
@@ -109,7 +112,30 @@ class LLMProviderFactory @Inject constructor(
             val provider = getProviderByName(providerName)
             provider.takeIf { runCatching { it.isAvailable() }.getOrDefault(false) }
         }
-        return listOf(active) + availableFallbacks
+        val providers = listOf(active) + availableFallbacks
+
+        // Offline last-resort (A8): when connectivity is down and the active
+        // provider is a cloud provider, an available on-device provider is
+        // appended as the final fallback even if the user never configured
+        // it — otherwise going offline would only ever produce cloud errors,
+        // and the routing badge's "will answer on-device" state would be a
+        // lie. The append stays behind the same ActionRiskPolicy gate as
+        // explicit fallbacks: for high-risk action classes automatic
+        // fallback is denied, the on-device provider is NOT appended, and
+        // the plan stays on the configured provider (which then fails
+        // honestly) rather than silently switching trust boundaries.
+        val offline = !deviceStateProvider.isInternetAvailable()
+        if (offline &&
+            !ProviderCatalog.isOnDevice(activeName) &&
+            ActionRiskPolicy.allowsAutomaticFallback(risk) &&
+            providers.none { ProviderCatalog.isOnDevice(it.name) }
+        ) {
+            val onDevice = getProviderByName(ProviderCatalog.ON_DEVICE)
+            if (runCatching { onDevice.isAvailable() }.getOrDefault(false)) {
+                return providers + onDevice
+            }
+        }
+        return providers
     }
 
     suspend fun recordPlanningLatency(response: LLMResponse): LatencyBudgetResult? =
@@ -183,7 +209,8 @@ class WrappedLLMProvider(
     private val delegate: LLMProvider,
     private val configProvider: suspend () -> LLMConfig,
     private val requestRewriter: (LLMRequest) -> LLMRequest = { it },
-    private val retryRuntime: RetryRuntime = RetryRuntime()
+    private val retryRuntime: RetryRuntime = RetryRuntime(),
+    private val onServed: ((String) -> Unit)? = null
 ) : LLMProvider {
     override val name: String get() = delegate.name
     override val availableModels: List<String> get() = delegate.availableModels
@@ -192,7 +219,12 @@ class WrappedLLMProvider(
         val resolved = resolveRequest(request)
         val registrations = registerSecrets(resolved)
         return try {
-            executeWithRetry(resolved) { delegate.complete(it) }
+            val response = executeWithRetry(resolved) { delegate.complete(it) }
+            // This wrapper observes every completed response, whichever
+            // provider in a fallback chain produced it — record who served
+            // so routing state (A8) can report the actual answerer.
+            onServed?.invoke(name)
+            response
         } finally {
             registrations.asReversed().forEach(AutoCloseable::close)
         }
@@ -227,6 +259,9 @@ class WrappedLLMProvider(
                     attempt++
                 }
             }
+            // Reached only via the success break above (failures throw out):
+            // the stream completed with content, so this provider served.
+            onServed?.invoke(name)
         } finally {
             registrations.asReversed().forEach(AutoCloseable::close)
         }
