@@ -27,6 +27,13 @@ class GemmaProvider @Inject constructor(
     override val name: String = "Gemma 4 (On-device)"
     override val availableModels: List<String> = listOf("gemma-4-on-device", "gemma-3n-multimodal")
 
+    private companion object {
+        /** The model the default (STABLE) AI Core client actually serves. */
+        const val DEFAULT_CLIENT_MODEL = "gemma-4-on-device"
+        /** The only id that gets its own (PREVIEW-stage) client. */
+        const val PREVIEW_CLIENT_MODEL = "gemma-3n-multimodal"
+    }
+
     private fun getActiveModelName(): String {
         return "gemma-on-device"
     }
@@ -37,7 +44,7 @@ class GemmaProvider @Inject constructor(
      * - gemma-3n-multimodal: Uses PREVIEW stage with FAST preference for multimodal support
      */
     private fun getClientForModel(modelId: String): GenerativeModel {
-        return if (modelId == "gemma-3n-multimodal") {
+        return if (modelId == PREVIEW_CLIENT_MODEL) {
             val config = generationConfig {
                 modelConfig = modelConfig {
                     releaseStage = ModelReleaseStage.PREVIEW
@@ -53,6 +60,17 @@ class GemmaProvider @Inject constructor(
     override suspend fun complete(request: LLMRequest): LLMResponse {
         val startTime = System.currentTimeMillis()
         val selectedModel = request.model?.takeIf { it.isNotBlank() } ?: ProviderCatalog.defaultModel(name)
+        // Only the PREVIEW id gets its own client; every other id —
+        // including a LiteRT model id handed over by Hybrid fallback — is
+        // served by the default AI Core client. Label the response with
+        // the model that actually ran: usage records, latency tiering and
+        // served-model tracking key on response.model, and previously
+        // credited the requested LiteRT model for AI Core's answer.
+        val servedModel = if (selectedModel == PREVIEW_CLIENT_MODEL) {
+            selectedModel
+        } else {
+            DEFAULT_CLIENT_MODEL
+        }
         val systemPrompt = request.systemPrompt
         val messages = request.messages
         val prompt = buildPrompt(systemPrompt, messages, request.tools?.map { ToolDefinition(it.name, it.description, it.parameters) } ?: emptyList())
@@ -83,7 +101,7 @@ class GemmaProvider @Inject constructor(
                     tokensUsed = PromptBudget.estimateTokens(prompt) + outputText.length / 4,
                     promptTokens = PromptBudget.estimateTokens(prompt),
                     completionTokens = outputText.length / 4,
-                    model = selectedModel,
+                    model = servedModel,
                     provider = name,
                     latencyMs = System.currentTimeMillis() - startTime,
                     usageEstimated = true
@@ -194,6 +212,11 @@ class GemmaProvider @Inject constructor(
             }
             val previewClient = Generation.getClient(previewConfig)
             previewClient.checkStatus() == 3
+        } catch (e: CancellationException) {
+            // Cancellation is not unavailability: Hybrid's probes must not
+            // read a cancelled check as "backend down" and go on to try the
+            // other backend on a cancelled call.
+            throw e
         } catch (e: Exception) {
             false
         }
