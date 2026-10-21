@@ -51,7 +51,18 @@ class LLMProviderFactory @Inject constructor(
     private val deviceStateProvider: DeviceStateProvider
 ) {
 
-    fun getProviderByName(name: String): LLMProvider {
+    fun getProviderByName(name: String): LLMProvider =
+        getProviderByName(name, configOverride = null)
+
+    /**
+     * Builds the provider for [name]. When [configOverride] is non-null (a
+     * per-chat snapshot resolved from a session's model override, feature
+     * A2), the returned provider resolves its model/key/endpoint from that
+     * snapshot for every request instead of the live global config - the
+     * global config is never read or mutated for the override task, so a
+     * per-chat pick cannot race or leak into other chats.
+     */
+    fun getProviderByName(name: String, configOverride: LLMConfig?): LLMProvider {
         val rawProvider = when (name) {
             "Anthropic Claude" -> claudeProvider.get()
             "OpenAI" -> openAIProvider.get()
@@ -78,7 +89,11 @@ class LLMProviderFactory @Inject constructor(
         }
         return WrappedLLMProvider(
             delegate = rawProvider,
-            configProvider = { settingsRepository.llmConfig.first() },
+            configProvider = if (configOverride != null) {
+                { configOverride }
+            } else {
+                { settingsRepository.llmConfig.first() }
+            },
             requestRewriter = ::rewriteRequestIfNeeded
         )
     }
@@ -86,6 +101,19 @@ class LLMProviderFactory @Inject constructor(
     suspend fun getActiveProvider(): LLMProvider {
         val config = settingsRepository.llmConfig.first()
         return getProviderByName(ProviderCatalog.canonicalName(config.activeProvider))
+    }
+
+    /**
+     * The active provider for a task carrying a per-chat config snapshot
+     * (feature A2): the provider named by the snapshot, bound to the
+     * snapshot. A null [configOverride] is exactly [getActiveProvider].
+     */
+    suspend fun getActiveProvider(configOverride: LLMConfig?): LLMProvider {
+        if (configOverride == null) return getActiveProvider()
+        return getProviderByName(
+            ProviderCatalog.canonicalName(configOverride.activeProvider),
+            configOverride
+        )
     }
 
     /**

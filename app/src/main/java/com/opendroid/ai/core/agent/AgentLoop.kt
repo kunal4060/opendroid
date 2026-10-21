@@ -13,6 +13,7 @@ import com.opendroid.ai.core.memory.MemoryManager
 import com.opendroid.ai.core.memory.ExecutionHistoryPrivacy
 import com.opendroid.ai.data.models.AutoMode
 import com.opendroid.ai.data.models.ChatMessage
+import com.opendroid.ai.data.models.LLMConfig
 import com.opendroid.ai.data.models.Plan
 import com.opendroid.ai.data.models.PlanStatus
 import com.opendroid.ai.data.models.PlanStep
@@ -218,8 +219,19 @@ class AgentLoop @Inject constructor(
      * notion of "which chat" a spoken query belongs to) pass null, which preserves the
      * pre-multi-session behavior: a null session is always assumed to answer whatever
      * prompt is currently pending, and otherwise falls back to resolving "current".
+     *
+     * @param configOverride Per-chat LLM config snapshot (feature A2), resolved by
+     * the caller from the session's persisted model override. When non-null, this
+     * task's answering provider (simple replies and plan generation) is built from
+     * the snapshot instead of the global config. Null (every non-chat caller)
+     * preserves the global-config behaviour exactly.
      */
-    fun processQuery(query: String, context: Context, explicitSessionId: String? = null) {
+    fun processQuery(
+        query: String,
+        context: Context,
+        explicitSessionId: String? = null,
+        configOverride: LLMConfig? = null
+    ) {
         // processQuery is also the delivery path for a reply to a pending
         // awaitUserResponse() prompt (see below). That's ONLY true when this message comes
         // from the SAME session the waiting task is pinned to (waitingSessionId) - a
@@ -306,7 +318,7 @@ class AgentLoop @Inject constructor(
 
                 // Serialize query handling so contextual follow-up state cannot race.
                 queryMutex.withLock {
-                    processQueryLocked(userMsg, query, context, sessionId)
+                    processQueryLocked(userMsg, query, context, sessionId, configOverride)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -328,7 +340,12 @@ class AgentLoop @Inject constructor(
      * Falls back to the session's last user message if [requestId] doesn't resolve to
      * one (e.g. a plan re-evaluation failure, whose requestId is a plan id).
      */
-    fun retryRequest(requestId: String, sessionId: String, context: Context) {
+    fun retryRequest(
+        requestId: String,
+        sessionId: String,
+        context: Context,
+        configOverride: LLMConfig? = null
+    ) {
         val waitingSession = waitingSessionId
         if (waitingSession != null && waitingSession != sessionId) {
             abandonWaitingTask(waitingSession)
@@ -347,7 +364,7 @@ class AgentLoop @Inject constructor(
                 } ?: messages.lastOrNull { it.sender == ChatMessage.Sender.USER } ?: return@launch
 
                 queryMutex.withLock {
-                    processQueryLocked(userMsg, userMsg.text, context, sessionId)
+                    processQueryLocked(userMsg, userMsg.text, context, sessionId, configOverride)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -358,7 +375,13 @@ class AgentLoop @Inject constructor(
         currentJob = job
     }
 
-    private suspend fun processQueryLocked(userMsg: ChatMessage, query: String, context: Context, sessionId: String) {
+    private suspend fun processQueryLocked(
+        userMsg: ChatMessage,
+        query: String,
+        context: Context,
+        sessionId: String,
+        configOverride: LLMConfig? = null
+    ) {
                 // Each new task starts with a clean slate: a stale error card from an
                 // earlier request must not outlive the request it described.
                 _chatError.value = null
@@ -436,9 +459,9 @@ class AgentLoop @Inject constructor(
                 // 2. Intent Classification
                 val requiresAction = intentClassifier.requiresAction(query)
                 if (requiresAction) {
-                    generatePlan(userMsg, context, sessionId)
+                    generatePlan(userMsg, context, sessionId, configOverride)
                 } else {
-                    executeSimpleQuery(userMsg, sessionId)
+                    executeSimpleQuery(userMsg, sessionId, configOverride)
                 }
     }
 
@@ -492,11 +515,15 @@ class AgentLoop @Inject constructor(
         _agentState.value = AgentState.Error(error.title())
     }
 
-    private suspend fun executeSimpleQuery(userMsg: ChatMessage, sessionId: String) {
+    private suspend fun executeSimpleQuery(
+        userMsg: ChatMessage,
+        sessionId: String,
+        configOverride: LLMConfig? = null
+    ) {
         val runId = UUID.randomUUID().toString()
         val requestId = userMsg.id
         try {
-            val provider = llmProviderFactory.getActiveProvider()
+            val provider = llmProviderFactory.getActiveProvider(configOverride)
             val relevantContext = memoryManager.getRelevantContext(userMsg.text)
             val autoModeLabel = settingsRepository.llmConfig.first().approvalSettings().mode.name
 
@@ -625,9 +652,14 @@ class AgentLoop @Inject constructor(
         }
     }
 
-    private suspend fun generatePlan(userMsg: ChatMessage, context: Context, sessionId: String) {
+    private suspend fun generatePlan(
+        userMsg: ChatMessage,
+        context: Context,
+        sessionId: String,
+        configOverride: LLMConfig? = null
+    ) {
         try {
-            val provider = llmProviderFactory.getActiveProvider()
+            val provider = llmProviderFactory.getActiveProvider(configOverride)
             val relevantContext = memoryManager.getRelevantContext(userMsg.text)
             val sysPrompt = "${PlanningPrompts.PLANNING_SYSTEM_PROMPT}\n\nContext about user and device:\n$relevantContext"
             
@@ -728,7 +760,7 @@ class AgentLoop @Inject constructor(
                 )
             )
         } catch (e: Exception) {
-            fallbackOrError(userMsg, context, e, sessionId)
+            fallbackOrError(userMsg, context, e, sessionId, configOverride)
         }
     }
 
@@ -743,7 +775,13 @@ class AgentLoop @Inject constructor(
      * Non-LLM planning failures may still degrade to alias/simple chat. Typed
      * [LLMException]s are handled above and must never fall through here.
      */
-    private suspend fun fallbackOrError(userMsg: ChatMessage, context: Context, cause: Throwable, sessionId: String) {
+    private suspend fun fallbackOrError(
+        userMsg: ChatMessage,
+        context: Context,
+        cause: Throwable,
+        sessionId: String,
+        configOverride: LLMConfig? = null
+    ) {
         android.util.Log.e("AgentLoop", "Plan generation failed: ${cause.localizedMessage}", cause)
 
         val lastExecuted = lastExecutedActionsBySession[sessionId]
@@ -770,7 +808,7 @@ class AgentLoop @Inject constructor(
         } catch (e: Exception) {
             android.util.Log.e("AgentLoop", "Failed to log plan generation failure: ${e.localizedMessage}")
         }
-        executeSimpleQuery(userMsg, sessionId)
+        executeSimpleQuery(userMsg, sessionId, configOverride)
     }
 
     fun approveProposedPlan(context: Context, grantActions: Set<String> = emptySet()) {

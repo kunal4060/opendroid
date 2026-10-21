@@ -69,7 +69,7 @@ import androidx.room.TypeConverters
         SocialAutomationRuleEntity::class,
         SocialAuditLogEntity::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -261,6 +261,18 @@ abstract class OpenDroidDatabase : RoomDatabase() {
                 """)
                 database.execSQL("CREATE INDEX IF NOT EXISTS index_habit_routines_status ON habit_routines(status)")
                 database.execSQL("CREATE INDEX IF NOT EXISTS index_habit_routines_lastDetectedAt ON habit_routines(lastDetectedAt)")
+            }
+        }
+
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Feature A2 (per-chat model picker): nullable override columns
+                // on chat_sessions. Purely additive - existing sessions keep
+                // NULL overrides, which resolution treats as "no override,
+                // follow the global default", so no chat changes behaviour
+                // until its user picks a model in that chat.
+                database.execSQL("ALTER TABLE chat_sessions ADD COLUMN providerOverride TEXT DEFAULT NULL")
+                database.execSQL("ALTER TABLE chat_sessions ADD COLUMN modelOverride TEXT DEFAULT NULL")
             }
         }
 

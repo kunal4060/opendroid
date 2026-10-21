@@ -26,7 +26,11 @@ data class ChatSession(
     val title: String,
     val createdAt: Long,
     val updatedAt: Long,
-    val isCurrent: Boolean
+    val isCurrent: Boolean,
+    /** Per-chat model picker override (feature A2); null = follow the global default. */
+    val providerOverride: String? = null,
+    /** Model chosen for [providerOverride] in this chat; null = that provider's usual model. */
+    val modelOverride: String? = null
 )
 
 @Singleton
@@ -152,6 +156,15 @@ class ConversationRepository @Inject constructor(
     }
 
     /**
+     * Sets (or, with both arguments null, clears) the per-chat model override
+     * for [sessionId] (feature A2). This is the ONLY write path for the
+     * override columns; the global Settings config is never touched here.
+     */
+    suspend fun updateSessionModelOverride(sessionId: String, provider: String?, model: String?) {
+        chatSessionDao.updateModelOverride(sessionId, provider, model)
+    }
+
+    /**
      * Deletes a session and every message in it. If it was the current session,
      * another existing session becomes current; if none remain, the next call
      * that needs a current session (e.g. the next [insertMessage]) lazily
@@ -215,6 +228,8 @@ class ConversationRepository @Inject constructor(
         title = title,
         createdAt = createdAt,
         updatedAt = updatedAt,
-        isCurrent = isCurrent
+        isCurrent = isCurrent,
+        providerOverride = providerOverride,
+        modelOverride = modelOverride
     )
 }

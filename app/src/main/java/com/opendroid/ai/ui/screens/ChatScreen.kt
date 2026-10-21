@@ -105,6 +105,12 @@ fun ChatScreen(
     val runningSessionId by viewModel.runningSessionId.collectAsState()
     val sessions by viewModel.sessions.collectAsState()
     val llmConfig by viewModel.llmConfig.collectAsState()
+    // Per-chat model picker (A2): the effective provider/model for this chat
+    // (its own override when set, else the account default) and the picker's
+    // registry-backed options.
+    val effectiveProviderModel by viewModel.effectiveProviderModel.collectAsState()
+    val modelPickerState by viewModel.modelPickerState.collectAsState()
+    var showModelPicker by remember { mutableStateOf(false) }
     val currentSessionId = sessions.firstOrNull { it.isCurrent }?.id
     val runningElsewhere = runningSessionId != null && runningSessionId != currentSessionId
 
@@ -461,6 +467,20 @@ fun ChatScreen(
                     .fillMaxSize()
                     .padding(bottom = 80.dp)
             ) {
+                // Model picker chip row (A2): shows the provider + model this
+                // chat will be answered by; tapping opens the per-chat picker.
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    com.opendroid.ai.ui.components.ModelPickerChip(
+                        effective = effectiveProviderModel,
+                        onClick = { showModelPicker = true }
+                    )
+                }
+
                 // Messages List
                 LazyColumn(
                     state = listState,
@@ -712,6 +732,23 @@ fun ChatScreen(
                 }
             }
         }
+    }
+
+    if (showModelPicker) {
+        com.opendroid.ai.ui.components.ModelPickerSheet(
+            state = modelPickerState,
+            effective = effectiveProviderModel,
+            onSelectModel = { provider, model ->
+                viewModel.setSessionModelOverride(provider, model)
+            },
+            onUseAccountDefault = { viewModel.clearSessionModelOverride() },
+            onMakeDefault = { provider, model ->
+                viewModel.setGlobalDefaultModel(provider, model)
+                showModelPicker = false
+            },
+            onExpandProvider = { provider -> viewModel.ensureModelsFetched(provider) },
+            onDismiss = { showModelPicker = false }
+        )
     }
 
     exportSession?.let { session ->

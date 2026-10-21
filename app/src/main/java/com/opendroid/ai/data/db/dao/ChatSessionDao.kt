@@ -39,6 +39,15 @@ interface ChatSessionDao {
     @Query("UPDATE chat_sessions SET title = :title, updatedAt = :timestamp WHERE id = :sessionId")
     suspend fun rename(sessionId: String, title: String, timestamp: Long)
 
+    /**
+     * Writes the per-chat model override (feature A2). Passing null for both
+     * clears the override so the session follows the global default again.
+     * Deliberately does not touch updatedAt: picking a model is not chat
+     * activity and must not reorder the session list.
+     */
+    @Query("UPDATE chat_sessions SET providerOverride = :provider, modelOverride = :model WHERE id = :sessionId")
+    suspend fun updateModelOverride(sessionId: String, provider: String?, model: String?)
+
     @Query("DELETE FROM chat_sessions WHERE id = :sessionId")
     suspend fun delete(sessionId: String)
 }

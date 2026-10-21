@@ -195,6 +195,49 @@ class OpenDroidDatabaseMigrationTest {
         }
     }
 
+    @Test
+    fun `migration 9 to 10 adds nullable session override columns and preserves sessions`() {
+        // Creates a real version-9 database from the exported 9.json schema,
+        // with a session that predates the per-chat model picker (feature A2).
+        helper.createDatabase(databasePath, 9).use { db ->
+            db.execSQL(
+                """
+                INSERT INTO chat_sessions (`id`, `title`, `createdAt`, `updatedAt`, `isCurrent`)
+                VALUES ('session-1', 'Existing chat', 100, 200, 1)
+                """.trimIndent()
+            )
+        }
+
+        // Validates the migrated schema against the exported 10.json.
+        val migrated = helper.runMigrationsAndValidate(
+            databasePath, 10, true, OpenDroidDatabase.MIGRATION_9_10
+        )
+
+        // The pre-existing session survives untouched, and its override
+        // columns are NULL - resolution treats that as "follow the global
+        // default", so the upgrade alone changes no chat's behaviour.
+        migrated.query(
+            "SELECT `title`, `providerOverride`, `modelOverride` FROM chat_sessions WHERE `id` = 'session-1'"
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("Existing chat", cursor.getString(0))
+            assertTrue(cursor.isNull(1))
+            assertTrue(cursor.isNull(2))
+        }
+
+        // The columns are writable (the picker's write path).
+        migrated.execSQL(
+            "UPDATE chat_sessions SET `providerOverride` = 'OpenAI', `modelOverride` = 'gpt-4o' WHERE `id` = 'session-1'"
+        )
+        migrated.query(
+            "SELECT `providerOverride`, `modelOverride` FROM chat_sessions WHERE `id` = 'session-1'"
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("OpenAI", cursor.getString(0))
+            assertEquals("gpt-4o", cursor.getString(1))
+        }
+    }
+
     private class V1SchemaCallback : SupportSQLiteOpenHelper.Callback(1) {
         override fun onCreate(db: SupportSQLiteDatabase) {
             V1_CREATE_STATEMENTS.forEach(db::execSQL)

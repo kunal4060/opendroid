@@ -8,13 +8,30 @@ import com.opendroid.ai.core.agent.AgentState
 import com.opendroid.ai.core.agent.ChatErrorPrimaryAction
 import com.opendroid.ai.core.agent.ChatErrorUiState
 import com.opendroid.ai.core.agent.primaryAction
+import com.opendroid.ai.core.llm.ModelFetchOutcome
+import com.opendroid.ai.core.llm.ModelFetcher
+import com.opendroid.ai.core.llm.OnDeviceBackend
+import com.opendroid.ai.core.llm.OnDeviceModelRegistry
+import com.opendroid.ai.core.llm.ProviderCatalog
+import com.opendroid.ai.data.db.entities.ModelEntity
+import com.opendroid.ai.data.db.entities.ModelStatus
 import com.opendroid.ai.data.models.AutoMode
 import com.opendroid.ai.data.models.ChatMessage
 import com.opendroid.ai.data.models.LLMConfig
+import com.opendroid.ai.data.models.effectiveWithSessionOverride
+import com.opendroid.ai.data.models.isProviderConfiguredForUse
 import com.opendroid.ai.data.models.resolvedAutoMode
+import com.opendroid.ai.data.models.selectedModelFor
+import com.opendroid.ai.data.models.withActiveProvider
+import com.opendroid.ai.data.models.withSelectedModel
 import com.opendroid.ai.data.repository.ChatSession
 import com.opendroid.ai.data.repository.ConversationRepository
+import com.opendroid.ai.data.repository.ModelRepository
 import com.opendroid.ai.data.repository.SettingsRepository
+import com.opendroid.ai.ui.components.EffectiveProviderModel
+import com.opendroid.ai.ui.components.ModelPickerUiState
+import com.opendroid.ai.ui.components.PickerModelOption
+import com.opendroid.ai.ui.components.PickerProviderOption
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -30,6 +47,8 @@ class ChatViewModel @Inject constructor(
     private val agentLoop: AgentLoop,
     private val conversationRepository: ConversationRepository,
     private val settingsRepository: SettingsRepository,
+    private val modelRepository: ModelRepository,
+    private val modelFetcher: dagger.Lazy<ModelFetcher>,
     private val textToSpeechEngine: com.opendroid.ai.core.voice.TextToSpeechEngine
 ) : ViewModel() {
 
@@ -61,6 +80,241 @@ class ChatViewModel @Inject constructor(
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = null
         )
+
+    // ── Per-chat model picker (A2) ─────────────────────────────────────
+    // The current chat's persisted override columns, resolved against the
+    // live global config with the exact resolver the send path uses - the
+    // chip and the request can never disagree about which provider/model
+    // will answer, and an override whose provider lost its key in Settings
+    // falls back to (and displays as) the global default.
+
+    /**
+     * Provider + model the CURRENT chat will actually be answered by, and
+     * whether that comes from a per-chat override. Drives the header chip.
+     */
+    val effectiveProviderModel: StateFlow<EffectiveProviderModel> = combine(
+        llmConfig, sessions
+    ) { config, sessionList ->
+        val current = sessionList.firstOrNull { it.isCurrent }
+        val effective = current?.let {
+            config.effectiveWithSessionOverride(it.providerOverride, it.modelOverride)
+        }
+        val base = effective ?: config
+        val provider = ProviderCatalog.canonicalName(base.activeProvider)
+        EffectiveProviderModel(
+            provider = provider,
+            model = base.selectedModelFor(provider),
+            isOverride = effective != null
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = EffectiveProviderModel(
+            provider = ProviderCatalog.canonicalName(LLMConfig().activeProvider),
+            model = LLMConfig().activeModel,
+            isOverride = false
+        )
+    )
+
+    /** On-device model rows (download states) for the picker's real availability data. */
+    private val downloadedModels: StateFlow<List<ModelEntity>> = modelRepository.allModelsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Canonical provider whose live model list is being fetched for the picker, if any. */
+    private val _fetchingProvider = MutableStateFlow<String?>(null)
+
+    /** Everything the picker sheet renders, built from the real registry/config/DB state. */
+    val modelPickerState: StateFlow<ModelPickerUiState> = combine(
+        llmConfig, downloadedModels, _fetchingProvider
+    ) { config, downloaded, fetching ->
+        ModelPickerUiState(
+            providers = buildPickerProviders(config, downloaded),
+            fetchingProvider = fetching
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = ModelPickerUiState()
+    )
+
+    private fun buildPickerProviders(
+        config: LLMConfig,
+        downloadedModels: List<ModelEntity>
+    ): List<PickerProviderOption> {
+        val downloadedStates = setOf(ModelStatus.DOWNLOADED, ModelStatus.READY, ModelStatus.LOADING)
+        val entitiesById = downloadedModels.associateBy { it.id }
+        val seen = mutableSetOf<String>()
+        return ProviderCatalog.providers.mapNotNull { spec ->
+            // The catalog holds one legacy alias entry whose canonical name
+            // duplicates the on-device provider - list each provider once.
+            val canonical = spec.canonicalName
+            if (!seen.add(canonical)) return@mapNotNull null
+            val onDevice = ProviderCatalog.isOnDevice(canonical)
+            val models = if (onDevice) {
+                buildOnDevicePickerModels(canonical, entitiesById, downloadedModels, downloadedStates)
+            } else {
+                val cached = config.modelCache[canonical].orEmpty()
+                val options = if (cached.isNotEmpty()) {
+                    cached.map { PickerModelOption(id = it.id, displayName = it.displayName) }
+                } else {
+                    val seed = ProviderCatalog.defaultModel(canonical)
+                    listOf(PickerModelOption(id = seed, displayName = seed))
+                }
+                // The model this provider would actually answer with must
+                // always be listed, even before/without a live fetch.
+                val selected = config.selectedModelFor(canonical)
+                if (options.any { it.id == selected }) {
+                    options
+                } else {
+                    listOf(PickerModelOption(id = selected, displayName = selected)) + options
+                }
+            }
+            PickerProviderOption(
+                provider = canonical,
+                displayName = spec.displayName,
+                isOnDevice = onDevice,
+                requiresApiKey = ProviderCatalog.requiresApiKey(canonical),
+                isConfigured = isProviderConfiguredForUse(config, canonical),
+                latencyMs = config.latencyBenchmarks[canonical]
+                    ?: config.latencyBenchmarks[spec.displayName],
+                models = models
+            )
+        }
+    }
+
+    private fun buildOnDevicePickerModels(
+        canonicalProvider: String,
+        entitiesById: Map<String, ModelEntity>,
+        downloadedModels: List<ModelEntity>,
+        downloadedStates: Set<ModelStatus>
+    ): List<PickerModelOption> {
+        val specs = when (canonicalProvider) {
+            "LiteRT-LM (On-device)" -> OnDeviceModelRegistry.liteRTOnly
+            else -> OnDeviceModelRegistry.allModels
+        }
+        val specOptions = specs.map { spec ->
+            when (spec.backend) {
+                // AI Core models are system-provided (Gemini Nano via ML Kit);
+                // there is nothing to download, device support is a runtime
+                // property of the provider itself.
+                OnDeviceBackend.AI_CORE -> PickerModelOption(
+                    id = spec.id,
+                    displayName = spec.displayName,
+                    available = true,
+                    availabilityLabel = "Built-in"
+                )
+                OnDeviceBackend.LITERT_LM -> {
+                    val downloaded = entitiesById[spec.id]?.status in downloadedStates
+                    PickerModelOption(
+                        id = spec.id,
+                        displayName = spec.displayName,
+                        available = downloaded,
+                        availabilityLabel = if (downloaded) null else "Not downloaded"
+                    )
+                }
+            }
+        }
+        // User-imported models live only in the models table; surface the
+        // downloaded ones alongside the catalog specs.
+        val customOptions = downloadedModels
+            .filter { OnDeviceModelRegistry.isCustomId(it.id) && it.status in downloadedStates }
+            .map { PickerModelOption(id = it.id, displayName = it.name, available = true) }
+        val options = specOptions + customOptions
+        // A persisted on-device selection that is neither a registry spec nor
+        // an imported row (e.g. a legacy provider default) still gets listed -
+        // it is what the provider would be asked for.
+        val selected = llmConfig.value.selectedModelFor(canonicalProvider)
+        return if (options.any { it.id == selected }) {
+            options
+        } else {
+            listOf(PickerModelOption(id = selected, displayName = selected)) + options
+        }
+    }
+
+    /**
+     * Applies a per-chat model pick to the CURRENT session only. The global
+     * config is not touched; the pick persists on the session row and is
+     * resolved into a config snapshot at send time.
+     */
+    fun setSessionModelOverride(provider: String, model: String) {
+        viewModelScope.launch {
+            val sessionId = sessions.value.firstOrNull { it.isCurrent }?.id
+                ?: conversationRepository.ensureCurrentSessionId()
+            conversationRepository.updateSessionModelOverride(
+                sessionId,
+                ProviderCatalog.canonicalName(provider),
+                model
+            )
+        }
+    }
+
+    /** Removes the current chat's override so it follows the account default again. */
+    fun clearSessionModelOverride() {
+        viewModelScope.launch {
+            val sessionId = sessions.value.firstOrNull { it.isCurrent }?.id
+                ?: conversationRepository.ensureCurrentSessionId()
+            conversationRepository.updateSessionModelOverride(sessionId, null, null)
+        }
+    }
+
+    /**
+     * Promotes a pick to the account-wide default via the same config
+     * helpers Settings uses, then clears the current chat's override - the
+     * chat now follows the default, which is exactly what was just picked.
+     */
+    fun setGlobalDefaultModel(provider: String, model: String) {
+        viewModelScope.launch {
+            settingsRepository.updateConfig { current ->
+                current.withActiveProvider(provider).withSelectedModel(provider, model)
+            }
+            val sessionId = sessions.value.firstOrNull { it.isCurrent }?.id
+                ?: conversationRepository.ensureCurrentSessionId()
+            conversationRepository.updateSessionModelOverride(sessionId, null, null)
+        }
+    }
+
+    /**
+     * Refreshes a cloud provider's live model list into the shared model
+     * cache (the same ModelFetcher + persistence Settings uses) when the
+     * picker expands it and the cache is empty or stale. Failures keep the
+     * catalog-seed fallback the sheet already shows - it stays usable and
+     * the next expansion retries, since no fetch timestamp is stamped.
+     */
+    fun ensureModelsFetched(provider: String) {
+        val canonical = ProviderCatalog.canonicalName(provider)
+        if (ProviderCatalog.isOnDevice(canonical)) return
+        val config = llmConfig.value
+        if (!isProviderConfiguredForUse(config, canonical)) return
+        val cache = config.modelCache[canonical].orEmpty()
+        val lastFetch = config.lastModelFetch[canonical] ?: 0L
+        if (cache.isNotEmpty() && System.currentTimeMillis() - lastFetch <= MODEL_CACHE_TTL_MS) return
+        if (_fetchingProvider.value == canonical) return
+        _fetchingProvider.value = canonical
+        viewModelScope.launch {
+            try {
+                when (val outcome = modelFetcher.get().fetchModels(canonical)) {
+                    is ModelFetchOutcome.Success ->
+                        settingsRepository.saveModelCache(canonical, outcome.models)
+                    else -> Unit // NeedsCredentials/Failed: seed fallback stays, retry next time.
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                android.util.Log.w("ChatViewModel", "Model fetch for $canonical failed: ${e.message}")
+            } finally {
+                if (_fetchingProvider.value == canonical) _fetchingProvider.value = null
+            }
+        }
+    }
+
+    /**
+     * The config snapshot a task for [session] must be answered with: the
+     * global config with the session's override applied, or null when the
+     * session has no usable override (the global path then runs unchanged).
+     */
+    private fun configOverrideFor(session: ChatSession?): LLMConfig? =
+        session?.let {
+            llmConfig.value.effectiveWithSessionOverride(it.providerOverride, it.modelOverride)
+        }
 
     val agentState: StateFlow<AgentState> = agentLoop.agentState
 
@@ -172,7 +426,10 @@ class ChatViewModel @Inject constructor(
             agentLoop.cancelCurrentTask()
             conversationRepository.deleteMessageAndAfter(sessionId, agentMessageId)
             _taskSessionId.value = sessionId
-            agentLoop.retryRequest(userMessage.id, sessionId, context)
+            agentLoop.retryRequest(
+                userMessage.id, sessionId, context,
+                configOverrideFor(sessions.value.firstOrNull { it.id == sessionId })
+            )
         }
     }
 
@@ -231,7 +488,10 @@ class ChatViewModel @Inject constructor(
                 // never re-send the visible chat's last message, and never insert a
                 // duplicate user bubble: the original message is already persisted.
                 _taskSessionId.value = error.sessionId
-                agentLoop.retryRequest(error.requestId, error.sessionId, context)
+                agentLoop.retryRequest(
+                    error.requestId, error.sessionId, context,
+                    configOverrideFor(sessions.value.firstOrNull { it.id == error.sessionId })
+                )
             }
             else -> agentLoop.dismissChatError()
         }
@@ -299,7 +559,8 @@ class ChatViewModel @Inject constructor(
     fun sendMessage(query: String, context: Context) {
         if (query.isBlank()) return
         val sessionId = pinTaskSessionSnapshot()
-        agentLoop.processQuery(query, context, sessionId)
+        val session = sessions.value.firstOrNull { it.id == sessionId }
+        agentLoop.processQuery(query, context, sessionId, configOverrideFor(session))
     }
 
     /**
@@ -316,7 +577,9 @@ class ChatViewModel @Inject constructor(
             val sessionId = conversationRepository.ensureCurrentSessionId()
             conversationRepository.deleteMessageAndAfter(sessionId, messageId)
             _taskSessionId.value = sessionId
-            agentLoop.processQuery(newText, context, sessionId)
+            val session = conversationRepository.sessions.first()
+                .firstOrNull { it.id == sessionId }
+            agentLoop.processQuery(newText, context, sessionId, configOverrideFor(session))
         }
     }
 
@@ -423,3 +686,6 @@ class ChatViewModel @Inject constructor(
         agentLoop.cancelCurrentTask()
     }
 }
+
+/** How long a fetched provider model list stays fresh for the picker (matches Settings). */
+private const val MODEL_CACHE_TTL_MS = 60 * 60 * 1000L
