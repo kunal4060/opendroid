@@ -2589,6 +2589,10 @@ fun SettingsScreen(
             item {
                 AssistantSettingsSection()
             }
+
+            // External automation (C7): Tasker/ADB intent API toggle + token
+            item {
+                ExternalAutomationSettingsSection()
             }
 
             // Privacy Policy link card
