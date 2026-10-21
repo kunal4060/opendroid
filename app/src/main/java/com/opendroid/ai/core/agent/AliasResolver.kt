@@ -33,28 +33,37 @@ object AliasResolver {
         "turn on flash"     to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "on")),
         "turn on torch"     to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "on")),
         "turn on flashlight" to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "on")),
+        "turn on light"     to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "on")),
         "turn flash on"     to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "on")),
         "turn torch on"     to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "on")),
         "turn flashlight on" to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "on")),
+        "turn light on"     to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "on")),
         "flash on"          to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "on")),
         "torch on"          to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "on")),
         "flashlight on"     to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "on")),
+        "light on"          to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "on")),
         "enable flash"      to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "on")),
         "enable torch"      to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "on")),
+        "enable light"      to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "on")),
         // Explicit off
         "turn off flash"    to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "off")),
         "turn off torch"    to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "off")),
         "turn off flashlight" to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "off")),
+        "turn off light"    to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "off")),
         "turn flash off"    to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "off")),
         "turn torch off"    to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "off")),
         "turn flashlight off" to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "off")),
+        "turn light off"    to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "off")),
         "flash off"         to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "off")),
         "torch off"         to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "off")),
         "flashlight off"    to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "off")),
+        "light off"         to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "off")),
         "disable flash"     to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "off")),
         "disable torch"     to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "off")),
+        "disable light"     to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "off")),
         "close flash"       to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "off")),
         "close torch"       to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "off")),
+        "close light"       to ActionHint("TOGGLE_FLASHLIGHT", mapOf("state" to "off")),
 
         // ── SCREENSHOT ──────────────────────────────────
         "screenshot"            to ActionHint("TAKE_SCREENSHOT", emptyMap()),
@@ -242,6 +251,13 @@ object AliasResolver {
         "what is the weather"       to ActionHint("GET_WEATHER", emptyMap())
     )
 
+    /**
+     * Loop-2 Area2 #14: negation markers. A negated utterance ("don't turn
+     * it off", "never turn on the wifi") is a correction, not a command —
+     * the fast path must never execute the very action being negated.
+     */
+    private val negationPattern = Regex("""\b(don't|dont|do\s+not|never)\b""")
+
     private val contextualOffPhrases = listOf(
         "turn it off", "switch it off", "turn that off", "switch that off",
         "disable it", "stop it", "shut it off", "turn this off"
@@ -320,6 +336,14 @@ object AliasResolver {
         // 1. Exact match (always wins)
         aliases[cleaned]?.let { return it }
         aliases[lower]?.let { return it }
+
+        // 1a. Negation guard (Loop-2 Area2 #14) — after the exact match,
+        //     so the one alias that legitimately contains a negation-shaped
+        //     phrase ("do not disturb") still resolves, while partial and
+        //     dynamic matching can no longer fire the action inside a
+        //     negated sentence ("don't turn on the flashlight" used to
+        //     partial-match "turn on flashlight" and turn it ON).
+        if (negationPattern.containsMatchIn(lower)) return null
 
         // 1b. YouTube search/play/watch extraction — routes straight to the working
         //     single-shot PLAY_YOUTUBE action instead of the compound-intent guard
@@ -450,6 +474,12 @@ object AliasResolver {
     fun resolveContextual(input: String, lastAction: String?, lastParams: Map<String, String>?): ActionHint? {
         if (lastAction.isNullOrBlank()) return null
         val lower = input.lowercase().trim()
+        // Loop-2 Area2 #14: the phrase matching below is substring-based,
+        // so it matched the off/on phrase inside negations — "don't turn
+        // it off" / "no, don't turn it off" resolved as an OFF command
+        // against the last executed toggle. A negated follow-up is not a
+        // command; let the LLM path handle it.
+        if (negationPattern.containsMatchIn(lower)) return null
         val wantsOff = contextualOffPhrases.any { lower == it || lower.contains(it) }
         val wantsOn = contextualOnPhrases.any { lower == it || lower.contains(it) }
         if (!wantsOff && !wantsOn) return null
