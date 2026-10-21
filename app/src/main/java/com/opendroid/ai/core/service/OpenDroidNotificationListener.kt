@@ -100,6 +100,17 @@ class OpenDroidNotificationListener : NotificationListenerService() {
                             entity.title.equals("You", ignoreCase = true)
 
                         if (isSelfMessage) {
+                            // Loop-2 Area2 #6: the user just replied manually —
+                            // cancel the auto-reply still counting down for
+                            // this contact, as AutoReplyEngine's pipeline
+                            // promises ("abort if user replies manually").
+                            // cancelPendingReply existed for exactly this but
+                            // had no call sites, so the scheduled LLM reply
+                            // fired anyway, minutes after the user's own.
+                            // The key must match scheduleAutoReply's
+                            // registration: package + (contactName ?: title) —
+                            // contactName here is exactly that expression.
+                            autoReplyEngine.cancelPendingReply(sbn.packageName, contactName)
                             Log.d(TAG, "Skipping auto-reply: self-message/outgoing detected for $contactName")
                         } else {
                             // Only check bounceback for incoming messages
