@@ -2169,6 +2169,11 @@ fun SettingsScreen(
                 }
             }
 
+            // App lock (A5): biometric / PIN gate settings
+            item {
+                AppLockSettingsSection(viewModel = viewModel)
+            }
+
             // Privacy Policy link card
             item {
                 Card(

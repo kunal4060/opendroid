@@ -1,9 +1,12 @@
 package com.opendroid.ai.di
 
 import android.content.Context
+import com.opendroid.ai.core.security.AndroidAppLockStore
 import com.opendroid.ai.core.security.AndroidProviderCredentialStore
 import com.opendroid.ai.core.security.AndroidSensitiveMemoryStore
 import com.opendroid.ai.core.security.AndroidUserProfileStore
+import com.opendroid.ai.core.security.AppLockManager
+import com.opendroid.ai.core.security.AppLockStore
 import com.opendroid.ai.core.security.ProviderCredentialStore
 import com.opendroid.ai.core.security.SensitiveMemoryStore
 import com.opendroid.ai.core.security.UserProfileStore
@@ -56,6 +59,18 @@ object AppModule {
     @Singleton
     fun provideAppSettingsStore(@ApplicationContext context: Context): AppSettingsStore {
         return AndroidAppSettingsStore(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideAppLockStore(@ApplicationContext context: Context): AppLockStore {
+        return AndroidAppLockStore(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideAppLockManager(appLockStore: AppLockStore): AppLockManager {
+        return AppLockManager(appLockStore)
     }
 
     @Provides

@@ -35,6 +35,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
+import com.opendroid.ai.core.security.AppLockManager
 import com.opendroid.ai.core.security.CredentialStoreResult
 import com.opendroid.ai.core.security.ProviderCredentialId
 import com.opendroid.ai.core.security.ProviderCredentialRecoveryState
@@ -64,7 +65,8 @@ class SettingsViewModel @Inject constructor(
     private val providerCredentialStore: ProviderCredentialStore,
     // The verification timestamp says when a token was last checked, never what the token is,
     // so it lives with ordinary settings rather than in encrypted storage.
-    private val appSettingsStore: AppSettingsStore
+    private val appSettingsStore: AppSettingsStore,
+    private val appLockManager: AppLockManager
 ) : ViewModel() {
 
     private val _huggingFaceToken = MutableStateFlow("")
@@ -829,6 +831,41 @@ class SettingsViewModel @Inject constructor(
             modelRepository.deleteUnusedModels()
         }
     }
+
+    // ── App Lock (A5) ──
+    //
+    // The Settings UI drives authentication itself (BiometricPrompt needs the
+    // hosting activity); these functions are only called AFTER the user has
+    // proved who they are — enabling requires a successful authentication
+    // first, and disabling requires one too (checklist A5). The manager and
+    // its Keystore-backed store own the actual state.
+
+    val appLockEnabled: StateFlow<Boolean> = appLockManager.lockEnabled
+
+    val appLockTimeoutSec: StateFlow<Int> = appLockManager.timeoutSec
+
+    val appLockHasPin: StateFlow<Boolean> = appLockManager.hasPin
+
+    /** Records an already-authenticated enable request. */
+    fun setAppLockEnabled(enabled: Boolean) {
+        appLockManager.setEnabled(enabled)
+    }
+
+    fun setAppLockTimeout(seconds: Int) {
+        appLockManager.setTimeoutSec(seconds)
+    }
+
+    /**
+     * Sets the app PIN (PBKDF2 runs off the main thread). Returns whether the
+     * PIN was accepted, so the enable flow can enable only once a fallback
+     * credential really exists.
+     */
+    suspend fun setAppLockPin(pin: String): Boolean =
+        withContext(Dispatchers.Default) { appLockManager.setPin(pin) }
+
+    /** Verifies a PIN entry (disable / change-PIN flows) against the stored record. */
+    suspend fun verifyAppLockPin(pin: String): AppLockManager.PinVerification =
+        withContext(Dispatchers.Default) { appLockManager.verifyPin(pin) }
 
     private fun clearHuggingFaceVerificationMetadata() {
         // Invoked only from the IO dispatcher because the commit is synchronous.
