@@ -1,9 +1,14 @@
 package com.opendroid.ai.ui.viewmodel
 
 import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.opendroid.ai.core.agent.AgentLoop
+import com.opendroid.ai.core.llm.AttachmentException
+import com.opendroid.ai.core.llm.AttachmentProcessor
+import com.opendroid.ai.core.llm.PendingAttachment
+import com.opendroid.ai.core.llm.VisionSupport
 import com.opendroid.ai.core.agent.AgentState
 import com.opendroid.ai.core.llm.ProviderSetupReadiness
 import com.opendroid.ai.core.llm.RoutingStatus
@@ -55,7 +60,8 @@ class ChatViewModel @Inject constructor(
     private val modelFetcher: dagger.Lazy<ModelFetcher>,
     private val routingStatusRepository: RoutingStatusRepository,
     private val providerSetupReadiness: ProviderSetupReadiness,
-    private val textToSpeechEngine: com.opendroid.ai.core.voice.TextToSpeechEngine
+    private val textToSpeechEngine: com.opendroid.ai.core.voice.TextToSpeechEngine,
+    private val attachmentProcessor: AttachmentProcessor
 ) : ViewModel() {
 
     val llmConfig: StateFlow<LLMConfig> = settingsRepository.llmConfig
@@ -601,6 +607,136 @@ class ChatViewModel @Inject constructor(
         return sessionId
     }
 
+    // ── Composer attachments (B1) ─────────────────────────────────────
+    // The pending attachment is a staged copy in app-private storage (see
+    // AttachmentProcessor) - never a raw picker URI. The gate state is set
+    // when the current model cannot take the attachment; the composer then
+    // offers a model switch instead of silently dropping the file.
+
+    private val _pendingAttachment = MutableStateFlow<PendingAttachment?>(null)
+
+    /** The attachment staged for the next send, shown as a composer chip. */
+    val pendingAttachment: StateFlow<PendingAttachment?> = _pendingAttachment
+
+    private val _attachmentGate = MutableStateFlow<AttachmentGate?>(null)
+
+    /** Non-null while the "current model can't take this" dialog is up. */
+    val attachmentGate: StateFlow<AttachmentGate?> = _attachmentGate
+
+    private val _attachmentError = MutableStateFlow<AttachmentSendError?>(null)
+
+    /** Last attachment failure; [AttachmentSendError.draftText] lets the
+     *  composer restore a draft whose send failed during preparation. */
+    val attachmentError: StateFlow<AttachmentSendError?> = _attachmentError
+
+    private var pendingCameraFile: java.io.File? = null
+
+    /** Copies a picked photo/file into app-private staging for the chip. */
+    fun stageAttachment(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val staged = attachmentProcessor.stagePickedFile(uri)
+                _pendingAttachment.value?.let { attachmentProcessor.discard(it) }
+                _pendingAttachment.value = staged
+            } catch (e: AttachmentException) {
+                _attachmentError.value = AttachmentSendError(
+                    e.message ?: "Couldn't attach that file.", draftText = null
+                )
+            }
+        }
+    }
+
+    /**
+     * Creates the camera capture target and returns the FileProvider URI to
+     * hand the camera app; the photo lands directly in private staging.
+     */
+    fun beginCameraCapture(): Uri {
+        val (file, uri) = attachmentProcessor.createCameraTarget()
+        pendingCameraFile = file
+        return uri
+    }
+
+    /** Settles a camera capture: success stages the photo, cancel cleans up. */
+    fun onCameraCaptureResult(success: Boolean) {
+        val file = pendingCameraFile
+        pendingCameraFile = null
+        if (!success || file == null) {
+            file?.delete()
+            return
+        }
+        val staged = attachmentProcessor.finishCameraCapture(file) ?: return
+        _pendingAttachment.value?.let { attachmentProcessor.discard(it) }
+        _pendingAttachment.value = staged
+    }
+
+    /** Removes the pending chip and deletes its staged copy. */
+    fun clearPendingAttachment() {
+        _pendingAttachment.value?.let { attachmentProcessor.discard(it) }
+        _pendingAttachment.value = null
+    }
+
+    fun dismissAttachmentGate() {
+        _attachmentGate.value = null
+    }
+
+    fun consumeAttachmentError() {
+        _attachmentError.value = null
+    }
+
+    /**
+     * The composer's send path when an attachment is pending. Returns false
+     * (draft + chip kept) when there is no route right now or when the
+     * current model cannot take the attachment - in the latter case
+     * [attachmentGate] is set so the UI can offer a model switch. On true,
+     * preparation runs async and the send dispatches once ready; a
+     * preparation failure restores the chip and reports the draft back via
+     * [attachmentError] so nothing the user typed is lost.
+     */
+    fun sendMessageWithAttachment(query: String, context: Context): Boolean {
+        val pending = _pendingAttachment.value ?: return sendMessage(query, context)
+        if (routingStatus.value is RoutingStatus.OfflineNoRoute) return false
+        val effective = effectiveProviderModel.value
+        val decision = VisionSupport.decide(pending.mimeType, effective.provider, effective.model)
+        if (decision is VisionSupport.AttachmentDecision.Blocked) {
+            _attachmentGate.value = AttachmentGate(
+                attachmentName = pending.displayName,
+                provider = effective.provider,
+                model = effective.model,
+                reason = decision.reason,
+                draftText = query
+            )
+            return false
+        }
+        dispatchAttachmentSend(query, context, pending, decision)
+        return true
+    }
+
+    private fun dispatchAttachmentSend(
+        query: String,
+        context: Context,
+        pending: PendingAttachment,
+        decision: VisionSupport.AttachmentDecision
+    ) {
+        val sessionId = pinTaskSessionSnapshot()
+        val session = sessions.value.firstOrNull { it.id == sessionId }
+        val override = configOverrideFor(session)
+        _pendingAttachment.value = null
+        viewModelScope.launch {
+            try {
+                val prepared = attachmentProcessor.prepare(pending, decision)
+                val text = query.ifBlank { "Please see the attached file." } +
+                    (prepared.textToAppend ?: "")
+                agentLoop.processQuery(text, context, sessionId, override, prepared)
+                attachmentProcessor.discard(pending)
+            } catch (e: AttachmentException) {
+                _pendingAttachment.value = pending
+                _attachmentError.value = AttachmentSendError(
+                    e.message ?: "Couldn't send that attachment.", draftText = query
+                )
+            }
+        }
+    }
+
     /**
      * Sends [query] through the agent. Returns false without dispatching
      * when there is currently no route that could answer — offline with no
@@ -746,3 +882,26 @@ class ChatViewModel @Inject constructor(
 
 /** How long a fetched provider model list stays fresh for the picker (matches Settings). */
 private const val MODEL_CACHE_TTL_MS = 60 * 60 * 1000L
+
+/**
+ * B1 capability gate: the pending attachment cannot go to the model this
+ * chat is currently resolved to. The composer shows [reason] and offers a
+ * model switch; the draft and the attachment chip stay untouched.
+ */
+data class AttachmentGate(
+    val attachmentName: String,
+    val provider: String,
+    val model: String,
+    val reason: String,
+    val draftText: String
+)
+
+/**
+ * B1 attachment failure (staging or preparation). [draftText] is the
+ * composer text of the failed send, when there was one, so the UI can put
+ * it back instead of losing what the user typed.
+ */
+data class AttachmentSendError(
+    val message: String,
+    val draftText: String?
+)
