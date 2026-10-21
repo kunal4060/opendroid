@@ -91,6 +91,7 @@ fun SettingsScreen(
     onNavigateToRoutines: () -> Unit = {},
     onNavigateToActionLearning: () -> Unit = {},
     onNavigateToPersonas: () -> Unit = {},
+    onNavigateToGoogle: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val config by viewModel.llmConfig.collectAsState()
@@ -2593,6 +2594,11 @@ fun SettingsScreen(
             // External automation (C7): Tasker/ADB intent API toggle + token
             item {
                 ExternalAutomationSettingsSection()
+            }
+
+            // Connected accounts (D6): Google Calendar + Gmail via official APIs
+            item {
+                GoogleAccountSettingsCard(onClick = onNavigateToGoogle)
             }
 
             // Privacy Policy link card

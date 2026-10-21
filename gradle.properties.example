@@ -23,3 +23,14 @@
 #
 # Without all three properties and the keystore file, release builds fail
 # loudly rather than falling back to the publicly known debug key.
+#
+# Google account sync (D6) — OPTIONAL, same never-commit rule:
+#
+#        GOOGLE_WEB_CLIENT_ID=123456789012-abcdefghijklmnopqrstuvwxyz123456.apps.googleusercontent.com
+#
+# This is the *Web application* OAuth client ID from your own Google Cloud
+# project (the Android OAuth client for package com.opendroid.aiagent +
+# your signing SHA-1 is registered in the same project but its ID is never
+# pasted anywhere). Without it the app builds and runs normally; the Google
+# account screen simply shows its setup-needed state. Full steps:
+# feature-d6-report.md in the OpenDroid design workspace.

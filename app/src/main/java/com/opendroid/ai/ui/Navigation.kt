@@ -65,6 +65,7 @@ object OpenDroidRoutes {
     const val SOCIAL = "social"
     const val PERSONAS = "personas"
     const val SCHEDULES = "schedules"
+    const val GOOGLE = "google"
 }
 
 /**
@@ -209,6 +210,9 @@ fun OpenDroidNavigation(
                 },
                 onNavigateToSchedules = {
                     navController.navigate(OpenDroidRoutes.SCHEDULES)
+                },
+                onNavigateToGoogle = {
+                    navController.navigate(OpenDroidRoutes.GOOGLE)
                 },
                 pendingExternalLaunch = pendingExternalLaunch,
                 onExternalLaunchClaim = { launch ->
@@ -355,6 +359,15 @@ fun OpenDroidNavigation(
                 }
             )
         }
+
+        composable(OpenDroidRoutes.GOOGLE) {
+            GoogleAccountScreen(
+                viewModel = hiltViewModel(),
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
     }
 }
 
@@ -386,6 +399,7 @@ fun MainDashboard(
     onNavigateToActionLearning: () -> Unit = {},
     onNavigateToPersonas: () -> Unit = {},
     onNavigateToSchedules: () -> Unit = {},
+    onNavigateToGoogle: () -> Unit = {},
     pendingExternalLaunch: ExternalLaunch? = null,
     onExternalLaunchClaim: (ExternalLaunch) -> Boolean = { false }
 ) {
@@ -591,7 +605,8 @@ fun MainDashboard(
                         onNavigateToCrashLog = onNavigateToCrashLog,
                         onNavigateToRoutines = onNavigateToRoutines,
                         onNavigateToActionLearning = onNavigateToActionLearning,
-                        onNavigateToPersonas = onNavigateToPersonas
+                        onNavigateToPersonas = onNavigateToPersonas,
+                        onNavigateToGoogle = onNavigateToGoogle
                     )
                 }
             }
