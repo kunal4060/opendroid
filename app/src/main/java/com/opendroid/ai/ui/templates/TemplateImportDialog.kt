@@ -13,19 +13,17 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.opendroid.ai.core.templates.TemplateFormat
 import com.opendroid.ai.core.templates.TemplateImportPreview
+import com.opendroid.ai.ui.theme.AccentOrange
 import com.opendroid.ai.ui.theme.AccentRed
 import com.opendroid.ai.ui.theme.CardBackground
 import com.opendroid.ai.ui.theme.DarkBackground
 import com.opendroid.ai.ui.theme.TextPrimary
 import com.opendroid.ai.ui.theme.TextSecondary
-
-private val WarningAmber = Color(0xFFFFB300)
 
 /**
  * C6 import preview: shown after a template file is picked and validated,
@@ -92,7 +90,9 @@ fun TemplateImportDialog(
                     if (preview.warnings.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(10.dp))
                         preview.warnings.forEach { warning ->
-                            Text("⚠ $warning", fontSize = 11.sp, color = WarningAmber)
+                            // Theme AccentOrange (D8): the old hard-coded
+                            // #FFB300 amber was 1.79:1 as text on light.
+                            Text("⚠ $warning", fontSize = 11.sp, color = AccentOrange)
                             Spacer(modifier = Modifier.height(4.dp))
                         }
                     }

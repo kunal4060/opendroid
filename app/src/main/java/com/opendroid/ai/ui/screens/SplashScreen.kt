@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import com.opendroid.ai.R
 import com.opendroid.ai.ui.theme.DarkBackground
 import com.opendroid.ai.ui.theme.DarkSurface
+import com.opendroid.ai.ui.theme.LocalReduceMotion
 import com.opendroid.ai.ui.theme.TextPrimary
 import com.opendroid.ai.ui.theme.TextSecondary
 import kotlinx.coroutines.delay
@@ -50,16 +51,23 @@ fun SplashScreen(onNavigateNext: () -> Unit) {
     val alpha = remember { Animatable(0f) }
     val scale = remember { Animatable(0.82f) }
     val dotPulse = remember { Animatable(0.4f) }
+    // D8 reduce motion: the loading dots rest at a fixed opacity instead of
+    // pulsing forever; the one-shot logo fade/scale and timing are unchanged.
+    val reduceMotion = LocalReduceMotion.current
 
     LaunchedEffect(key1 = true) {
-        launch {
-            dotPulse.animateTo(
-                targetValue = 1f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(900, easing = LinearEasing),
-                    repeatMode = RepeatMode.Reverse
+        if (reduceMotion) {
+            dotPulse.snapTo(0.85f)
+        } else {
+            launch {
+                dotPulse.animateTo(
+                    targetValue = 1f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(900, easing = LinearEasing),
+                        repeatMode = RepeatMode.Reverse
+                    )
                 )
-            )
+            }
         }
         launch {
             scale.animateTo(

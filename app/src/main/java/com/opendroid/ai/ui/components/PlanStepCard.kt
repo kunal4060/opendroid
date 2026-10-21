@@ -110,7 +110,29 @@ fun PlanStepCard(
                     // swallowed by the merge, so they are re-exposed as
                     // custom actions.
                     Modifier.semantics(mergeDescendants = true) {
-                        contentDescription = "Step ${step.order}. ${step.description}"
+                        // A merged node's contentDescription shadows its
+                        // children, so the step's outcome is folded in here:
+                        // collapsed cards announce that a result/error exists,
+                        // expanded cards read it in full (D8).
+                        contentDescription = buildString {
+                            append("Step ${step.order}. ${step.description}")
+                            if (expanded) {
+                                if (step.params.isNotEmpty()) {
+                                    append(". Parameters: ")
+                                    append(
+                                        step.params.entries.joinToString(", ") {
+                                            "${it.key}: ${it.value}"
+                                        }
+                                    )
+                                }
+                                step.result?.let { append(". Result: $it") }
+                                step.error?.let { append(". Error: $it") }
+                            } else if (step.error != null) {
+                                append(". Failed — expand for details")
+                            } else if (step.result != null) {
+                                append(". Has a result — expand for details")
+                            }
+                        }
                         stateDescription = displayState.accessibleLabel()
                         if (editable) {
                             customActions = listOf(

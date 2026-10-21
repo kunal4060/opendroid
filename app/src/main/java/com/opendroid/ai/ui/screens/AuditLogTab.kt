@@ -17,6 +17,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -163,7 +167,11 @@ fun AuditLogTab(
                                 fontWeight = FontWeight.Bold,
                                 color = TextSecondary,
                                 fontFamily = FontFamily.Monospace,
-                                modifier = Modifier.padding(top = 4.dp)
+                                // D8: day groups are headings for heading
+                                // navigation in TalkBack.
+                                modifier = Modifier
+                                    .padding(top = 4.dp)
+                                    .semantics { heading() }
                             )
                         }
                         items(dayEntries, key = { it.id }) { entry ->
@@ -294,6 +302,23 @@ fun AuditEntryCard(
             modifier = Modifier
                 .clickable(onClick = onClick)
                 .padding(14.dp)
+                // D8: one merged stop per entry — outcome badge, time,
+                // description, module and the denied-explainer read in
+                // order (no contentDescription: it would shadow them).
+                // The visible "Save as macro" button is merged away, so
+                // it is re-exposed as a custom action.
+                .semantics(mergeDescendants = true) {
+                    customActions = buildList {
+                        if (onSaveAsMacro != null) {
+                            add(
+                                CustomAccessibilityAction("Save completed task as macro") {
+                                    onSaveAsMacro()
+                                    true
+                                }
+                            )
+                        }
+                    }
+                }
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
