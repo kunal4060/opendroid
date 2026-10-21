@@ -5,6 +5,7 @@ import com.opendroid.ai.core.llm.*
 import com.opendroid.ai.data.models.ChatMessage
 import com.opendroid.ai.data.models.selectedModelFor
 import com.opendroid.ai.data.repository.SettingsRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
@@ -89,6 +90,10 @@ class HybridOnDeviceProvider @Inject constructor(
                     )
                 }
             }
+        } catch (e: CancellationException) {
+            // A cancelled call must not run a second, full inference on the
+            // fallback backend before returning.
+            throw e
         } catch (e: Exception) {
             // If primary threw (not just unavailable), try fallback
             if (primary.isAvailable()) {
@@ -120,26 +125,34 @@ class HybridOnDeviceProvider @Inject constructor(
                 Log.d(TAG, "Streaming via fallback: ${fallback.name}")
                 fallback
             }
-            else -> {
-                emit("Error: No on-device AI backend is available.")
-                return@flow
-            }
+            else -> throw IllegalStateException(
+                "No on-device AI backend is available. " +
+                "AI Core is not supported on this device and no LiteRT-LM models are downloaded."
+            )
         }
 
+        var emitted = false
         try {
             activeProvider.streamComplete(request).collect { chunk ->
+                emitted = true
                 emit(chunk)
             }
+        } catch (e: CancellationException) {
+            // Cancellation must propagate; it is not an assistant reply and
+            // must not trigger a fallback re-stream.
+            throw e
         } catch (e: Exception) {
-            // Try fallback on stream failure
-            if (activeProvider == primary && fallback.isAvailable()) {
+            // Fall back only when nothing was emitted yet: re-streaming from
+            // scratch after partial primary output appends a second, full
+            // reply onto the first and records the garble as served.
+            if (!emitted && activeProvider == primary && fallback.isAvailable()) {
                 Log.w(TAG, "Stream failed on ${primary.name}, retrying with ${fallback.name}")
                 emit("\n[Switched to ${fallback.name}]\n")
                 fallback.streamComplete(request).collect { chunk ->
                     emit(chunk)
                 }
             } else {
-                emit("Error: ${e.localizedMessage}")
+                throw e
             }
         }
     }
@@ -156,24 +169,30 @@ class HybridOnDeviceProvider @Inject constructor(
         val activeProvider = when {
             primary.isAvailable() -> primary
             fallback.isAvailable() -> fallback
-            else -> {
-                emit(StreamChunk.Content("Error: No on-device AI backend is available."))
-                return@flow
-            }
+            else -> throw IllegalStateException(
+                "No on-device AI backend is available. " +
+                "AI Core is not supported on this device and no LiteRT-LM models are downloaded."
+            )
         }
 
+        var emitted = false
         try {
             activeProvider.generate(messages, tools).collect { chunk ->
+                emitted = true
                 emit(chunk)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            if (activeProvider == primary && fallback.isAvailable()) {
+            // Same rule as streamComplete: fall back only before any output,
+            // never append a second full reply after partial output.
+            if (!emitted && activeProvider == primary && fallback.isAvailable()) {
                 Log.w(TAG, "Generate failed on ${primary.name}, retrying with ${fallback.name}")
                 fallback.generate(messages, tools).collect { chunk ->
                     emit(chunk)
                 }
             } else {
-                emit(StreamChunk.Content("Error: ${e.localizedMessage}"))
+                throw e
             }
         }
     }
@@ -188,7 +207,10 @@ class HybridOnDeviceProvider @Inject constructor(
      */
     suspend fun getActiveBackendName(): String {
         val config = settingsRepository.llmConfig.first()
-        val backend = resolveBackend(config.activeModel)
+        // Resolve from the same per-provider selection generate() uses: the
+        // global activeModel may name a cloud model while this provider is
+        // the one serving, which labelled the wrong backend.
+        val backend = resolveBackend(config.selectedModelFor(PROVIDER_NAME))
         val primary = delegateFor(backend)
         val fallback = fallbackFor(backend)
 

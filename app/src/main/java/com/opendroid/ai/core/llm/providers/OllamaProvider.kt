@@ -5,11 +5,12 @@ import com.opendroid.ai.core.llm.VisionSupport
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.opendroid.ai.core.llm.*
+import com.opendroid.ai.core.llm.error.LLMException
 import com.opendroid.ai.core.llm.error.ProviderErrorDetail
 import com.opendroid.ai.core.llm.error.toSafeProviderException
-import com.opendroid.ai.core.util.NetworkErrorFormatter
 import com.opendroid.ai.core.util.UrlUtils
 import com.opendroid.ai.data.repository.SettingsRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -113,8 +114,19 @@ class OllamaProvider @Inject constructor(
                 emit("$word ")
                 kotlinx.coroutines.delay(50)
             }
+        } catch (e: CancellationException) {
+            // Cancellation must propagate so the collecting coroutine unwinds;
+            // it must never surface as the assistant's reply.
+            throw e
+        } catch (e: LLMException) {
+            // Typed API errors reach the collector's error handlers unchanged.
+            throw e
+        } catch (e: IllegalStateException) {
+            // Configuration failures belong in the error state, not in
+            // persisted assistant content.
+            throw e
         } catch (e: Exception) {
-            emit("Error streaming Ollama: ${NetworkErrorFormatter.toUserMessage(e)}")
+            throw IOException("Ollama streaming failed.", e)
         }
     }
 

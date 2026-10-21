@@ -8,6 +8,7 @@ import com.opendroid.ai.core.llm.*
 import com.opendroid.ai.data.models.ChatMessage
 import com.opendroid.ai.data.models.selectedModelFor
 import com.opendroid.ai.data.repository.SettingsRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.withContext
@@ -98,16 +99,13 @@ class GemmaProvider @Inject constructor(
             val selectedModel = request.model?.takeIf { it.isNotBlank() } ?: ProviderCatalog.defaultModel(name)
             val generativeModel = getClientForModel(selectedModel)
             val status = generativeModel.checkStatus()
-            
+
+            // Fail through the flow's error channel, like complete() does:
+            // an "Error: …" string emitted as content is rendered and
+            // persisted as if the model had replied.
             when (status) {
-                0 -> {
-                    emit("Error: This device does not support Google AI Core. Try selecting a different model.")
-                    return@flow
-                }
-                1, 2 -> {
-                    emit("Error: On-device model is downloading or not installed. Please try again later.")
-                    return@flow
-                }
+                0 -> throw IllegalStateException("This device does not support Google AI Core. Try selecting a different model.")
+                1, 2 -> throw IllegalStateException("On-device model is downloading or not installed. Please try again later.")
                 3 -> { /* Ready */ }
             }
 
@@ -122,8 +120,11 @@ class GemmaProvider @Inject constructor(
             generativeModel.generateContentStream(contentRequest).collect { chunk ->
                 emit(chunk.candidates.firstOrNull()?.text ?: "")
             }
+        } catch (e: CancellationException) {
+            // Cancellation must propagate; it is not an assistant reply.
+            throw e
         } catch (e: Exception) {
-            emit("Error streaming on-device model: ${handleException(e).localizedMessage}")
+            throw handleException(e)
         }
     }
 
@@ -135,16 +136,10 @@ class GemmaProvider @Inject constructor(
             val selectedModel = settingsRepository.llmConfig.first().selectedModelFor(name)
             val generativeModel = getClientForModel(selectedModel)
             val status = generativeModel.checkStatus()
-            
+
             when (status) {
-                0 -> {
-                    emit(StreamChunk.Content("Error: This device does not support Google AI Core. Try selecting a different model."))
-                    return@flow
-                }
-                1, 2 -> {
-                    emit(StreamChunk.Content("Error: On-device model is downloading or not installed. Please try again later."))
-                    return@flow
-                }
+                0 -> throw IllegalStateException("This device does not support Google AI Core. Try selecting a different model.")
+                1, 2 -> throw IllegalStateException("On-device model is downloading or not installed. Please try again later.")
                 3 -> { /* Ready */ }
             }
 
@@ -176,8 +171,11 @@ class GemmaProvider @Inject constructor(
             } catch (jsonEx: Exception) {
                 // Ignore and treat as plain text if JSON parsing fails
             }
+        } catch (e: CancellationException) {
+            // Cancellation must propagate; it is not an assistant reply.
+            throw e
         } catch (e: Exception) {
-            emit(StreamChunk.Content("Error: ${handleException(e).localizedMessage}"))
+            throw handleException(e)
         }
     }
 
