@@ -115,14 +115,17 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.7'
 
     // Wear Compose (Material 1.x — the stable Scaffold/ScalingLazyColumn API
-    // surface this thin client needs; versions verified against Google Maven
-    // during implementation). Not part of the phone's compose-bom, so the
-    // BOM platform is applied only for the shared compose-ui artifacts.
+    // surface this thin client needs). Not part of the phone's compose-bom,
+    // so the BOM platform is applied only for the shared compose-ui
+    // artifacts. Version note (end-build fix): 1.7.x is unusable here — its
+    // AAR metadata declares minCompileSdk 37 while this project compiles
+    // against 36 (verified from the artifacts themselves). 1.6.2 is the
+    // newest 1.6.x and declares minCompileSdk 35.
     implementation platform('androidx.compose:compose-bom:2026.06.01')
     implementation 'androidx.compose.ui:ui'
     implementation 'androidx.compose.foundation:foundation'
-    implementation 'androidx.wear.compose:compose-material:1.7.1'
-    implementation 'androidx.wear.compose:compose-foundation:1.7.1'
+    implementation 'androidx.wear.compose:compose-material:1.6.2'
+    implementation 'androidx.wear.compose:compose-foundation:1.6.2'
     // RemoteInputIntent for the dictation/text-entry intent (research's
     // lightest reliable voice path on Wear OS). NOTE (end-build fix): the
     // class lives in the separate wear-input artifact, NOT in wear:1.3.0
