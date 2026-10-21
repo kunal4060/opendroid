@@ -65,7 +65,9 @@ class CustomOpenAIProvider @Inject constructor(
         val bodyJson = gson.toJson(requestBodyMap)
         val httpRequest = Request.Builder()
             .url("$baseUrl/chat/completions")
-            .header("Authorization", "Bearer $apiKey")
+            // Omit the header when keyless: a literal "Bearer " is rejected
+            // with 401 by strict servers that accept a missing header.
+            .apply { if (apiKey.isNotBlank()) header("Authorization", "Bearer $apiKey") }
             .post(bodyJson.toRequestBody(mediaType))
             .build()
 
@@ -116,8 +118,11 @@ class CustomOpenAIProvider @Inject constructor(
     }
 
     override suspend fun isAvailable(): Boolean {
-        // Available if the user configured it, or fallback checks pass
-        return true
+        // Like every sibling, availability must reflect configuration:
+        // this provider exists only when the user configured an endpoint
+        // for it (a key is optional — keyless local servers are valid).
+        val config = settingsRepository.llmConfig.first()
+        return config.customEndpoints[name].orEmpty().isNotBlank()
     }
 
 }
