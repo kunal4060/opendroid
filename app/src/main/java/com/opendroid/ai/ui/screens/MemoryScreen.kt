@@ -11,8 +11,10 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.HelpOutline
@@ -38,6 +40,7 @@ import com.opendroid.ai.data.models.ChatMessage
 import com.opendroid.ai.data.models.Macro
 import com.opendroid.ai.data.models.Memory
 import com.opendroid.ai.data.models.MemoryType
+import com.opendroid.ai.ui.screens.graph.MemoryGraphView
 import com.opendroid.ai.ui.theme.*
 import com.opendroid.ai.ui.viewmodel.MemoryViewModel
 import kotlinx.serialization.decodeFromString
@@ -1025,6 +1028,8 @@ fun KnowledgeGraphView(
     var newLabel by remember { mutableStateOf("") }
     var newSummary by remember { mutableStateOf("") }
     var newCategory by remember { mutableStateOf(KnowledgeCategory.USER_PREFERENCE) }
+    // C5: List | Graph — the graph renders the same filtered nodes below.
+    var showGraph by remember { mutableStateOf(false) }
 
     val allNodes = graph.nodes.values.toList()
     val filteredNodes = allNodes.filter { node ->
@@ -1254,7 +1259,51 @@ fun KnowledgeGraphView(
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        if (filteredNodes.isNotEmpty()) {
+        // List | Graph toggle (C5). Both views read the same
+        // PersonalKnowledgeGraph StateFlow and the same filter state above;
+        // the list stays as the screen-reader friendly equivalent.
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = !showGraph,
+                onClick = { showGraph = false },
+                leadingIcon = {
+                    Icon(Icons.Default.List, contentDescription = null, modifier = Modifier.size(14.dp))
+                },
+                label = { Text("List", fontSize = 11.sp, fontFamily = FontFamily.Monospace) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = TextPrimary,
+                    selectedLabelColor = DarkBackground,
+                    containerColor = CardBackground,
+                    labelColor = TextSecondary
+                )
+            )
+            FilterChip(
+                selected = showGraph,
+                onClick = { showGraph = true },
+                leadingIcon = {
+                    Icon(Icons.Default.AccountTree, contentDescription = null, modifier = Modifier.size(14.dp))
+                },
+                label = { Text("Graph", fontSize = 11.sp, fontFamily = FontFamily.Monospace) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = TextPrimary,
+                    selectedLabelColor = DarkBackground,
+                    containerColor = CardBackground,
+                    labelColor = TextSecondary
+                )
+            )
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        if (showGraph) {
+            MemoryGraphView(
+                viewModel = viewModel,
+                filteredNodes = filteredNodes,
+                relations = graph.relations,
+                totalNodeCount = allNodes.size,
+                modifier = Modifier.weight(1f)
+            )
+        } else if (filteredNodes.isNotEmpty()) {
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 contentPadding = PaddingValues(bottom = 24.dp),
