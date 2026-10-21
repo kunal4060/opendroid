@@ -58,7 +58,13 @@ class PlanRepository @Inject constructor(
             estimatedDuration = entity.estimatedDuration,
             estimatedSteps = entity.estimatedSteps,
             steps = steps,
-            status = PlanStatus.valueOf(entity.status),
+            // Tolerate status strings written by other builds (e.g. restored
+            // from a hand-edited backup): an unknown value degrades to FAILED
+            // instead of throwing on every allPlans emission (audit-4 #1).
+            // BackupManager.validatePayload rejects such backups up front;
+            // this is the defence in depth for rows already in the DB.
+            status = runCatching { PlanStatus.valueOf(entity.status) }
+                .getOrDefault(PlanStatus.FAILED),
             createdAt = entity.createdAt
         )
     }

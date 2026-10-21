@@ -19,6 +19,10 @@ import com.opendroid.ai.data.backup.MemoryBackup
 import com.opendroid.ai.data.backup.PlanBackup
 import com.opendroid.ai.data.backup.RoutineBackup
 import com.opendroid.ai.data.db.OpenDroidDatabase
+import com.opendroid.ai.data.models.ChatMessage
+import com.opendroid.ai.data.models.MemoryType
+import com.opendroid.ai.data.models.PlanStatus
+import com.opendroid.ai.data.models.RoutineStatus
 import com.opendroid.ai.data.repository.SettingsRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
@@ -266,6 +270,36 @@ class BackupManager @Inject constructor(
         }
         if (header.dbVersion != payload.dbVersion) {
             throw BackupRestoreException("The backup is inconsistent and cannot be restored.")
+        }
+        // Enum fields travel as raw strings and toEntity() writes them
+        // verbatim into Room. An unknown value means the backup was made by
+        // a build whose model this one doesn't understand (or was edited by
+        // hand); restoring it would poison every later read of that type.
+        // The repositories now parse these defensively (audit-4 #1), but the
+        // restore is refused here so the user hears about it instead of
+        // silently getting degraded rows.
+        if (payload.plans.any { runCatching { PlanStatus.valueOf(it.status) }.isFailure }) {
+            throw BackupRestoreException(
+                "The backup is inconsistent (a plan has an unknown status). It was not restored."
+            )
+        }
+        if (payload.memories.any { runCatching { MemoryType.valueOf(it.type) }.isFailure }) {
+            throw BackupRestoreException(
+                "The backup is inconsistent (a memory has an unknown type). It was not restored."
+            )
+        }
+        if (payload.conversations.any {
+                runCatching { ChatMessage.Sender.valueOf(it.sender) }.isFailure
+            }
+        ) {
+            throw BackupRestoreException(
+                "The backup is inconsistent (a message has an unknown sender). It was not restored."
+            )
+        }
+        if (payload.routines.any { runCatching { RoutineStatus.valueOf(it.status) }.isFailure }) {
+            throw BackupRestoreException(
+                "The backup is inconsistent (a routine has an unknown status). It was not restored."
+            )
         }
     }
 

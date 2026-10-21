@@ -26,13 +26,25 @@ class MemoryRepository @Inject constructor(
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
+    /**
+     * Parses a stored memory type, tolerating values written by other builds
+     * (e.g. restored from a hand-edited backup): an unknown type degrades to
+     * [MemoryType.SEMANTIC] instead of throwing on every emission of the
+     * memory flows (audit-4 #1). The same safe-parse pattern SocialRepository
+     * already uses for its enums; BackupManager.validatePayload also rejects
+     * such backups up front — this is the defence in depth for rows already
+     * in the DB.
+     */
+    private fun parseMemoryType(raw: String): MemoryType =
+        runCatching { MemoryType.valueOf(raw) }.getOrDefault(MemoryType.SEMANTIC)
+
     // Memory operations
     val allMemories: Flow<List<Memory>> = memoryDao.getAllMemoriesFlow().map { entities ->
         entities.map { entity ->
             Memory(
                 key = entity.key,
                 value = entity.value,
-                type = MemoryType.valueOf(entity.type),
+                type = parseMemoryType(entity.type),
                 timestamp = entity.timestamp
             )
         }
@@ -43,7 +55,7 @@ class MemoryRepository @Inject constructor(
             Memory(
                 key = entity.key,
                 value = entity.value,
-                type = MemoryType.valueOf(entity.type),
+                type = parseMemoryType(entity.type),
                 timestamp = entity.timestamp
             )
         }
@@ -54,7 +66,7 @@ class MemoryRepository @Inject constructor(
             Memory(
                 key = entity.key,
                 value = entity.value,
-                type = MemoryType.valueOf(entity.type),
+                type = parseMemoryType(entity.type),
                 timestamp = entity.timestamp
             )
         }
@@ -84,7 +96,7 @@ class MemoryRepository @Inject constructor(
             Memory(
                 key = entity.key,
                 value = entity.value,
-                type = MemoryType.valueOf(entity.type),
+                type = parseMemoryType(entity.type),
                 timestamp = entity.timestamp
             )
         }
