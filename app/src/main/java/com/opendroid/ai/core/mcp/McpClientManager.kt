@@ -126,8 +126,17 @@ class McpClientManager @Inject constructor(
             session.client.callTool(toolName, arguments, timeoutMs)
         } catch (error: McpException) {
             // A broken session is dropped: state shows the error and the
-            // bridge withdraws the tools on its next refresh.
-            sessions.remove(serverName)
+            // bridge withdraws the tools on its next refresh. The client
+            // is closed as well as removed — like disconnect() — or a
+            // legacy-SSE session's long-lived stream and threads would
+            // leak for the rest of the process lifetime (finding #8).
+            sessions.remove(serverName)?.let { removed ->
+                try {
+                    removed.client.close()
+                } catch (_: Exception) {
+                    // Closing a broken session must never throw into callers.
+                }
+            }
             setState(serverName, McpServerState.Error(error.userMessage()))
             throw error
         }

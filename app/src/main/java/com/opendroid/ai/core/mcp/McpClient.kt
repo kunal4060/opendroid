@@ -47,8 +47,28 @@ class McpClient(private val transport: McpTransport) {
         return listTools()
     }
 
-    suspend fun listTools(): List<McpTool> =
-        McpJsonRpc.parseTools(transport.request("tools/list", JSONObject(), LIST_TIMEOUT_MS))
+    /**
+     * The server's full tool catalogue. `tools/list` is paginated in the
+     * protocol: a result carrying `nextCursor` must be followed with
+     * `params.cursor` until a page arrives without one — stopping at the
+     * first page would silently hide the rest of the catalogue
+     * (finding #9). The page bound only guards against a server that
+     * hands back cursors forever.
+     */
+    suspend fun listTools(): List<McpTool> {
+        val tools = mutableListOf<McpTool>()
+        var cursor: String? = null
+        var pages = 0
+        while (pages < MAX_TOOL_PAGES) {
+            val params = JSONObject()
+            if (cursor != null) params.put("cursor", cursor)
+            val result = transport.request("tools/list", params, LIST_TIMEOUT_MS)
+            tools += McpJsonRpc.parseTools(result)
+            pages++
+            cursor = McpJsonRpc.parseNextCursor(result) ?: break
+        }
+        return tools
+    }
 
     suspend fun callTool(
         toolName: String,
@@ -69,5 +89,8 @@ class McpClient(private val transport: McpTransport) {
         const val LIST_TIMEOUT_MS = 20_000L
         const val DEFAULT_CALL_TIMEOUT_MS = 60_000L
         private const val OPEN_TIMEOUT_MS = 15_000L
+
+        /** Sanity bound on `tools/list` pagination (see [listTools]). */
+        private const val MAX_TOOL_PAGES = 100
     }
 }
