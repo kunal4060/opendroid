@@ -6,6 +6,22 @@ import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.jsonPrimitive
+
+/**
+ * Reads the raw enum name from [decoder]. A plain `decodeString()` on the
+ * streaming JSON decoder mis-reads a class-property value (it trips over
+ * the key/value lexer state and throws JsonDecodingException), so for JSON
+ * the value is pulled through the element tree instead — the documented
+ * route for custom serializers. Non-JSON decoders keep the plain call.
+ */
+private fun decodeEnumName(decoder: Decoder): String =
+    if (decoder is JsonDecoder) {
+        decoder.decodeJsonElement().jsonPrimitive.content
+    } else {
+        decoder.decodeString()
+    }
 
 /**
  * Forward-tolerant serializers for the knowledge-graph payload enums.
@@ -38,7 +54,7 @@ object KnowledgeCategorySerializer : KSerializer<KnowledgeCategory> {
         encoder.encodeString(value.name)
 
     override fun deserialize(decoder: Decoder): KnowledgeCategory =
-        KnowledgeCategory.values().firstOrNull { it.name == decoder.decodeString() }
+        KnowledgeCategory.values().firstOrNull { it.name == decodeEnumName(decoder) }
             ?: KnowledgeCategory.NOTE_FACT
 }
 
@@ -50,7 +66,7 @@ object MemoryTierSerializer : KSerializer<MemoryTier> {
         encoder.encodeString(value.name)
 
     override fun deserialize(decoder: Decoder): MemoryTier =
-        MemoryTier.values().firstOrNull { it.name == decoder.decodeString() }
+        MemoryTier.values().firstOrNull { it.name == decodeEnumName(decoder) }
             ?: MemoryTier.LONG_TERM
 }
 
@@ -62,6 +78,6 @@ object OriginKindSerializer : KSerializer<OriginKind> {
         encoder.encodeString(value.name)
 
     override fun deserialize(decoder: Decoder): OriginKind =
-        OriginKind.values().firstOrNull { it.name == decoder.decodeString() }
+        OriginKind.values().firstOrNull { it.name == decodeEnumName(decoder) }
             ?: OriginKind.UNKNOWN
 }
