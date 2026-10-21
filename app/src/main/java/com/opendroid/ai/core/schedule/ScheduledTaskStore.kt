@@ -122,6 +122,22 @@ class ScheduledTaskStore @Inject constructor(
     }
 
     /**
+     * Heartbeat for a live run: refreshes the claim timestamp of a task
+     * that is still RUNNING, so a legitimately long execution is not
+     * mistaken for a stuck (crashed) claim and reclaimed by the other
+     * lane while it is still running. No-op for any other status.
+     */
+    suspend fun touchClaim(id: String, nowMillis: Long) {
+        update(id) { task ->
+            if (task.status == ScheduledTaskStatus.RUNNING) {
+                task.copy(claimedAtMillis = nowMillis)
+            } else {
+                task
+            }
+        }
+    }
+
+    /**
      * Removes every schedule and the sync-dismissal bookkeeping. Used by the
      * A6 wipe: with the document gone, the boot receiver and the sweep lane
      * find nothing to re-arm. Callers disarm live alarms first
