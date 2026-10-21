@@ -45,6 +45,7 @@ object OpenDroidRoutes {
     const val ONBOARDING = "onboarding"
     const val MAIN = "main"
     const val BENCHMARK = "benchmark"
+    const val USAGE = "usage"
     const val PRIVACY_POLICY = "privacy_policy"
     const val TERMS_OF_USE = "terms_of_use"
     const val HELP_CENTER = "help_center"
@@ -141,6 +142,9 @@ fun OpenDroidNavigation(
                 onNavigateToBenchmark = {
                     navController.navigate(OpenDroidRoutes.BENCHMARK)
                 },
+                onNavigateToUsage = {
+                    navController.navigate(OpenDroidRoutes.USAGE)
+                },
                 onNavigateToPrivacyPolicy = {
                     navController.navigate(OpenDroidRoutes.PRIVACY_POLICY)
                 },
@@ -178,6 +182,15 @@ fun OpenDroidNavigation(
             val settingsViewModel: SettingsViewModel = hiltViewModel()
             BenchmarkScreen(
                 viewModel = settingsViewModel,
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(OpenDroidRoutes.USAGE) {
+            UsageScreen(
+                viewModel = hiltViewModel(),
                 onNavigateBack = {
                     navController.popBackStack()
                 }
@@ -291,6 +304,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
 @Composable
 fun MainDashboard(
     onNavigateToBenchmark: () -> Unit,
+    onNavigateToUsage: () -> Unit = {},
     onNavigateToPrivacyPolicy: () -> Unit,
     onNavigateToTermsOfUse: () -> Unit,
     onNavigateToHelpCenter: () -> Unit,
@@ -430,6 +444,7 @@ fun MainDashboard(
                     Screen.Settings -> SettingsScreen(
                         viewModel = settingsViewModel,
                         onNavigateToBenchmark = onNavigateToBenchmark,
+                        onNavigateToUsage = onNavigateToUsage,
                         onNavigateToPrivacyPolicy = onNavigateToPrivacyPolicy,
                         onNavigateToTermsOfUse = onNavigateToTermsOfUse,
                         onNavigateToHelpCenter = onNavigateToHelpCenter,

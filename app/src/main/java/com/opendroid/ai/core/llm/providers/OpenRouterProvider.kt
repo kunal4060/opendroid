@@ -1,6 +1,7 @@
 package com.opendroid.ai.core.llm.providers
 
 import com.opendroid.ai.core.llm.VisionSupport
+import com.opendroid.ai.core.usage.parseOpenAiStyleUsage
 
 import com.google.gson.Gson
 import com.google.gson.JsonObject
@@ -80,12 +81,14 @@ class OpenRouterProvider @Inject constructor(
             val messageObj = choices[0].asJsonObject.getAsJsonObject("message")
             val content = messageObj.get("content").asString
 
-            val usage = jsonResponse.getAsJsonObject("usage")
-            val tokensUsed = usage?.get("total_tokens")?.asInt ?: 0
+            val usageJson = jsonResponse.getAsJsonObject("usage")
+            val usage = parseOpenAiStyleUsage(usageJson)
 
             LLMResponse(
                 content = content,
-                tokensUsed = tokensUsed,
+                tokensUsed = usage.totalTokens,
+                promptTokens = usage.promptTokens,
+                completionTokens = usage.completionTokens,
                 model = selectedModel,
                 provider = name,
                 latencyMs = System.currentTimeMillis() - startTime

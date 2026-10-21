@@ -74,12 +74,20 @@ class CohereProvider @Inject constructor(
             val contentArray = messageObj.getAsJsonArray("content")
             val content = contentArray[0].asJsonObject.get("text").asString
 
-            val usage = jsonResponse.getAsJsonObject("usage")
-            val tokensUsed = usage?.getAsJsonObject("tokens")?.get("total_tokens")?.asInt ?: 0
+            // Cohere v2 reports usage.tokens.input_tokens / output_tokens;
+            // keep the split for B3 metering, falling back to a reported
+            // combined total (which then stays unsplit downstream).
+            val usageTokens = jsonResponse.getAsJsonObject("usage")?.getAsJsonObject("tokens")
+            val promptTokens = usageTokens?.get("input_tokens")?.takeIf { it.isJsonPrimitive }?.asInt
+            val completionTokens = usageTokens?.get("output_tokens")?.takeIf { it.isJsonPrimitive }?.asInt
+            val tokensUsed = usageTokens?.get("total_tokens")?.takeIf { it.isJsonPrimitive }?.asInt
+                ?: ((promptTokens ?: 0) + (completionTokens ?: 0))
 
             LLMResponse(
                 content = content,
                 tokensUsed = tokensUsed,
+                promptTokens = promptTokens,
+                completionTokens = completionTokens,
                 model = selectedModel,
                 provider = name,
                 latencyMs = System.currentTimeMillis() - startTime

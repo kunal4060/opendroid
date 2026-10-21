@@ -118,11 +118,18 @@ class GeminiProvider @Inject constructor(
             val text = parts[0].asJsonObject.get("text").asString
 
             val usageMetadata = jsonResponse.getAsJsonObject("usageMetadata")
-            val totalTokens = usageMetadata?.get("totalTokenCount")?.asInt ?: 0
+            // Gemini reports the split in usageMetadata; keep it split for
+            // B3 metering. Absent fields stay null (unknown).
+            val promptTokens = usageMetadata?.get("promptTokenCount")?.takeIf { it.isJsonPrimitive }?.asInt
+            val completionTokens = usageMetadata?.get("candidatesTokenCount")?.takeIf { it.isJsonPrimitive }?.asInt
+            val totalTokens = usageMetadata?.get("totalTokenCount")?.takeIf { it.isJsonPrimitive }?.asInt
+                ?: ((promptTokens ?: 0) + (completionTokens ?: 0))
 
             LLMResponse(
                 content = text,
                 tokensUsed = totalTokens,
+                promptTokens = promptTokens,
+                completionTokens = completionTokens,
                 model = selectedModel,
                 provider = name,
                 latencyMs = System.currentTimeMillis() - startTime
@@ -154,10 +161,14 @@ class GeminiProvider @Inject constructor(
 
         return LLMResponse(
             content = mockContent,
+            // This on-device mock has no real usage report; the historical
+            // placeholder total is kept for compatibility and flagged as an
+            // estimate so B3 metering never presents it as measured.
             tokensUsed = 120,
             model = "gemini-nano",
             provider = name,
-            latencyMs = System.currentTimeMillis() - startTime
+            latencyMs = System.currentTimeMillis() - startTime,
+            usageEstimated = true
         )
     }
 

@@ -124,10 +124,18 @@ class OpencodeGoProvider @Inject constructor(
                         throw LLMErrorMapper.malformed(name, selectedModel)
                     else -> totalTokensElement.asInt
                 }
+                // B3: the prompt/completion split rides along when this
+                // OpenAI-shaped endpoint reports it; absent stays unknown.
+                val promptTokens = usage?.get("prompt_tokens")
+                    ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.asInt
+                val completionTokens = usage?.get("completion_tokens")
+                    ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.asInt
 
                 LLMResponse(
                     content = content,
                     tokensUsed = tokensUsed,
+                    promptTokens = promptTokens,
+                    completionTokens = completionTokens,
                     model = selectedModel,
                     provider = name,
                     latencyMs = System.currentTimeMillis() - startTime

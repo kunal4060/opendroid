@@ -103,7 +103,21 @@ data class LLMResponse(
     val tokensUsed: Int,
     val model: String,
     val provider: String,
-    val latencyMs: Long
+    val latencyMs: Long,
+    /**
+     * B3 usage metering: the prompt/completion split exactly as the provider
+     * reported it on the wire. Null means the provider did not report that
+     * side (or reported only a combined total, which stays in [tokensUsed]) —
+     * consumers must treat null as "unknown", never as zero, and must not
+     * reconstruct a split that was not reported.
+     */
+    val promptTokens: Int? = null,
+    val completionTokens: Int? = null,
+    /**
+     * True when the token counts are local estimates (on-device providers and
+     * streamed responses metered by counting), not provider-reported figures.
+     */
+    val usageEstimated: Boolean = false
 )
 
 /**
