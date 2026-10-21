@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -27,15 +28,20 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Share
@@ -52,12 +58,14 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -65,9 +73,11 @@ import com.opendroid.ai.core.agent.AgentState
 import com.opendroid.ai.core.agent.AutoApprovalPolicy
 import com.opendroid.ai.core.agent.ChatErrorPrimaryAction
 import com.opendroid.ai.core.agent.ChatErrorUiState
+import coil.compose.AsyncImage
 import com.opendroid.ai.core.agent.guidance
 import com.opendroid.ai.core.agent.primaryAction
 import com.opendroid.ai.core.agent.title
+import com.opendroid.ai.core.llm.PendingAttachment
 import com.opendroid.ai.core.llm.RoutingStatus
 import com.opendroid.ai.core.voice.SpeechRecognitionEngine
 import com.opendroid.ai.data.export.ChatExportFormat
@@ -122,6 +132,12 @@ fun ChatScreen(
     // A10 limited state: no usable provider configured (e.g. onboarding's
     // provider stage was skipped) — the banner stays until setup exists.
     val providerSetupNeeded by viewModel.providerSetupNeeded.collectAsState()
+    // Composer attachments (B1): the staged attachment chip, the capability
+    // gate dialog state, and the last attachment failure.
+    val pendingAttachment by viewModel.pendingAttachment.collectAsState()
+    val attachmentGate by viewModel.attachmentGate.collectAsState()
+    val attachmentError by viewModel.attachmentError.collectAsState()
+    var showAttachSheet by remember { mutableStateOf(false) }
     val currentSessionId = sessions.firstOrNull { it.isCurrent }?.id
     val runningElsewhere = runningSessionId != null && runningSessionId != currentSessionId
 
@@ -177,7 +193,9 @@ fun ChatScreen(
     // keyboard "Send" action and the send button below.
     fun submitInput() {
         val text = inputQuery
-        if (text.isBlank()) return
+        val hasAttachment = pendingAttachment != null
+        // An attachment may be sent with no typed text; plain text may not be blank.
+        if (text.isBlank() && !hasAttachment) return
         // Offline with no on-device route: keep the draft and let the inline
         // notice above the composer explain — never dispatch a request that
         // could only hang (the ViewModel enforces the same guard).
@@ -187,10 +205,18 @@ fun ChatScreen(
             viewModel.editAndResend(editing, text, context)
             editingMessageId = null
             textBeforeEdit = ""
+            inputQuery = ""
+        } else if (hasAttachment) {
+            // When this returns false the capability gate owns the outcome:
+            // its dialog explains and offers a model switch while the draft
+            // and the attachment chip stay exactly as the user left them.
+            if (viewModel.sendMessageWithAttachment(text, context)) {
+                inputQuery = ""
+            }
         } else {
             viewModel.sendMessage(text, context)
+            inputQuery = ""
         }
-        inputQuery = ""
     }
 
     // System file picker for the export destination (SAF — no storage
@@ -225,6 +251,40 @@ fun ChatScreen(
                 exportError = "Export failed: ${e.localizedMessage ?: "unknown error"}"
             }
         }
+    }
+
+    // Attachment pickers (B1) — all permission-free contracts: the system
+    // photo picker, the delegated camera app writing into private staging
+    // via FileProvider, and SAF for documents. Cancelling any of them just
+    // returns here; the draft text and any existing chip are separate state
+    // and stay untouched.
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) viewModel.stageAttachment(uri)
+    }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        viewModel.onCameraCaptureResult(success)
+    }
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) viewModel.stageAttachment(uri)
+    }
+
+    // Attachment failures surface as a toast; a failed send also hands its
+    // draft back so the text field is restored rather than silently cleared.
+    LaunchedEffect(attachmentError) {
+        val error = attachmentError ?: return@LaunchedEffect
+        if (!error.draftText.isNullOrBlank() && inputQuery.isBlank()) {
+            inputQuery = error.draftText
+        }
+        Toast.makeText(context, error.message, Toast.LENGTH_LONG).show()
+        viewModel.consumeAttachmentError()
     }
 
     // Opens the system file creator for [session] in [format], suggesting
@@ -628,6 +688,13 @@ fun ChatScreen(
                             )
                         }
                     }
+                    pendingAttachment?.let { pending ->
+                        PendingAttachmentChip(
+                            pending = pending,
+                            onRemove = { viewModel.clearPendingAttachment() },
+                            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+                        )
+                    }
                     if (voiceError != null) {
                         Text(
                             text = voiceError.orEmpty(),
@@ -694,7 +761,21 @@ fun ChatScreen(
                             }
                         )
 
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        // Attach (B1): opens the photo / camera / file sheet.
+                        IconButton(
+                            onClick = { showAttachSheet = true },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AttachFile,
+                                contentDescription = "Attach a photo or file",
+                                tint = if (pendingAttachment != null) AccentCyan else TextSecondary
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(4.dp))
 
                         // Text Input Field / Voice Waveform Area
                         Box(
@@ -738,7 +819,7 @@ fun ChatScreen(
                         }
 
                         AnimatedVisibility(
-                            visible = !isListening && inputQuery.isNotBlank(),
+                            visible = !isListening && (inputQuery.isNotBlank() || pendingAttachment != null),
                             enter = fadeIn(animationSpec = tween(150)) + scaleIn(initialScale = 0.8f),
                             exit = fadeOut(animationSpec = tween(150)) + scaleOut(targetScale = 0.8f)
                         ) {
@@ -763,6 +844,82 @@ fun ChatScreen(
                 }
             }
         }
+    }
+
+    if (showAttachSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showAttachSheet = false },
+            containerColor = DarkSurface
+        ) {
+            Column(modifier = Modifier.padding(bottom = 28.dp)) {
+                Text(
+                    text = "Attach",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextSecondary,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                )
+                AttachOptionRow(
+                    icon = Icons.Default.PhotoLibrary,
+                    label = "Photo",
+                    subtitle = "Pick an image from your library"
+                ) {
+                    showAttachSheet = false
+                    photoPickerLauncher.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                    )
+                }
+                AttachOptionRow(
+                    icon = Icons.Default.CameraAlt,
+                    label = "Camera",
+                    subtitle = "Take a photo now"
+                ) {
+                    showAttachSheet = false
+                    cameraLauncher.launch(viewModel.beginCameraCapture())
+                }
+                AttachOptionRow(
+                    icon = Icons.Default.Description,
+                    label = "File",
+                    subtitle = "PDF, text, or image file (up to 8 MB)"
+                ) {
+                    showAttachSheet = false
+                    filePickerLauncher.launch(arrayOf("application/pdf", "text/*", "image/*"))
+                }
+            }
+        }
+    }
+
+    // B1 capability gate: the current model cannot take the pending
+    // attachment. The attachment is never silently dropped - the user
+    // switches models (and taps Send again) or cancels with chip + draft
+    // untouched.
+    attachmentGate?.let { gate ->
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissAttachmentGate() },
+            containerColor = DarkSurface,
+            title = {
+                Text("Current model can't use this attachment", color = TextPrimary)
+            },
+            text = {
+                Text(
+                    "${gate.attachmentName}\n\n${gate.reason}",
+                    color = TextSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.dismissAttachmentGate()
+                    showModelPicker = true
+                }) {
+                    Text("Switch model", color = TextPrimary, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissAttachmentGate() }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
     }
 
     if (showModelPicker) {
@@ -1166,6 +1323,14 @@ fun ChatBubble(
                         fontFamily = FontFamily.Monospace,
                         modifier = Modifier.padding(bottom = 4.dp)
                     )
+                }
+
+                if (!isAgent && (message.attachmentName != null || message.attachmentMimeType != null)) {
+                    // B1: the attachment this message carried. Screenshot
+                    // payloads have neither name nor mime metadata and are
+                    // never rendered here - only real composer attachments.
+                    MessageAttachment(message)
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
 
                 if (isAgent) {
@@ -1683,4 +1848,175 @@ private fun ChatErrorRecoveryCard(
             }
         }
     }
+}
+
+/** One row of the B1 attach sheet (photo / camera / file). */
+@Composable
+private fun AttachOptionRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = AccentCyan,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(modifier = Modifier.width(16.dp))
+        Column {
+            Text(text = label, fontSize = 15.sp, color = TextPrimary, fontWeight = FontWeight.Medium)
+            Text(text = subtitle, fontSize = 12.sp, color = TextSecondary)
+        }
+    }
+}
+
+/**
+ * The composer's pending-attachment chip (B1): image thumbnail from the
+ * staged private copy, or a file chip for documents, with a remove action.
+ * Removing it deletes the staged copy via the ViewModel.
+ */
+@Composable
+private fun PendingAttachmentChip(
+    pending: PendingAttachment,
+    onRemove: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(CardBackground)
+            .border(1.dp, BorderColor, RoundedCornerShape(16.dp))
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (pending.isImage) {
+            AsyncImage(
+                model = pending.localFile,
+                contentDescription = pending.displayName,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(8.dp))
+            )
+        } else {
+            Icon(
+                imageVector = if (pending.mimeType == "application/pdf") {
+                    Icons.Default.PictureAsPdf
+                } else {
+                    Icons.Default.Description
+                },
+                contentDescription = null,
+                tint = AccentCyan,
+                modifier = Modifier.size(28.dp)
+            )
+        }
+        Spacer(modifier = Modifier.width(10.dp))
+        Column(modifier = Modifier.widthIn(max = 200.dp)) {
+            Text(
+                text = pending.displayName,
+                fontSize = 12.sp,
+                color = TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = formatAttachmentSize(pending.sizeBytes),
+                fontSize = 10.sp,
+                color = TextSecondary
+            )
+        }
+        IconButton(onClick = onRemove, modifier = Modifier.size(32.dp)) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "Remove attachment",
+                tint = TextSecondary,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+    }
+}
+
+/**
+ * What a sent message's attachment looks like in its bubble (B1): the image
+ * itself (decoded from the persisted payload) for images, a file chip for
+ * PDFs and text files. A PDF whose payload was too large to keep says so
+ * instead of pretending the file is still there.
+ */
+@Composable
+private fun MessageAttachment(message: ChatMessage) {
+    val mimeType = message.attachmentMimeType ?: "image/jpeg"
+    if (mimeType.startsWith("image/") && message.imageBase64 != null) {
+        val bytes = remember(message.id, message.imageBase64) {
+            runCatching {
+                android.util.Base64.decode(message.imageBase64, android.util.Base64.DEFAULT)
+            }.getOrNull()
+        }
+        if (bytes != null) {
+            Column {
+                AsyncImage(
+                    model = bytes,
+                    contentDescription = message.attachmentName ?: "Attached image",
+                    contentScale = ContentScale.FillWidth,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                )
+                message.attachmentName?.let { name ->
+                    Text(
+                        text = name,
+                        fontSize = 10.sp,
+                        color = TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+            return
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            imageVector = if (mimeType == "application/pdf") {
+                Icons.Default.PictureAsPdf
+            } else {
+                Icons.Default.Description
+            },
+            contentDescription = null,
+            tint = AccentCyan,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Column {
+            Text(
+                text = message.attachmentName ?: "Attachment",
+                fontSize = 12.sp,
+                color = TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (mimeType == "application/pdf" && message.imageBase64 == null) {
+                Text(
+                    text = "Sent once — file not kept in history",
+                    fontSize = 9.sp,
+                    color = TextSecondary
+                )
+            }
+        }
+    }
+}
+
+private fun formatAttachmentSize(bytes: Long): String = when {
+    bytes < 1024 -> "$bytes B"
+    bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+    else -> String.format(Locale.getDefault(), "%.1f MB", bytes / (1024.0 * 1024.0))
 }
