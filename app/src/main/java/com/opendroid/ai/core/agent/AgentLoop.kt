@@ -1165,11 +1165,20 @@ class AgentLoop @Inject constructor(
      * work must not silently vanish just because the LLM's rewrite omitted
      * it; genuinely new stepIds from [updatedPlan] are appended.
      *
+     * Loop-2 Area2 #1: an [updatedPlan] step whose stepId belongs to a
+     * FINISHED step of the current plan is never merged back in. The
+     * re-evaluation prompt's example carries no status field, so an echoed
+     * completed step deserialises as PENDING — without this exclusion the
+     * merge resurrected it as fresh pending work (renamed s1 -> s1_2 by
+     * ensureUniqueStepIds) and it executed a second time: duplicate sends,
+     * calls and reminders, unattended in AUTO/YOLO.
+     *
      * Approval gate: any merged PENDING step that differs from what was
      * approved (a new stepId, or a same-id replacement whose action/params/
-     * fallback changed, or an approved step the update retired) may only run
-     * unattended when the plan was auto-approved AND the whole merged
-     * remainder still passes [AutoApprovalPolicy] under the LIVE config —
+     * fallback/dependsOn/order changed, or an approved step the update
+     * retired) may only run unattended when the plan was auto-approved AND
+     * the whole merged remainder still passes [AutoApprovalPolicy] under
+     * the LIVE config —
      * the same all-or-nothing re-check the UnknownAction branch has always
      * applied to AUTO plans, extended to manually approved plans: the user
      * approved a specific step set, and LLM-invented steps must never run
@@ -1183,6 +1192,7 @@ class AgentLoop @Inject constructor(
         autoApproved: Boolean
     ): Boolean {
         val finished = currentPlanState.steps.filter { it.status != StepStatus.PENDING }
+        val finishedIds = finished.map { it.stepId }.toSet()
         val originalPending = currentPlanState.steps.filter { it.status == StepStatus.PENDING }
         val originalPendingIds = originalPending.map { it.stepId }.toSet()
         val updatedById = updatedPlan.steps.associateBy { it.stepId }
@@ -1195,9 +1205,16 @@ class AgentLoop @Inject constructor(
                 replacement == null -> mergedPending += original
                 replacement.status == StepStatus.PENDING -> {
                     mergedPending += replacement
+                    // Loop-2 Area2 #13: dependsOn/order are part of what was
+                    // approved — a dependency-only rewire (dropping the dep
+                    // that produces this step's $ref input, or adding one on
+                    // a FAILED step) is a change and must re-gate like any
+                    // other edit, not slip through as "unchanged".
                     if (replacement.action != original.action ||
                         replacement.params != original.params ||
-                        replacement.fallback != original.fallback
+                        replacement.fallback != original.fallback ||
+                        replacement.dependsOn != original.dependsOn ||
+                        replacement.order != original.order
                     ) {
                         changedPending += replacement
                     }
@@ -1209,6 +1226,10 @@ class AgentLoop @Inject constructor(
             }
         }
         for (step in updatedPlan.steps) {
+            // Loop-2 Area2 #1: never resurrect finished work. An echoed
+            // finished step (status lost in the LLM round-trip, so it reads
+            // PENDING) is not a "genuinely new" step — it already ran.
+            if (step.stepId in finishedIds) continue
             if (step.stepId !in originalPendingIds && step.status == StepStatus.PENDING) {
                 mergedPending += step
                 changedPending += step
