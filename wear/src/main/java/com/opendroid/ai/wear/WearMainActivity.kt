@@ -10,9 +10,9 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.app.RemoteInput
+import android.app.RemoteInput
 import androidx.core.content.ContextCompat
-import androidx.wear.input.RemoteInputIntent
+import androidx.wear.input.RemoteInputIntentHelper
 
 /**
  * The watch app's single Activity (feature D7). Thin by design: it owns
@@ -20,9 +20,9 @@ import androidx.wear.input.RemoteInputIntent
  * renders [WearApp]. All agent work happens on the phone.
  *
  * Voice input follows the research's lightest reliable path:
- *  1. `RemoteInputIntent.ACTION_REMOTE_INPUT` — the system dictation /
- *     text-entry UI (voice or keyboard), result read back through
- *     [RemoteInput.getResultsFromIntent].
+ *  1. `RemoteInputIntentHelper.createActionRemoteInputIntent()` — the
+ *     system dictation / text-entry UI (voice or keyboard), result read
+ *     back through [RemoteInput.getResultsFromIntent].
  *  2. If that intent has no handler on this watch, fall back to the
  *     speech recognizer intent.
  *  3. If neither exists, say so honestly in the command-state area —
@@ -100,9 +100,13 @@ class WearMainActivity : ComponentActivity() {
         val remoteInput = RemoteInput.Builder(KEY_COMMAND_REPLY)
             .setLabel("Say or type a command")
             .build()
-        val remoteInputIntent = Intent(RemoteInputIntent.ACTION_REMOTE_INPUT).apply {
-            putExtra(RemoteInputIntent.EXTRA_REMOTE_INPUTS, arrayOf(remoteInput))
-        }
+        // wear-input 1.2.0 has no RemoteInputIntent class: the helper builds
+        // the ACTION_REMOTE_INPUT intent and attaches the inputs extra
+        // (platform RemoteInput, as a List) — same flow, real API.
+        val remoteInputIntent = RemoteInputIntentHelper.putRemoteInputsExtra(
+            RemoteInputIntentHelper.createActionRemoteInputIntent(),
+            listOf(remoteInput)
+        )
         try {
             remoteInputLauncher.launch(remoteInputIntent)
             return
