@@ -18,7 +18,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -29,6 +29,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
@@ -43,10 +44,10 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Stop
@@ -57,7 +58,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -75,7 +75,6 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -513,12 +512,9 @@ fun ChatScreen(
                 title = {
                     Column {
                         Text(
-                            text = "OPENDROID",
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
+                            text = "OpenDroid",
+                            style = MaterialTheme.typography.titleLarge,
                             color = TextPrimary,
-                            fontSize = 20.sp,
-                            letterSpacing = 2.sp,
                             modifier = Modifier.semantics { heading() }
                         )
                         AgentStatusSubtitle(visibleAgentState, runningElsewhere)
@@ -535,6 +531,7 @@ fun ChatScreen(
                     OutlinedButton(
                         onClick = { viewModel.cycleAutoMode() },
                         border = BorderStroke(1.dp, chipColor.copy(alpha = 0.6f)),
+                        shape = CircleShape,
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = chipColor),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                         // min-height, not fixed: the mode label must never be
@@ -543,13 +540,11 @@ fun ChatScreen(
                     ) {
                         Text(
                             text = when (autoMode) {
-                                AutoMode.OFF -> "MANUAL"
-                                AutoMode.AUTO -> "AUTO"
-                                AutoMode.YOLO -> "YOLO"
+                                AutoMode.OFF -> "Manual"
+                                AutoMode.AUTO -> "Auto"
+                                AutoMode.YOLO -> "Yolo"
                             },
-                            fontSize = 10.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold
+                            style = MaterialTheme.typography.labelMedium
                         )
                     }
                     IconButton(onClick = { viewModel.newChat() }) {
@@ -570,7 +565,7 @@ fun ChatScreen(
                         DropdownMenu(
                             expanded = showChatMenu,
                             onDismissRequest = { showChatMenu = false },
-                            modifier = Modifier.background(DarkSurface)
+                            modifier = Modifier.background(AppTheme.colors.surfaceRaised)
                         ) {
                             if (sessions.isEmpty()) {
                                 DropdownMenuItem(
@@ -600,7 +595,7 @@ fun ChatScreen(
                                                     modifier = Modifier
                                                         .size(6.dp)
                                                         .clip(CircleShape)
-                                                        .background(AccentCyan)
+                                                        .background(AccentNeonGreen)
                                                 )
                                             }
                                         }
@@ -715,7 +710,7 @@ fun ChatScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(horizontal = 20.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     com.opendroid.ai.ui.components.ModelPickerChip(
@@ -761,26 +756,42 @@ fun ChatScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
+                        .padding(horizontal = 20.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     contentPadding = PaddingValues(top = 16.dp, bottom = 16.dp)
                 ) {
-                    items(history) { msg ->
-                        ChatBubble(
-                            message = msg,
-                            viewModel = viewModel,
-                            context = context,
-                            speakingMessageId = speakingMessageId,
-                            onEditRequested = { startEditingMessage(it) },
-                            researchSources = researchSourcesByMessage[msg.id] ?: emptyList()
-                        )
+                    itemsIndexed(history) { index, msg ->
+                        // Spacing rhythm (research-3 §5.1): 16dp between
+                        // messages, 24dp before a user message that opens a
+                        // new turn after an agent reply (16dp base + 8dp).
+                        val prevSender = history.getOrNull(index - 1)?.sender
+                        val turnGap = if (
+                            msg.sender == ChatMessage.Sender.USER &&
+                            prevSender == ChatMessage.Sender.AGENT
+                        ) 8.dp else 0.dp
+                        Box(modifier = Modifier.padding(top = turnGap)) {
+                            ChatBubble(
+                                message = msg,
+                                viewModel = viewModel,
+                                context = context,
+                                speakingMessageId = speakingMessageId,
+                                onEditRequested = { startEditingMessage(it) },
+                                researchSources = researchSourcesByMessage[msg.id] ?: emptyList()
+                            )
+                        }
                     }
 
-                    // Show a typing/thinking bubble if thinking - scoped to this chat, see
+                    // Show the thinking narration line if thinking - scoped to this chat, see
                     // visibleAgentState. Research sends (D3) show it too.
                     if (visibleAgentState is AgentState.Thinking || researchInFlight) {
                         item {
-                            ThinkingBubble()
+                            ThinkingBubble(
+                                narration = if (researchInFlight) {
+                                    "Researching..."
+                                } else {
+                                    "Analyzing intent & planning..."
+                                }
+                            )
                         }
                     }
 
@@ -848,7 +859,7 @@ fun ChatScreen(
                             endY = 50f
                         )
                     )
-                    .padding(16.dp)
+                    .padding(horizontal = 20.dp, vertical = 16.dp)
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     if (editingMessageId != null) {
@@ -861,14 +872,14 @@ fun ChatScreen(
                             Icon(
                                 imageVector = Icons.Default.Edit,
                                 contentDescription = null,
-                                tint = AccentCyan,
+                                tint = AccentNeonGreen,
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "Editing message",
-                                fontSize = 11.sp,
-                                color = AccentCyan,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = AccentNeonGreen,
                                 modifier = Modifier.weight(1f)
                             )
                             Icon(
@@ -902,7 +913,7 @@ fun ChatScreen(
                             Icon(
                                 imageVector = Icons.Default.Image,
                                 contentDescription = null,
-                                tint = AccentCyan,
+                                tint = TextSecondary,
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
@@ -945,7 +956,7 @@ fun ChatScreen(
                             Text(
                                 text = shareNotice.orEmpty(),
                                 fontSize = 11.sp,
-                                color = AccentCyan,
+                                color = AppTheme.colors.accentInfo,
                                 modifier = Modifier.weight(1f)
                             )
                             Icon(
@@ -990,13 +1001,7 @@ fun ChatScreen(
                                 modifier = Modifier
                                     .size(8.dp)
                                     .clip(CircleShape)
-                                    .background(
-                                        if (sessionPhase == VoiceSessionPhase.LISTENING) {
-                                            AccentRed
-                                        } else {
-                                            AccentCyan
-                                        }
-                                    )
+                                    .background(AccentNeonGreen)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
@@ -1031,7 +1036,7 @@ fun ChatScreen(
                                         "End"
                                     },
                                     fontSize = 11.sp,
-                                    color = AccentRed
+                                    color = TextPrimary
                                 )
                             }
                         }
@@ -1098,20 +1103,22 @@ fun ChatScreen(
                             Icon(
                                 imageVector = Icons.Default.AttachFile,
                                 contentDescription = "Attach a photo or file",
-                                tint = if (pendingAttachment != null) AccentCyan else TextSecondary
+                                tint = if (pendingAttachment != null) AccentNeonGreen else TextSecondary
                             )
                         }
 
                         Spacer(modifier = Modifier.width(4.dp))
 
-                        // Text Input Field / Voice Waveform Area
+                        // Text Input Field / Voice Waveform Area — the
+                        // composer is a full pill: cardBackground fill with a
+                        // borderStrong hairline (research-3 §5.2).
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .heightIn(min = 56.dp, max = 120.dp)
-                                .clip(RoundedCornerShape(28.dp))
+                                .clip(CircleShape)
                                 .background(CardBackground)
-                                .border(1.dp, BorderColor, RoundedCornerShape(28.dp))
+                                .border(1.dp, AppTheme.colors.borderStrong, CircleShape)
                                 .padding(horizontal = 16.dp),
                             contentAlignment = Alignment.CenterStart
                         ) {
@@ -1127,7 +1134,8 @@ fun ChatScreen(
                                 TextField(
                                     value = inputQuery,
                                     onValueChange = { inputQuery = it; voiceError = null },
-                                    placeholder = { Text("Ask OpenDroid to run an autonomous task...", color = TextSecondary, fontSize = 14.sp) },
+                                    textStyle = MaterialTheme.typography.bodyLarge,
+                                    placeholder = { Text("Ask OpenDroid to run an autonomous task...", color = TextSecondary, style = MaterialTheme.typography.bodyMedium) },
                                     colors = TextFieldDefaults.colors(
                                         focusedContainerColor = Color.Transparent,
                                         unfocusedContainerColor = Color.Transparent,
@@ -1164,12 +1172,12 @@ fun ChatScreen(
                                     modifier = Modifier
                                         .size(48.dp)
                                         .clip(CircleShape)
-                                        .background(TextPrimary)
+                                        .background(AccentGreenButton)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Send,
+                                        imageVector = Icons.Default.ArrowUpward,
                                         contentDescription = "Send",
-                                        tint = DarkBackground
+                                        tint = OnAccent
                                     )
                                 }
                             }
@@ -1183,13 +1191,12 @@ fun ChatScreen(
     if (showAttachSheet) {
         ModalBottomSheet(
             onDismissRequest = { showAttachSheet = false },
-            containerColor = DarkSurface
+            containerColor = AppTheme.colors.surfaceRaised
         ) {
             Column(modifier = Modifier.padding(bottom = 28.dp)) {
                 Text(
                     text = "Attach",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleSmall,
                     color = TextSecondary,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
                 )
@@ -1230,7 +1237,7 @@ fun ChatScreen(
     attachmentGate?.let { gate ->
         AlertDialog(
             onDismissRequest = { viewModel.dismissAttachmentGate() },
-            containerColor = DarkSurface,
+            containerColor = AppTheme.colors.surfaceRaised,
             title = {
                 Text("Current model can't use this attachment", color = TextPrimary)
             },
@@ -1306,7 +1313,7 @@ fun ChatScreen(
     exportSession?.let { session ->
         AlertDialog(
             onDismissRequest = { exportSession = null },
-            containerColor = DarkSurface,
+            containerColor = AppTheme.colors.surfaceRaised,
             title = { Text("Export chat", color = TextPrimary) },
             text = {
                 Text(
@@ -1341,7 +1348,7 @@ fun ChatScreen(
     exportedFile?.let { file ->
         AlertDialog(
             onDismissRequest = { exportedFile = null },
-            containerColor = DarkSurface,
+            containerColor = AppTheme.colors.surfaceRaised,
             title = { Text("Chat exported", color = TextPrimary) },
             text = {
                 Text("Saved as ${file.name}.", color = TextSecondary)
@@ -1365,7 +1372,7 @@ fun ChatScreen(
     exportError?.let { message ->
         AlertDialog(
             onDismissRequest = { exportError = null },
-            containerColor = DarkSurface,
+            containerColor = AppTheme.colors.surfaceRaised,
             title = { Text("Export failed", color = TextPrimary) },
             text = { Text(message, color = TextSecondary) },
             confirmButton = {
@@ -1379,7 +1386,7 @@ fun ChatScreen(
     sessionPendingDelete?.let { session ->
         AlertDialog(
             onDismissRequest = { sessionPendingDelete = null },
-            containerColor = DarkSurface,
+            containerColor = AppTheme.colors.surfaceRaised,
             title = { Text("Delete chat?", color = TextPrimary) },
             text = {
                 Text(
@@ -1406,7 +1413,7 @@ fun ChatScreen(
     sessionPendingRename?.let { session ->
         AlertDialog(
             onDismissRequest = { sessionPendingRename = null },
-            containerColor = DarkSurface,
+            containerColor = AppTheme.colors.surfaceRaised,
             title = { Text("Rename chat", color = TextPrimary) },
             text = {
                 TextField(
@@ -1416,7 +1423,7 @@ fun ChatScreen(
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color.Transparent,
                         unfocusedContainerColor = Color.Transparent,
-                        focusedIndicatorColor = AccentCyan,
+                        focusedIndicatorColor = AccentNeonGreen,
                         unfocusedIndicatorColor = BorderColor,
                         focusedTextColor = TextPrimary,
                         unfocusedTextColor = TextPrimary
@@ -1482,25 +1489,26 @@ fun AgentStatusSubtitle(state: AgentState, runningElsewhere: Boolean = false) {
         }
     }
 
+    // Obsidian & Signal semantics: one accent for every live state, amber
+    // only for the approval ask, red only for a genuine error.
     val color = if (runningElsewhere) {
-        AccentPurple
+        AccentNeonGreen
     } else {
         when (state) {
             is AgentState.Idle -> TextSecondary
-            is AgentState.Listening -> AccentRed
-            is AgentState.Thinking -> AccentPurple
-            is AgentState.PlanProposed -> AccentCyan
-            is AgentState.ExecutingPlan -> AccentCyan
-            is AgentState.Speaking -> AccentCyan
+            is AgentState.Listening -> AccentNeonGreen
+            is AgentState.Thinking -> AccentNeonGreen
+            is AgentState.PlanProposed -> AccentOrange
+            is AgentState.ExecutingPlan -> AccentNeonGreen
+            is AgentState.Speaking -> AccentNeonGreen
             is AgentState.Error -> AccentRed
         }
     }
 
     Text(
         text = text,
-        fontSize = 11.sp,
+        style = MaterialTheme.typography.labelMedium,
         color = color,
-        fontFamily = FontFamily.SansSerif,
         // D8: agent state changes (Thinking / Executing / approval needed)
         // are announced to TalkBack without stealing focus.
         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
@@ -1521,7 +1529,7 @@ fun RoutingBadge(status: RoutingStatus) {
         is RoutingStatus.Cloud ->
             Triple(Icons.Default.Cloud, status.provider, TextSecondary)
         is RoutingStatus.OnDevice ->
-            Triple(Icons.Default.Smartphone, "On-device · ${status.backend}", AccentCyan)
+            Triple(Icons.Default.Smartphone, "On-device · ${status.backend}", AccentNeonGreen)
         is RoutingStatus.OfflineWillUseOnDevice ->
             Triple(Icons.Default.CloudOff, "Offline — will answer on-device", AccentOrange)
         RoutingStatus.OfflineNoRoute ->
@@ -1537,9 +1545,8 @@ fun RoutingBadge(status: RoutingStatus) {
         Spacer(modifier = Modifier.width(4.dp))
         Text(
             text = label,
-            fontSize = 10.sp,
-            color = color,
-            fontFamily = FontFamily.SansSerif
+            style = MaterialTheme.typography.labelSmall,
+            color = color
         )
     }
 }
@@ -1557,8 +1564,9 @@ private fun ProviderSetupBanner(onSetUp: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = CardBackground)
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = CardBackground),
+        border = BorderStroke(1.dp, AppTheme.colors.borderSubtle)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -1577,7 +1585,7 @@ private fun ProviderSetupBanner(onSetUp: () -> Unit) {
                 modifier = Modifier.weight(1f)
             )
             TextButton(onClick = onSetUp) {
-                Text("Set up", color = AccentCyan, fontWeight = FontWeight.Bold)
+                Text("Set up", color = AccentNeonGreen, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -1595,9 +1603,9 @@ private fun ResearchModeChip(
 ) {
     Surface(
         onClick = onToggle,
-        shape = RoundedCornerShape(16.dp),
-        color = if (active) AccentCyan.copy(alpha = 0.16f) else CardBackground,
-        border = BorderStroke(1.dp, if (active) AccentCyan else BorderColor)
+        shape = CircleShape,
+        color = if (active) AppTheme.colors.accentContainer else CardBackground,
+        border = BorderStroke(1.dp, if (active) AccentNeonGreen else BorderColor)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -1606,16 +1614,14 @@ private fun ResearchModeChip(
             Icon(
                 imageVector = Icons.Default.Language,
                 contentDescription = "Research mode",
-                tint = if (active) AccentCyan else TextSecondary,
+                tint = if (active) AccentNeonGreen else TextSecondary,
                 modifier = Modifier.size(14.dp)
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(
-                text = if (active) "RESEARCH ON" else "RESEARCH",
-                fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
-                color = if (active) AccentCyan else TextSecondary
+                text = if (active) "Research on" else "Research",
+                style = MaterialTheme.typography.labelMedium,
+                color = if (active) AppTheme.colors.onAccentContainer else TextSecondary
             )
         }
     }
@@ -1637,16 +1643,12 @@ fun ChatBubble(
     val clipboardManager = LocalClipboardManager.current
     val localContext = LocalContext.current
     val isBeingSpoken = speakingMessageId != null && speakingMessageId == message.id
-    val bubbleColor = if (isAgent) {
-        CardBackground
-    } else {
-        if (AppTheme.colors.isDark) Color(0xFF1E1E22) else Color(0xFFF1F3F5)
-    }
-    val bubbleBorder = if (isAgent) {
-        BorderColor
-    } else {
-        if (AppTheme.colors.isDark) Color(0xFF2E2E34) else Color(0xFFE2E8F0)
-    }
+    // Obsidian & Signal message anatomy (research-1 §4.2): assistant replies
+    // are borderless full-width text directly on the background — no bubble.
+    // User messages get one quiet muted container: surfaceRaised fill,
+    // borderSubtle hairline, uniform 20dp radius, ~85% max width. (The old
+    // local off-palette surface hex pair is gone — tokens only.)
+    val userBubbleShape = RoundedCornerShape(20.dp)
     val textColor = TextPrimary
     val timeFormat = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
 
@@ -1688,31 +1690,23 @@ fun ChatBubble(
             Box {
             Column(
                 modifier = Modifier
-                    .widthIn(max = 290.dp)
                     .combinedClickable(
                         onClick = {},
                         onLongClick = { showActions = true }
                     )
-                    .clip(
-                        RoundedCornerShape(
-                            topStart = 18.dp,
-                            topEnd = 18.dp,
-                            bottomStart = if (isAgent) 4.dp else 18.dp,
-                            bottomEnd = if (isAgent) 18.dp else 4.dp
-                        )
+                    .then(
+                        if (isAgent) {
+                            // No container: full-width prose on the background.
+                            Modifier.fillMaxWidth()
+                        } else {
+                            Modifier
+                                .widthIn(max = 290.dp)
+                                .clip(userBubbleShape)
+                                .background(AppTheme.colors.surfaceRaised)
+                                .border(1.dp, AppTheme.colors.borderSubtle, userBubbleShape)
+                                .padding(14.dp)
+                        }
                     )
-                    .background(bubbleColor)
-                    .border(
-                        1.dp,
-                        bubbleBorder,
-                        RoundedCornerShape(
-                            topStart = 18.dp,
-                            topEnd = 18.dp,
-                            bottomStart = if (isAgent) 4.dp else 18.dp,
-                            bottomEnd = if (isAgent) 18.dp else 4.dp
-                        )
-                    )
-                    .padding(14.dp)
                     .semantics(mergeDescendants = true) {
                         // D8: one TalkBack stop per message — badge, body and
                         // time read as a single unit. The A3 long-press
@@ -1769,17 +1763,17 @@ fun ChatBubble(
             ) {
                 if (isAgent && message.modelBadge != null) {
                     val displayName = when (message.modelBadge) {
-                        "Gemma 4 (On-device)" -> "ON-DEVICE (AI CORE)"
-                        "On-Device AI" -> "ON-DEVICE AI"
-                        "LiteRT-LM (On-device)" -> "ON-DEVICE (LITERT)"
-                        else -> message.modelBadge.uppercase(Locale.getDefault())
+                        "Gemma 4 (On-device)" -> "Gemma 4 · On-device"
+                        "On-Device AI" -> "On-device"
+                        "LiteRT-LM (On-device)" -> "LiteRT-LM · On-device"
+                        else -> message.modelBadge
                     }
                     Text(
                         text = displayName,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = AccentCyan,
-                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = TextSecondary,
+                        fontFamily = JetBrainsMonoFamily,
                         modifier = Modifier.padding(bottom = 4.dp)
                     )
                 }
@@ -1809,16 +1803,15 @@ fun ChatBubble(
                 } else {
                     Text(
                         text = message.text,
-                        fontSize = 14.sp,
-                        color = textColor,
-                        lineHeight = 20.sp
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = textColor
                     )
                 }
 
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Row(
-                    modifier = Modifier.align(Alignment.End),
+                    modifier = Modifier.align(if (isAgent) Alignment.Start else Alignment.End),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
@@ -1829,7 +1822,7 @@ fun ChatBubble(
                         Icon(
                             imageVector = Icons.Default.Edit,
                             contentDescription = "Edit message",
-                            tint = TextSecondary,
+                            tint = AppTheme.colors.textTertiary,
                             modifier = Modifier
                                 .size(13.dp)
                                 .clickable { onEditRequested(message) }
@@ -1837,8 +1830,8 @@ fun ChatBubble(
                     }
                     Text(
                         text = timeFormat.format(Date(message.timestamp)),
-                        fontSize = 9.sp,
-                        color = TextSecondary
+                        fontSize = 11.sp,
+                        color = AppTheme.colors.textTertiary
                     )
                 }
 
@@ -1847,13 +1840,11 @@ fun ChatBubble(
                     // answer's citations — title, host and retrieval time;
                     // tapping a row opens the page in the browser.
                     Spacer(modifier = Modifier.height(10.dp))
-                    HorizontalDivider(color = bubbleBorder)
+                    HorizontalDivider(color = AppTheme.colors.borderSubtle)
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "SOURCES",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
+                        text = "Sources",
+                        style = MaterialTheme.typography.labelMedium,
                         color = TextSecondary
                     )
                     Spacer(modifier = Modifier.height(4.dp))
@@ -1877,9 +1868,9 @@ fun ChatBubble(
                             Text(
                                 text = "[${source.position}]",
                                 fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold,
-                                color = AccentCyan
+                                fontFamily = JetBrainsMonoFamily,
+                                fontWeight = FontWeight.Medium,
+                                color = AppTheme.colors.accentInfo
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Column(modifier = Modifier.weight(1f)) {
@@ -1896,7 +1887,7 @@ fun ChatBubble(
                                         .substringBefore('/') +
                                         " · fetched " + timeFormat.format(Date(source.fetchedAt)),
                                     fontSize = 10.sp,
-                                    color = TextSecondary,
+                                    color = AppTheme.colors.textTertiary,
                                     maxLines = 1
                                 )
                             }
@@ -1911,7 +1902,7 @@ fun ChatBubble(
             DropdownMenu(
                 expanded = showActions,
                 onDismissRequest = { showActions = false },
-                modifier = Modifier.background(DarkSurface)
+                modifier = Modifier.background(AppTheme.colors.surfaceRaised)
             ) {
                 DropdownMenuItem(
                     text = { Text("Copy", color = TextPrimary, fontSize = 13.sp) },
@@ -1972,57 +1963,146 @@ fun ChatBubble(
             }
             }
         }
+
+        // Per-message action row (research-1 §4.2): under each assistant
+        // reply — icon-only, tertiary colour, 40dp touch targets, always
+        // visible (no hover on Android). Same actions as the long-press
+        // menu above, wired to the same calls.
+        if (isAgent) {
+            Row(
+                modifier = Modifier.padding(top = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = {
+                        clipboardManager.setText(AnnotatedString(message.text))
+                        // Android 13+ shows its own copy confirmation; a Toast
+                        // there would double up (same rule as the menu above).
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                            Toast.makeText(localContext, "Message copied", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ContentCopy,
+                        contentDescription = "Copy message",
+                        tint = AppTheme.colors.textTertiary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                if (viewModel != null) {
+                    IconButton(
+                        onClick = {
+                            if (isBeingSpoken) {
+                                viewModel.stopSpeaking()
+                            } else {
+                                viewModel.speakMessage(message)
+                            }
+                        },
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isBeingSpoken) Icons.Default.Stop else Icons.Default.VolumeUp,
+                            contentDescription = if (isBeingSpoken) "Stop reading" else "Read aloud",
+                            tint = AppTheme.colors.textTertiary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+                IconButton(
+                    onClick = {
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, message.text)
+                        }
+                        localContext.startActivity(
+                            Intent.createChooser(shareIntent, "Share message")
+                        )
+                    },
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = "Share message",
+                        tint = AppTheme.colors.textTertiary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                if (viewModel != null && context != null) {
+                    IconButton(
+                        onClick = { viewModel.regenerate(message.id, context) },
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Regenerate response",
+                            tint = AppTheme.colors.textTertiary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
 @Composable
-fun ThinkingBubble() {
+fun ThinkingBubble(narration: String = "Analyzing intent & planning...") {
+    // Narration pattern (research-2 Part 3C, research-3 §6.2): no bubble —
+    // a calm line carrying the current activity sentence (the same status
+    // strings the subtitle uses; no new state), with the 3-dot indicator in
+    // the accent at 60% alpha, 150ms stagger, 1050ms loop.
     // D8 reduce motion: dots rest at fixed opacities instead of pulsing.
     val reduceMotion = LocalReduceMotion.current
     val transition = rememberInfiniteTransition(label = "thinking")
     val dot1 by transition.animateFloat(
         initialValue = 0.25f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(600, easing = EaseInOutSine), RepeatMode.Reverse),
+        animationSpec = infiniteRepeatable(tween(525, easing = EaseInOutSine), RepeatMode.Reverse),
         label = "dot1"
     )
     val dot2 by transition.animateFloat(
         initialValue = 0.25f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(600, delayMillis = 200, easing = EaseInOutSine), RepeatMode.Reverse),
+        animationSpec = infiniteRepeatable(tween(525, delayMillis = 150, easing = EaseInOutSine), RepeatMode.Reverse),
         label = "dot2"
     )
     val dot3 by transition.animateFloat(
         initialValue = 0.25f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(600, delayMillis = 400, easing = EaseInOutSine), RepeatMode.Reverse),
+        animationSpec = infiniteRepeatable(tween(525, delayMillis = 300, easing = EaseInOutSine), RepeatMode.Reverse),
         label = "dot3"
     )
+    val accent = AppTheme.colors.accentNeonGreen
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.Start
+            .padding(vertical = 4.dp)
+            .semantics(mergeDescendants = true) {
+                // The dots are visual-only; the narration line is the
+                // content, announced politely as it updates (D8).
+                liveRegion = LiveRegionMode.Polite
+                contentDescription = "OpenDroid is thinking"
+            },
+        horizontalArrangement = Arrangement.Start,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(
-            modifier = Modifier
-                .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 4.dp, bottomEnd = 16.dp))
-                .background(CardBackground)
-                .border(1.dp, BorderColor, RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 4.dp, bottomEnd = 16.dp))
-                .padding(horizontal = 14.dp, vertical = 12.dp)
-                .semantics(mergeDescendants = true) {
-                    // The dots are visual-only; say what they mean (D8).
-                    liveRegion = LiveRegionMode.Polite
-                    contentDescription = "OpenDroid is thinking"
-                }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(TextPrimary.copy(alpha = if (reduceMotion) 0.95f else dot1)))
-                Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(TextPrimary.copy(alpha = if (reduceMotion) 0.65f else dot2)))
-                Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(TextPrimary.copy(alpha = if (reduceMotion) 0.4f else dot3)))
-            }
+            Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(accent.copy(alpha = 0.6f * (if (reduceMotion) 0.95f else dot1))))
+            Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(accent.copy(alpha = 0.6f * (if (reduceMotion) 0.65f else dot2))))
+            Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(accent.copy(alpha = 0.6f * (if (reduceMotion) 0.4f else dot3))))
         }
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(
+            text = narration,
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextSecondary
+        )
     }
 }
 
@@ -2045,53 +2125,49 @@ fun ProposedPlanPrompt(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp)
-            .border(1.dp, AccentCyan, RoundedCornerShape(16.dp))
+            .border(1.dp, AccentOrange.copy(alpha = 0.6f), RoundedCornerShape(24.dp))
             .semantics {
                 // D8: an approval request interrupts — it is the one chat
                 // surface announced assertively.
                 liveRegion = LiveRegionMode.Assertive
             },
-        colors = CardDefaults.cardColors(containerColor = DarkSurface),
-        shape = RoundedCornerShape(16.dp)
+        colors = CardDefaults.cardColors(containerColor = AppTheme.colors.surfaceRaised),
+        shape = RoundedCornerShape(24.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     imageVector = Icons.Default.Warning,
                     contentDescription = "Plan Proposed",
-                    tint = AccentCyan,
+                    tint = AccentOrange,
                     modifier = Modifier.size(24.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "AUTONOMOUS PLAN PROPOSED",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    color = AccentCyan,
+                    text = "Autonomous plan proposed",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = TextPrimary,
                     modifier = Modifier.semantics { heading() }
                 )
             }
             Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = "Goal: \"$goal\"",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.titleSmall,
                 color = TextPrimary
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "OpenDroid has formulated a sequence of $stepsCount steps to complete this goal. Review the steps in the PLAN tab or approve below to execute.",
-                fontSize = 12.sp,
+                text = "OpenDroid has formulated a sequence of $stepsCount steps to complete this goal. Review the steps in the Plan tab or approve below to execute.",
+                style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary
             )
             if (blockedActions.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = "BLOCKED AUTO-RUN — these steps aren't in your allowlist:",
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = AccentRed
+                    text = "Blocked auto-run — these steps aren't in your allowlist:",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = AccentOrange
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 blockedActions.forEach { action ->
@@ -2102,7 +2178,7 @@ fun ProposedPlanPrompt(
                                 onCheckedChange = { checked ->
                                     checkedGrants = if (checked) checkedGrants + action else checkedGrants - action
                                 },
-                                colors = CheckboxDefaults.colors(checkedColor = AccentCyan)
+                                colors = CheckboxDefaults.colors(checkedColor = AccentNeonGreen)
                             )
                             Text(
                                 text = "Always allow $action",
@@ -2125,19 +2201,17 @@ fun ProposedPlanPrompt(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End
             ) {
-                OutlinedButton(
+                TextButton(
                     onClick = onReject,
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentRed),
-                    border = BorderStroke(1.dp, AccentRed.copy(alpha = 0.5f)),
-                    shape = RoundedCornerShape(8.dp)
+                    colors = ButtonDefaults.textButtonColors(contentColor = TextSecondary)
                 ) {
-                    Text("Reject", fontWeight = FontWeight.Bold)
+                    Text("Deny", fontWeight = FontWeight.Bold)
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Button(
                     onClick = { onApprove(checkedGrants) },
-                    colors = ButtonDefaults.buttonColors(containerColor = TextPrimary, contentColor = DarkBackground),
-                    shape = RoundedCornerShape(8.dp)
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton, contentColor = OnAccent),
+                    shape = CircleShape
                 ) {
                     Text("Approve & Run", fontWeight = FontWeight.Bold)
                 }
@@ -2153,10 +2227,15 @@ fun FloatingOrb(
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null
 ) {
+    // Obsidian & Signal voice button (research-2 Part 3D): the multicolour
+    // radial-gradient orb is retired — no gradient wash, no purple/cyan/red
+    // state language. State reads as glyph + label: a quiet raised circle
+    // with a mic (or stop, while listening) glyph, and while the agent is
+    // active a thin Signal Green ring whose alpha pulses gently.
     val infiniteTransition = rememberInfiniteTransition(label = "orb")
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 0.95f,
-        targetValue = 1.15f,
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.8f,
         animationSpec = infiniteRepeatable(
             animation = tween(1200, easing = EaseInOutSine),
             repeatMode = RepeatMode.Reverse
@@ -2164,45 +2243,33 @@ fun FloatingOrb(
         label = "pulse"
     )
 
-    val colorPulse by animateColorAsState(
-        targetValue = when {
-            isListening -> AccentRed
-            agentState is AgentState.Thinking -> AccentPurple
-            agentState is AgentState.ExecutingPlan -> AccentCyan
-            agentState is AgentState.Speaking -> AccentCyan
-            else -> TextPrimary.copy(alpha = 0.25f)
-        },
-        animationSpec = tween(500),
-        label = "color"
-    )
+    val isActive = isListening || agentState !is AgentState.Idle
 
-    // D8 reduce motion: the orb rests at scale 1 — the pulse is not rendered.
+    // D8 reduce motion: the ring rests at a fixed alpha — no pulse.
     val reduceMotion = LocalReduceMotion.current
-    val shadowSize = if (reduceMotion) {
-        1f
-    } else if (isListening || agentState !is AgentState.Idle) {
-        pulseScale
-    } else {
-        1f
+    val ringAlpha = when {
+        reduceMotion && isActive -> 0.65f
+        isActive -> pulseAlpha
+        else -> 0f
     }
+    val accent = AppTheme.colors.accentNeonGreen
 
     Box(
         modifier = Modifier
-            .size(56.dp)
-            .scale(shadowSize)
+            .size(48.dp)
             .clip(CircleShape)
-            .background(
-                Brush.radialGradient(
-                    colors = listOf(colorPulse, Color.Transparent),
-                    radius = 120f
-                )
+            .background(AppTheme.colors.surfaceRaised)
+            .border(
+                1.5.dp,
+                if (isActive) accent.copy(alpha = ringAlpha) else AppTheme.colors.borderStrong,
+                CircleShape
             )
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick
             )
             .semantics {
-                // The orb is a raw clickable Box — without this it is an
+                // The button is a raw clickable Box — without this it is an
                 // unlabelled control for TalkBack (D8). D2's long-press
                 // (continuous voice session) rides on the combinedClickable
                 // above; these semantics merge onto the same node.
@@ -2215,29 +2282,15 @@ fun FloatingOrb(
                     agentState is AgentState.Speaking -> "Speaking"
                     else -> "Idle"
                 }
-            }
-            .padding(6.dp),
+            },
         contentAlignment = Alignment.Center
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(CircleShape)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(colorPulse, colorPulse.copy(alpha = 0.6f))
-                    )
-                )
-                .border(2.dp, TextPrimary.copy(alpha = 0.2f), CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(20.dp)
-                    .clip(CircleShape)
-                    .background(DarkBackground)
-            )
-        }
+        Icon(
+            imageVector = if (isListening) Icons.Default.Stop else Icons.Default.Mic,
+            contentDescription = null,
+            tint = if (isActive) accent else TextSecondary,
+            modifier = Modifier.size(22.dp)
+        )
     }
 }
 
@@ -2288,11 +2341,11 @@ fun VoiceWaveform(text: String, modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(modifier = Modifier.width(4.dp).height((if (reduceMotion) 18f else heightScale1).dp).clip(CircleShape).background(AccentRed))
-            Box(modifier = Modifier.width(4.dp).height((if (reduceMotion) 24f else heightScale2).dp).clip(CircleShape).background(AccentRed))
-            Box(modifier = Modifier.width(4.dp).height((if (reduceMotion) 30f else heightScale3).dp).clip(CircleShape).background(AccentRed))
-            Box(modifier = Modifier.width(4.dp).height((if (reduceMotion) 24f else heightScale2).dp).clip(CircleShape).background(AccentRed))
-            Box(modifier = Modifier.width(4.dp).height((if (reduceMotion) 18f else heightScale1).dp).clip(CircleShape).background(AccentRed))
+            Box(modifier = Modifier.width(4.dp).height((if (reduceMotion) 18f else heightScale1).dp).clip(CircleShape).background(AccentNeonGreen))
+            Box(modifier = Modifier.width(4.dp).height((if (reduceMotion) 24f else heightScale2).dp).clip(CircleShape).background(AccentNeonGreen))
+            Box(modifier = Modifier.width(4.dp).height((if (reduceMotion) 30f else heightScale3).dp).clip(CircleShape).background(AccentNeonGreen))
+            Box(modifier = Modifier.width(4.dp).height((if (reduceMotion) 24f else heightScale2).dp).clip(CircleShape).background(AccentNeonGreen))
+            Box(modifier = Modifier.width(4.dp).height((if (reduceMotion) 18f else heightScale1).dp).clip(CircleShape).background(AccentNeonGreen))
         }
         Spacer(modifier = Modifier.width(8.dp))
         // No maxLines cap - long dictation wraps across multiple lines and the container
@@ -2301,7 +2354,6 @@ fun VoiceWaveform(text: String, modifier: Modifier = Modifier) {
             text = text,
             fontSize = 13.sp,
             color = TextPrimary,
-            fontFamily = FontFamily.SansSerif,
             lineHeight = 18.sp,
             modifier = Modifier.weight(1f)
         )
@@ -2350,13 +2402,13 @@ private fun ChatErrorRecoveryCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, AccentRed.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+            .border(1.dp, AccentRed.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
             .semantics {
                 // D8: errors are announced assertively, like approval asks.
                 liveRegion = LiveRegionMode.Assertive
             },
         colors = CardDefaults.cardColors(containerColor = CardBackground),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(18.dp)
     ) {
         Column(
             modifier = Modifier.padding(14.dp),
@@ -2368,16 +2420,14 @@ private fun ChatErrorRecoveryCard(
                 Text(
                     text = error.title(),
                     color = TextPrimary,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp
+                    style = MaterialTheme.typography.titleSmall
                 )
             }
             if (error.partialMessageId != null) {
                 Text(
                     text = "Incomplete response",
-                    color = AccentCyan,
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace
+                    color = TextSecondary,
+                    style = MaterialTheme.typography.labelMedium
                 )
             }
             Text(text = error.guidance(), color = TextSecondary, fontSize = 13.sp)
@@ -2386,7 +2436,7 @@ private fun ChatErrorRecoveryCard(
                     text = "Retry available in ${waitSecondsLeft}s",
                     color = TextSecondary,
                     fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace
+                    fontFamily = JetBrainsMonoFamily
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2395,18 +2445,25 @@ private fun ChatErrorRecoveryCard(
                         onClick = onPrimary,
                         enabled = !(retryHeld && error.primaryAction() == ChatErrorPrimaryAction.RETRY),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = TextPrimary,
-                            contentColor = DarkBackground
+                            containerColor = AccentGreenButton,
+                            contentColor = OnAccent
                         ),
+                        shape = CircleShape,
                         modifier = Modifier.heightIn(min = 48.dp)
                     ) {
                         Text(actionLabel)
                     }
                 }
-                TextButton(onClick = { detailsExpanded = !detailsExpanded }) {
+                TextButton(
+                    onClick = { detailsExpanded = !detailsExpanded },
+                    colors = ButtonDefaults.textButtonColors(contentColor = TextSecondary)
+                ) {
                     Text(if (detailsExpanded) "Hide details" else "Technical details")
                 }
-                TextButton(onClick = onDismiss) { Text("Dismiss") }
+                TextButton(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.textButtonColors(contentColor = TextSecondary)
+                ) { Text("Dismiss") }
             }
             if (detailsExpanded) {
                 val detail = buildString {
@@ -2423,8 +2480,7 @@ private fun ChatErrorRecoveryCard(
                 Text(
                     text = detail,
                     color = TextSecondary,
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace
+                    style = MonoMedium
                 )
             }
         }
@@ -2449,7 +2505,7 @@ private fun AttachOptionRow(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = AccentCyan,
+            tint = TextSecondary,
             modifier = Modifier.size(24.dp)
         )
         Spacer(modifier = Modifier.width(16.dp))
@@ -2496,7 +2552,7 @@ private fun PendingAttachmentChip(
                     Icons.Default.Description
                 },
                 contentDescription = null,
-                tint = AccentCyan,
+                tint = TextSecondary,
                 modifier = Modifier.size(28.dp)
             )
         }
@@ -2573,7 +2629,7 @@ private fun MessageAttachment(message: ChatMessage) {
                 Icons.Default.Description
             },
             contentDescription = null,
-            tint = AccentCyan,
+            tint = TextSecondary,
             modifier = Modifier.size(20.dp)
         )
         Spacer(modifier = Modifier.width(8.dp))

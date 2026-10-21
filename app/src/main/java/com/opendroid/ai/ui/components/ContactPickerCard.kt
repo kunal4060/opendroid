@@ -31,14 +31,12 @@ fun ContactPickerCard(
     onContactSelected: (Map<String, String>) -> Unit
 ) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(8.dp),
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
             containerColor = CardBackground
         ),
-        border = androidx.compose.foundation.BorderStroke(1.dp, BorderColor),
-        shape = RoundedCornerShape(16.dp)
+        border = androidx.compose.foundation.BorderStroke(1.dp, AppTheme.colors.borderSubtle),
+        shape = RoundedCornerShape(18.dp)
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
@@ -48,15 +46,14 @@ fun ContactPickerCard(
                 Icon(
                     imageVector = Icons.Default.Person,
                     contentDescription = null,
-                    tint = AccentCyan,
+                    tint = TextSecondary,
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "Which '$query' do you mean?",
                     color = TextPrimary,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp
+                    style = MaterialTheme.typography.titleSmall
                 )
             }
 
@@ -73,7 +70,7 @@ fun ContactPickerCard(
                 )
                 if (index < matches.size - 1) {
                     HorizontalDivider(
-                        color = BorderColor,
+                        color = AppTheme.colors.borderSubtle,
                         modifier = Modifier.padding(vertical = 4.dp)
                     )
                 }
@@ -84,7 +81,7 @@ fun ContactPickerCard(
             // Hint
             Text(
                 text = "Tap to select, or type the number (1, 2, 3...)",
-                color = TextSecondary,
+                color = AppTheme.colors.textTertiary,
                 fontSize = 11.sp
             )
         }
@@ -102,26 +99,27 @@ fun ContactOptionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(10.dp))
             .clickable { onClick() }
             .padding(vertical = 10.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Number badge
+        // Number badge — the accent selection family: accentContainer
+        // fill with onAccentContainer content; the number itself is data,
+        // so it takes the mono instrument voice.
         Box(
             modifier = Modifier
                 .size(28.dp)
                 .background(
-                    AccentCyan.copy(alpha = 0.15f),
+                    AppTheme.colors.accentContainer,
                     CircleShape
                 ),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = "$number",
-                color = AccentCyan,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold
+                color = AppTheme.colors.onAccentContainer,
+                style = MonoMedium
             )
         }
 
@@ -144,7 +142,7 @@ fun ContactOptionRow(
         Icon(
             imageVector = Icons.Default.ChevronRight,
             contentDescription = null,
-            tint = TextSecondary,
+            tint = AppTheme.colors.textTertiary,
             modifier = Modifier.size(20.dp)
         )
     }
