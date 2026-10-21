@@ -15,6 +15,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -43,6 +48,18 @@ fun getDisplayState(step: PlanStep): StepDisplayState {
     }
 }
 
+/** Plain-language step state for TalkBack (D8) — never the raw enum name. */
+fun StepDisplayState.accessibleLabel(): String = when (this) {
+    StepDisplayState.PENDING -> "Pending"
+    StepDisplayState.RUNNING -> "Running"
+    StepDisplayState.COMPLETED -> "Completed"
+    StepDisplayState.FAILED -> "Failed"
+    StepDisplayState.AUTO_FIXING -> "Auto-fixing"
+    StepDisplayState.REPAIRED -> "Repaired"
+    StepDisplayState.SKIPPED -> "Skipped"
+    StepDisplayState.BLOCKED -> "Blocked"
+}
+
 @Composable
 fun PlanStepCard(
     step: PlanStep,
@@ -59,14 +76,18 @@ fun PlanStepCard(
     }
     val displayState = getDisplayState(step)
 
+    // Warning states read the theme's semantic orange token instead of a
+    // hard-coded amber: #FFB300 was 1.79:1 as text on light surfaces and
+    // #FF5722 3.16:1 — both below WCAG AA. AccentOrange is the same amber
+    // family, theme-aware (dark #FF9500 / light #B45309, both AA) (D8).
     val statusColor = when (displayState) {
         StepDisplayState.COMPLETED -> AccentCyan
         StepDisplayState.RUNNING -> AccentCyan
         StepDisplayState.FAILED -> AccentRed
-        StepDisplayState.AUTO_FIXING -> Color(0xFFFFB300) // Amber
+        StepDisplayState.AUTO_FIXING -> AccentOrange // Amber (theme token)
         StepDisplayState.REPAIRED -> AccentPurple
         StepDisplayState.SKIPPED -> TextSecondary
-        StepDisplayState.BLOCKED -> Color(0xFFFF5722) // Deep Orange
+        StepDisplayState.BLOCKED -> AccentOrange // Deep orange (theme token)
         StepDisplayState.PENDING -> TextSecondary
     }
 
@@ -76,7 +97,36 @@ fun PlanStepCard(
         modifier = modifier
             .fillMaxWidth()
             .border(1.dp, statusBorderColor, RoundedCornerShape(12.dp))
-            .clickable(enabled = !isEditing) { expanded = !expanded },
+            .clickable(enabled = !isEditing) { expanded = !expanded }
+            .then(
+                if (isEditing) {
+                    // While the edit form is open its fields must stay
+                    // individually focusable — no merging (D8).
+                    Modifier
+                } else {
+                    // D8: one TalkBack stop per step — "Step 3. <description>"
+                    // with the state as stateDescription; expanded detail
+                    // texts merge into the same stop. Edit/delete would be
+                    // swallowed by the merge, so they are re-exposed as
+                    // custom actions.
+                    Modifier.semantics(mergeDescendants = true) {
+                        contentDescription = "Step ${step.order}. ${step.description}"
+                        stateDescription = displayState.accessibleLabel()
+                        if (editable) {
+                            customActions = listOf(
+                                CustomAccessibilityAction("Edit step") {
+                                    isEditing = true
+                                    true
+                                },
+                                CustomAccessibilityAction("Delete step") {
+                                    onDeleteStep()
+                                    true
+                                }
+                            )
+                        }
+                    }
+                }
+            ),
         colors = CardDefaults.cardColors(containerColor = CardBackground)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -153,7 +203,7 @@ fun PlanStepCard(
                             StepDisplayState.BLOCKED -> Icons.Default.Warning
                             StepDisplayState.PENDING -> Icons.Default.PlayArrow
                         },
-                        contentDescription = displayState.name,
+                        contentDescription = displayState.accessibleLabel(),
                         tint = statusColor,
                         modifier = Modifier.size(18.dp)
                     )
@@ -324,9 +374,9 @@ fun PlanStepCard(
                         Spacer(modifier = Modifier.height(8.dp))
                         
                         val isHallucinationError = displayState == StepDisplayState.AUTO_FIXING
-                        val errorBgColor = if (isHallucinationError) Color(0xFFFFB300).copy(alpha = 0.1f) else AccentRed.copy(alpha = 0.1f)
-                        val errorBorderColor = if (isHallucinationError) Color(0xFFFFB300).copy(alpha = 0.3f) else AccentRed.copy(alpha = 0.3f)
-                        val errorTitleColor = if (isHallucinationError) Color(0xFFFFB300) else AccentRed
+                        val errorBgColor = if (isHallucinationError) AccentOrange.copy(alpha = 0.1f) else AccentRed.copy(alpha = 0.1f)
+                        val errorBorderColor = if (isHallucinationError) AccentOrange.copy(alpha = 0.3f) else AccentRed.copy(alpha = 0.3f)
+                        val errorTitleColor = if (isHallucinationError) AccentOrange else AccentRed
                         val errorTextDisplay = if (isHallucinationError) "Auto-fixing: The requested system action is currently being recovered and updated by the OpenDroid Repair Engine." else step.error!!
 
                         Box(

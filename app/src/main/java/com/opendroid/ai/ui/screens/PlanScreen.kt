@@ -21,6 +21,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -111,7 +119,8 @@ fun PlanScreen(
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary,
                         fontSize = 20.sp,
-                        letterSpacing = 2.sp
+                        letterSpacing = 2.sp,
+                        modifier = Modifier.semantics { heading() }
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBackground)
@@ -238,12 +247,20 @@ fun PlanHeaderCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    // D8: plan status changes (RUNNING -> COMPLETED/FAILED)
+                    // are announced to TalkBack without stealing focus.
+                    modifier = Modifier.semantics {
+                        liveRegion = LiveRegionMode.Polite
+                        contentDescription = "Plan status: ${plan.status.name.lowercase(Locale.getDefault())}"
+                    }
+                ) {
                     val statusColor = when (plan.status) {
                         PlanStatus.COMPLETED -> AccentCyan
                         PlanStatus.RUNNING -> AccentCyan
                         PlanStatus.FAILED -> AccentRed
-                        PlanStatus.CANCELLED -> Color(0xFFFFB300) // Amber, matches PlanStepCard's in-between/warning states
+                        PlanStatus.CANCELLED -> AccentOrange // Amber (theme token; hard-coded #FFB300 failed AA on light)
                         else -> TextSecondary
                     }
                     Box(
@@ -273,6 +290,10 @@ fun PlanHeaderCard(
                             .background(AccentPurple.copy(alpha = 0.2f))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                             .clickable { onClearSelection() }
+                            .semantics {
+                                role = Role.Button
+                                contentDescription = "Viewing past run. Activate to return to the current plan"
+                            }
                     )
                 } else {
                     Text(
@@ -422,6 +443,12 @@ fun PastPlanRow(
             .background(if (isSelected) CardBackground else Color.Transparent)
             .border(1.dp, if (isSelected) BorderColor else Color.Transparent, RoundedCornerShape(8.dp))
             .clickable { onSelect() }
+            .semantics {
+                // D8: selection is state, not just a highlight colour.
+                stateDescription = if (isSelected) "Selected" else "Not selected"
+                contentDescription = "Past plan: ${plan.goal}, ${plan.steps.size} steps, " +
+                    "status ${plan.status.name.lowercase(Locale.getDefault())}"
+            }
             .padding(12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
@@ -462,7 +489,7 @@ fun PastPlanRow(
                 tint = when (plan.status) {
                     PlanStatus.COMPLETED -> AccentCyan
                     PlanStatus.FAILED -> AccentRed
-                    PlanStatus.CANCELLED -> Color(0xFFFFB300) // Amber, matches PlanHeaderCard's CANCELLED color
+                    PlanStatus.CANCELLED -> AccentOrange // Amber (theme token; hard-coded #FFB300 failed AA on light)
                     else -> TextSecondary
                 },
                 modifier = Modifier.size(16.dp)
@@ -470,13 +497,15 @@ fun PastPlanRow(
             Spacer(modifier = Modifier.width(8.dp))
             IconButton(
                 onClick = onDelete,
-                modifier = Modifier.size(24.dp)
+                // 40dp (was 24dp): the 24dp target was too small to hit
+                // reliably; still compact inside the row (D8).
+                modifier = Modifier.size(40.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Delete,
                     contentDescription = "Delete Plan",
                     tint = TextSecondary.copy(alpha = 0.5f),
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }
