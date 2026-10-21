@@ -18,8 +18,9 @@ android {
         // Wear OS 3+ (research decision). The phone app stays minSdk 26.
         minSdk 30
         targetSdk 36
-        // Mirrors :app's versioning; the embedded wear APK ships inside the
-        // phone APK/AAB via `wearApp project(':wear')`.
+        // Mirrors :app's versioning. AGP 9 removed embedded Wear OS apps, so
+        // :wear builds and ships as a standalone app in the same Play release;
+        // it is not embedded in the phone APK/AAB.
         versionCode 8
         versionName "1.0.7"
 

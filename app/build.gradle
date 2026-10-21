@@ -253,11 +253,16 @@ dependencies {
     implementation 'androidx.work:work-runtime-ktx:2.11.2'
 
     // Wear OS companion (D7): Data Layer (Message/Data/Capability clients)
-    // for the phone half of the watch link, plus the embedded watch APK.
+    // for the phone half of the watch link.
     // play-services-wearable 20.0.1 is the version the D7 research verified
     // against Google Maven.
     implementation 'com.google.android.gms:play-services-wearable:20.0.1'
-    wearApp project(':wear')
+    // AGP 9 removed embedded Wear OS app support, including the wearApp
+    // configuration, because Play no longer supports embedded watch apps.
+    // There is intentionally no build dependency from :app to :wear here:
+    // :wear builds and ships as a standalone application in the same Play
+    // release. Data Layer pairing relies on the matching applicationId and
+    // signing certificate configured by :wear, not on embedding its APK.
 
     // Glance home-screen widget (C1): Compose-style declarative authoring
     // that renders through RemoteViews; glance-material3 keeps the widget on
