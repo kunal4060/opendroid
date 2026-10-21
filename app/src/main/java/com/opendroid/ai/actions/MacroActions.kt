@@ -5,6 +5,10 @@ import android.util.Log
 import com.opendroid.ai.actions.base.Action
 import com.opendroid.ai.actions.base.ActionResult
 import com.opendroid.ai.core.agent.ActionSequenceExecutor
+import com.opendroid.ai.core.schedule.CronExpression
+import com.opendroid.ai.core.schedule.MacroScheduleSync
+import com.opendroid.ai.core.schedule.ScheduledTaskScheduler
+import com.opendroid.ai.core.schedule.ScheduledTaskStore
 import com.opendroid.ai.data.db.dao.MacroDao
 import com.opendroid.ai.data.db.entities.MacroEntity
 import com.opendroid.ai.data.models.PlanStep
@@ -19,14 +23,20 @@ import javax.inject.Singleton
 @Singleton
 class MacroActions @Inject constructor(
     private val macroDao: MacroDao,
-    private val actionSequenceExecutor: ActionSequenceExecutor
+    private val actionSequenceExecutor: ActionSequenceExecutor,
+    // Schedule collaborators for the DELETE_MACRO cascade (Loop-2 #7):
+    // deleting a macro must also disarm the scheduled tasks that would
+    // keep firing it. Lazy so the store/scheduler are only resolved when
+    // a deletion actually happens.
+    private val scheduledTaskStore: dagger.Lazy<ScheduledTaskStore>,
+    private val scheduledTaskScheduler: dagger.Lazy<ScheduledTaskScheduler>
 ) {
 
     fun getActions(): List<Action> = listOf(
         RunMacroAction(macroDao, actionSequenceExecutor),
         CreateMacroAction(macroDao),
         ScheduleMacroAction(macroDao),
-        DeleteMacroAction(macroDao),
+        DeleteMacroAction(macroDao, scheduledTaskStore, scheduledTaskScheduler),
         ListMacrosAction(macroDao)
     )
 
@@ -89,24 +99,23 @@ class MacroActions @Inject constructor(
             val macroName = params["macroName"] ?: return ActionResult(false, null, "macroName parameter missing")
             val cronExpression = params["cronExpression"] ?: return ActionResult(false, null, "cronExpression parameter missing")
             return try {
-                val macro = macroDao.getMacroByName(macroName)
-                if (macro != null) {
-                    val updated = macro.copy(trigger = "cron:$cronExpression")
-                    macroDao.insertMacro(updated)
-                    ActionResult(true, "Macro '$macroName' is scheduled!", null)
-                } else {
-                    // Try creating a new empty macro with schedule
-                    val entity = MacroEntity(
-                        id = UUID.randomUUID().toString(),
-                        name = macroName,
-                        trigger = "cron:$cronExpression",
-                        stepsJson = "[]",
-                        isSystem = false,
-                        isEnabled = true
-                    )
-                    macroDao.insertMacro(entity)
-                    ActionResult(true, "Created and scheduled macro '$macroName'!", null, true)
+                // Validate the cron BEFORE storing it: MacroScheduleSync
+                // silently skips unparseable triggers, so storing one
+                // verbatim and reporting "scheduled" armed nothing at all —
+                // the macro simply never fired and no error ever surfaced.
+                if (CronExpression.parse(cronExpression.trim()) == null) {
+                    return ActionResult(false, null, "Couldn't schedule '$macroName': '$cronExpression' isn't a valid cron expression.")
                 }
+                val macro = macroDao.getMacroByName(macroName)
+                    // No empty shells: the old code CREATED a macro with
+                    // stepsJson = "[]" for a missing name and reported it
+                    // scheduled; the shell then failed at every firing
+                    // ("has no steps"). Fail honestly, like
+                    // SCHEDULE_AGENT_TASK does.
+                    ?: return ActionResult(false, null, "Macro '$macroName' not found.")
+                val updated = macro.copy(trigger = "cron:$cronExpression")
+                macroDao.insertMacro(updated)
+                ActionResult(true, "Macro '$macroName' is scheduled!", null)
             } catch (e: Exception) {
                 Log.e("ScheduleMacro", "Schedule failed: ${e.localizedMessage}")
                 ActionResult(false, null, "Couldn't schedule that macro.")
@@ -114,7 +123,11 @@ class MacroActions @Inject constructor(
         }
     }
 
-    private class DeleteMacroAction(private val macroDao: MacroDao) : Action {
+    private class DeleteMacroAction(
+        private val macroDao: MacroDao,
+        private val scheduledTaskStore: dagger.Lazy<ScheduledTaskStore>,
+        private val scheduledTaskScheduler: dagger.Lazy<ScheduledTaskScheduler>
+    ) : Action {
         override val name: String = "DELETE_MACRO"
 
         override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
@@ -130,6 +143,23 @@ class MacroActions @Inject constructor(
                 if (macroDao.getMacroById(macro.id) != null) {
                     return ActionResult(false, null, "Couldn't delete macro '$macroName'.")
                 }
+
+                // Cascade: disarm everything that would keep firing this
+                // macro. Agent-created tasks reference it by macroId with
+                // a null sourceKey, which MacroScheduleSync's un-mirror
+                // sweep never sees (it only sweeps sourceKey tasks), so
+                // they survived forever — failing at every firing and
+                // re-arming indefinitely. The sync-mirrored task (sourceKey
+                // "macro:<id>") is removed here too rather than waiting for
+                // the next sync. Same cascade HabitRoutineEngine.
+                // deleteRoutine performs for routine deletion.
+                val store = scheduledTaskStore.get()
+                val sourceKey = "${MacroScheduleSync.SOURCE_PREFIX}${macro.id}"
+                for (task in store.snapshot().filter { it.macroId == macro.id || it.sourceKey == sourceKey }) {
+                    store.delete(task.id)
+                    scheduledTaskScheduler.get().cancel(task.id)
+                }
+
                 ActionResult(true, "Macro '$macroName' deleted.", null)
             } catch (e: Exception) {
                 Log.e("DeleteMacro", "Delete failed", e)
