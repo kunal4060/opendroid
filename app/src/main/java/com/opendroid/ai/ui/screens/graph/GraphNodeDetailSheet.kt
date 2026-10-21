@@ -16,12 +16,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.TrendingUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -40,26 +41,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.opendroid.ai.core.memory.graph.KnowledgeNode
 import com.opendroid.ai.core.memory.graph.KnowledgeRelation
 import com.opendroid.ai.core.memory.graph.MemoryTier
 import com.opendroid.ai.core.security.AppLockManager
 import com.opendroid.ai.ui.lock.BiometricAuth
 import com.opendroid.ai.ui.lock.findFragmentActivity
+import com.opendroid.ai.ui.screens.MemoryConfidenceMeter
 import com.opendroid.ai.ui.screens.MemoryProvenancePanel
-import com.opendroid.ai.ui.theme.AccentCyan
-import com.opendroid.ai.ui.theme.AccentOrange
-import com.opendroid.ai.ui.theme.AccentRed
-import com.opendroid.ai.ui.theme.BorderColor
-import com.opendroid.ai.ui.theme.DarkSurface
-import com.opendroid.ai.ui.theme.TextPrimary
-import com.opendroid.ai.ui.theme.TextSecondary
+import com.opendroid.ai.ui.theme.AppTheme
+import com.opendroid.ai.ui.theme.MonoMedium
 import com.opendroid.ai.ui.viewmodel.MemoryViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -108,7 +103,8 @@ fun GraphNodeDetailSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = DarkSurface
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        containerColor = AppTheme.colors.surfaceRaised
     ) {
         Column(
             modifier = Modifier
@@ -121,58 +117,47 @@ fun GraphNodeDetailSheet(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (isSensitive) {
                     Icon(
-                        imageVector = Icons.Default.Lock,
+                        imageVector = Icons.Rounded.Lock,
                         contentDescription = "Locked",
-                        tint = AccentOrange,
+                        tint = AppTheme.colors.accentOrange,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                 }
                 Text(
                     text = if (isSensitive) "Locked sensitive record" else node.label,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary,
-                    fontFamily = FontFamily.Monospace
+                    style = MaterialTheme.typography.titleMedium,
+                    color = AppTheme.colors.textPrimary
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Surface(
-                    color = AccentCyan.copy(alpha = 0.12f),
-                    shape = RoundedCornerShape(4.dp),
-                    border = BorderStroke(1.dp, BorderColor)
+                    color = AppTheme.colors.surfaceOverlay,
+                    shape = RoundedCornerShape(6.dp),
+                    border = BorderStroke(1.dp, AppTheme.colors.borderColor)
                 ) {
                     Text(
                         text = GraphRenderModel.tierDisplayName(node.tier),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = AccentCyan,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (isSensitive) AppTheme.colors.accentOrange else AppTheme.colors.textPrimary,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
                 Surface(
-                    color = TextPrimary.copy(alpha = 0.08f),
-                    shape = RoundedCornerShape(4.dp)
+                    color = AppTheme.colors.surfaceOverlay,
+                    shape = RoundedCornerShape(6.dp)
                 ) {
                     Text(
-                        text = node.category.name.replace('_', ' '),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TextSecondary,
+                        text = node.category.name.replace('_', ' ').lowercase()
+                            .replaceFirstChar { it.uppercase() },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = AppTheme.colors.textSecondary,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
                 if (node.tier == MemoryTier.LEARNED_PATTERN) {
-                    Text(
-                        text = "${(node.confidence * 100).toInt()}% confidence",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = AccentCyan,
-                        modifier = Modifier.padding(top = 2.dp)
-                    )
+                    MemoryConfidenceMeter(confidence = node.confidence)
                 }
             }
 
@@ -183,13 +168,13 @@ fun GraphNodeDetailSheet(
                 OutlinedTextField(
                     value = editLabel,
                     onValueChange = { editLabel = it },
-                    label = { Text("Label", fontSize = 12.sp) },
+                    label = { Text("Label", style = MaterialTheme.typography.bodySmall) },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = AccentCyan,
-                        unfocusedBorderColor = BorderColor,
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary
+                        focusedBorderColor = AppTheme.colors.accentNeonGreen,
+                        unfocusedBorderColor = AppTheme.colors.borderColor,
+                        focusedTextColor = AppTheme.colors.textPrimary,
+                        unfocusedTextColor = AppTheme.colors.textPrimary
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -197,12 +182,12 @@ fun GraphNodeDetailSheet(
                 OutlinedTextField(
                     value = editSummary,
                     onValueChange = { editSummary = it },
-                    label = { Text("Details", fontSize = 12.sp) },
+                    label = { Text("Details", style = MaterialTheme.typography.bodySmall) },
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = AccentCyan,
-                        unfocusedBorderColor = BorderColor,
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary
+                        focusedBorderColor = AppTheme.colors.accentNeonGreen,
+                        unfocusedBorderColor = AppTheme.colors.borderColor,
+                        focusedTextColor = AppTheme.colors.textPrimary,
+                        unfocusedTextColor = AppTheme.colors.textPrimary
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -212,7 +197,7 @@ fun GraphNodeDetailSheet(
                     horizontalArrangement = Arrangement.End
                 ) {
                     TextButton(onClick = { editing = false }) {
-                        Text("Cancel", color = AccentRed)
+                        Text("Cancel", color = AppTheme.colors.accentRed)
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
@@ -223,19 +208,19 @@ fun GraphNodeDetailSheet(
                         },
                         enabled = editLabel.isNotBlank() && editSummary.isNotBlank(),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = TextPrimary,
-                            contentColor = DarkSurface
+                            containerColor = AppTheme.colors.accentGreenButton,
+                            contentColor = AppTheme.colors.onAccent
                         ),
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(percent = 50)
                     ) {
-                        Text("Save changes", fontWeight = FontWeight.Bold)
+                        Text("Save changes", style = MaterialTheme.typography.labelLarge)
                     }
                 }
             } else {
                 Text(
                     text = node.summary,
-                    fontSize = 14.sp,
-                    color = TextPrimary
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = AppTheme.colors.textPrimary
                 )
                 if (isSensitive) {
                     Spacer(modifier = Modifier.height(6.dp))
@@ -243,8 +228,8 @@ fun GraphNodeDetailSheet(
                         text = "The value itself is encrypted in the device Keystore " +
                             "and is never shown on the graph. Reveal it below only " +
                             "after authentication.",
-                        fontSize = 11.sp,
-                        color = TextSecondary
+                        style = MaterialTheme.typography.labelMedium,
+                        color = AppTheme.colors.textSecondary
                     )
                 }
             }
@@ -254,35 +239,32 @@ fun GraphNodeDetailSheet(
                 node.properties.entries.take(6).forEach { (key, value) ->
                     Text(
                         text = "$key: $value",
-                        fontSize = 11.sp,
-                        color = TextSecondary,
-                        fontFamily = FontFamily.Monospace
+                        style = MonoMedium,
+                        color = AppTheme.colors.textSecondary
                     )
                 }
             }
 
             Text(
                 text = "Last updated: ${dateFormat.format(Date(node.lastUpdated))}",
-                fontSize = 10.sp,
-                color = TextSecondary,
+                style = MaterialTheme.typography.labelMedium,
+                color = AppTheme.colors.textTertiary,
                 modifier = Modifier.padding(top = 10.dp)
             )
 
             // ── Connections (stored relations only) ─────────────────────
             Spacer(modifier = Modifier.height(14.dp))
             Text(
-                text = "CONNECTIONS",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
-                color = AccentCyan
+                text = "Connections",
+                style = MaterialTheme.typography.titleSmall,
+                color = AppTheme.colors.textPrimary
             )
             Spacer(modifier = Modifier.height(6.dp))
             if (edges.isEmpty()) {
                 Text(
                     text = "No recorded connections for this memory yet.",
-                    fontSize = 12.sp,
-                    color = TextSecondary
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppTheme.colors.textSecondary
                 )
             } else {
                 edges.forEach { edge ->
@@ -295,8 +277,8 @@ fun GraphNodeDetailSheet(
                     ) {
                         Text(
                             text = "$arrow $otherLabel · ${edge.relationType.replace('_', ' ')}",
-                            fontSize = 12.sp,
-                            color = AccentCyan
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AppTheme.colors.accentNeonGreen
                         )
                     }
                 }
@@ -325,26 +307,26 @@ fun GraphNodeDetailSheet(
                 if (node.tier == MemoryTier.LEARNED_PATTERN) {
                     OutlinedButton(
                         onClick = onPromote,
-                        shape = RoundedCornerShape(6.dp),
-                        border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.5f))
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, AppTheme.colors.borderStrong)
                     ) {
                         Icon(
-                            Icons.Default.TrendingUp,
+                            Icons.Rounded.TrendingUp,
                             contentDescription = null,
-                            tint = AccentCyan,
+                            tint = AppTheme.colors.accentNeonGreen,
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Promote to Long-Term", fontSize = 11.sp, color = AccentCyan)
+                        Text("Promote to long-term", style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.accentNeonGreen)
                     }
                 }
                 if (!isSensitive && !editing) {
                     OutlinedButton(
                         onClick = { editing = true },
-                        shape = RoundedCornerShape(6.dp),
-                        border = BorderStroke(1.dp, BorderColor)
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, AppTheme.colors.borderColor)
                     ) {
-                        Text("Edit", fontSize = 11.sp, color = TextPrimary)
+                        Text("Edit", style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.textPrimary)
                     }
                 }
                 Spacer(modifier = Modifier.weight(1f))
@@ -352,14 +334,14 @@ fun GraphNodeDetailSheet(
                     TextButton(onClick = onDelete) {
                         Text(
                             "Tap again to delete",
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = AccentRed
+                            color = AppTheme.colors.accentRed
                         )
                     }
                 } else {
                     TextButton(onClick = { confirmDelete = true }) {
-                        Text("Delete", fontSize = 11.sp, color = AccentRed)
+                        Text("Delete", style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.accentRed)
                     }
                 }
             }
@@ -400,33 +382,30 @@ private fun SensitiveRevealSection(
     }
 
     Text(
-        text = "ENCRYPTED VALUE",
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Bold,
-        fontFamily = FontFamily.Monospace,
-        color = AccentOrange
+        text = "Encrypted value",
+        style = MaterialTheme.typography.titleSmall,
+        color = AppTheme.colors.accentOrange
     )
     Spacer(modifier = Modifier.height(6.dp))
 
     val shown = revealedSecret
     if (shown != null) {
         Surface(
-            color = TextPrimary.copy(alpha = 0.06f),
-            shape = RoundedCornerShape(8.dp),
-            border = BorderStroke(1.dp, BorderColor),
+            color = AppTheme.colors.surfaceOverlay,
+            shape = RoundedCornerShape(10.dp),
+            border = BorderStroke(1.dp, AppTheme.colors.borderColor),
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(
                 text = shown,
-                fontSize = 14.sp,
-                fontFamily = FontFamily.Monospace,
-                color = TextPrimary,
+                style = MonoMedium,
+                color = AppTheme.colors.textPrimary,
                 modifier = Modifier.padding(12.dp)
             )
         }
         Spacer(modifier = Modifier.height(6.dp))
         TextButton(onClick = { revealedSecret = null }) {
-            Text("Hide", fontSize = 11.sp, color = AccentCyan)
+            Text("Hide", style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.accentNeonGreen)
         }
         return
     }
@@ -434,8 +413,8 @@ private fun SensitiveRevealSection(
     revealError?.let { message ->
         Text(
             text = message,
-            fontSize = 12.sp,
-            color = AccentRed,
+            style = MaterialTheme.typography.bodySmall,
+            color = AppTheme.colors.accentRed,
             modifier = Modifier.padding(bottom = 6.dp)
         )
     }
@@ -455,17 +434,20 @@ private fun SensitiveRevealSection(
                     onError = { message -> revealError = message }
                 )
             },
-            colors = ButtonDefaults.buttonColors(containerColor = AccentOrange),
-            shape = RoundedCornerShape(8.dp)
+            colors = ButtonDefaults.buttonColors(
+                containerColor = AppTheme.colors.accentOrange,
+                contentColor = AppTheme.colors.background
+            ),
+            shape = RoundedCornerShape(percent = 50)
         ) {
             Icon(
-                Icons.Default.Lock,
+                Icons.Rounded.Lock,
                 contentDescription = null,
-                tint = DarkSurface,
+                tint = AppTheme.colors.background,
                 modifier = Modifier.size(14.dp)
             )
             Spacer(modifier = Modifier.width(6.dp))
-            Text("Reveal secret", color = DarkSurface, fontWeight = FontWeight.Bold)
+            Text("Reveal secret", color = AppTheme.colors.background, style = MaterialTheme.typography.labelLarge)
         }
     } else if (hasPin) {
         OutlinedTextField(
@@ -480,10 +462,10 @@ private fun SensitiveRevealSection(
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = AccentOrange,
-                unfocusedBorderColor = BorderColor,
-                focusedTextColor = TextPrimary,
-                unfocusedTextColor = TextPrimary
+                focusedBorderColor = AppTheme.colors.accentOrange,
+                unfocusedBorderColor = AppTheme.colors.borderColor,
+                focusedTextColor = AppTheme.colors.textPrimary,
+                unfocusedTextColor = AppTheme.colors.textPrimary
             ),
             modifier = Modifier.fillMaxWidth()
         )
@@ -512,18 +494,18 @@ private fun SensitiveRevealSection(
                 }
             },
             enabled = pin.length >= 4 && !verifying,
-            shape = RoundedCornerShape(8.dp),
-            border = BorderStroke(1.dp, AccentOrange.copy(alpha = 0.6f))
+            shape = RoundedCornerShape(10.dp),
+            border = BorderStroke(1.dp, AppTheme.colors.accentOrange.copy(alpha = 0.6f))
         ) {
-            Text("Unlock with PIN to reveal", fontSize = 11.sp, color = AccentOrange)
+            Text("Unlock with PIN to reveal", style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.accentOrange)
         }
     } else {
         Text(
             text = "To reveal this secret, the device needs a screen lock or " +
                 "biometric, or an app PIN (Settings → App Lock). None is set " +
                 "up, so the value stays hidden.",
-            fontSize = 12.sp,
-            color = TextSecondary
+            style = MaterialTheme.typography.bodySmall,
+            color = AppTheme.colors.textSecondary
         )
     }
 }
