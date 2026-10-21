@@ -57,6 +57,14 @@ object McpNames {
 
     fun isMcpActionName(actionName: String): Boolean = actionName.startsWith("${PREFIX}_")
 
+    /**
+     * Prefix of every grant-map key belonging to [serverName]: action
+     * names are `MCP_<sanitized server>_<tool>` (collision-suffixed ones
+     * included), so a server's always-allow grants are exactly the keys
+     * with this prefix. Used to revoke them all when the server goes away.
+     */
+    fun grantKeyPrefix(serverName: String): String = "${PREFIX}_${sanitizeSegment(serverName)}_"
+
     private fun shortHash(raw: String): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(raw.toByteArray(Charsets.UTF_8))
         return digest.take(3).joinToString("") { "%02X".format(it) }

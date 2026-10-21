@@ -79,11 +79,13 @@ class McpToolBridge @Inject constructor(
     suspend fun refreshAll() {
         val configs = configStore.list()
         val configuredNames = configs.map { it.name }.toSet()
-        // Withdraw tools of servers that no longer exist in the store.
+        // Withdraw tools of servers that no longer exist in the store —
+        // and their always-allow grants, exactly as for an explicit delete.
         knownServers.toList().filter { it !in configuredNames }.forEach { removed ->
             DynamicActionRegistry.removeForOwner(ownerKey(removed))
             manager.disconnect(removed)
             knownServers.remove(removed)
+            revokeServerGrants(removed)
         }
         configs.forEach { config ->
             knownServers += config.name
@@ -128,11 +130,35 @@ class McpToolBridge @Inject constructor(
         return tools
     }
 
-    /** Server deleted in Settings: withdraw tools and drop the session. */
+    /**
+     * Server deleted in Settings (or renamed — Settings calls this with
+     * the old name): withdraw tools, drop the session, and revoke the
+     * server's always-allow grants. Without the revocation the grant keys
+     * (`MCP_<server>_<tool>`) outlive the server, and a *different* server
+     * later added under the same (or same-sanitising) name silently
+     * inherits them — its tools would run with no approval prompt for a
+     * server the user never granted.
+     */
     suspend fun onServerRemoved(serverName: String) {
         DynamicActionRegistry.removeForOwner(ownerKey(serverName))
         manager.disconnect(serverName)
         knownServers.remove(serverName)
+        revokeServerGrants(serverName)
+    }
+
+    /** Removes every always-allow grant keyed to [serverName]'s tools. */
+    private suspend fun revokeServerGrants(serverName: String) {
+        val prefix = McpNames.grantKeyPrefix(serverName)
+        try {
+            settingsRepository.updateConfig { config ->
+                val resolved = config.effectiveGrantedActions()
+                val kept = resolved.filterKeys { key -> !key.startsWith(prefix) }
+                if (kept.size == resolved.size) config
+                else config.copy(grantedActions = kept)
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not revoke grants for removed MCP server '$serverName': ${error.message}")
+        }
     }
 
     private suspend fun reregisterConnectedServers() {
