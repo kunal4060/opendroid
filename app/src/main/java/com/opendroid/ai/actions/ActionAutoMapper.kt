@@ -480,8 +480,10 @@ class ActionAutoMapper @Inject constructor() {
         SemanticRule(listOf("LAUNCH_"), emptyList(), "OPEN_APP"),
         SemanticRule(listOf("START_"), emptyList(), "OPEN_APP"),
 
-        // SEND_* generic → SEND_SMS (safe default)
-        SemanticRule(listOf("SEND_"), emptyList(), "SEND_SMS"),
+        // NOTE: there is deliberately NO generic SEND_* → SEND_SMS rule.
+        // An unmodelled SEND_* verb (SEND_MONEY, SEND_INVITE, …) must fail
+        // as unknown and be clarified with the user — silently executing it
+        // as a text message with another action's params is never safe.
 
         // CHECK_* (but NOT weather/stock)
         SemanticRule(listOf("CHECK_"), listOf("WEATHER", "STOCK", "BALANCE"), SKIP)
@@ -664,6 +666,20 @@ class ActionAutoMapper @Inject constructor() {
                     ?: originalParams["city"]
                     ?: originalParams["place"]
                 if (location != null) mapOf("location" to location) else originalParams
+            }
+
+            "SET_VOLUME" -> {
+                // VOLUME_UP / VOLUME_DOWN are relative verbs: inject a signed
+                // "adjust" delta (unless the caller gave an explicit level)
+                // so SET_VOLUME moves the current level instead of jumping
+                // to the absolute default of 50.
+                val normalizedOriginal = normalizeActionName(originalAction)
+                when {
+                    originalParams.containsKey("level") -> originalParams
+                    normalizedOriginal == "VOLUME_UP" -> originalParams + ("adjust" to "10")
+                    normalizedOriginal == "VOLUME_DOWN" -> originalParams + ("adjust" to "-10")
+                    else -> originalParams
+                }
             }
 
             "WAIT" -> {

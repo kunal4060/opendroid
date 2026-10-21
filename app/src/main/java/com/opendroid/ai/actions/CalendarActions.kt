@@ -24,6 +24,122 @@ import java.util.TimeZone
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** Date/time patterns the planner commonly emits for event start/end values. */
+private val EVENT_DATE_TIME_FORMATS = listOf(
+    "yyyy-MM-dd'T'HH:mm:ss",
+    "yyyy-MM-dd'T'HH:mm",
+    "yyyy-MM-dd HH:mm",
+    "yyyy-MM-dd",
+    "dd MMM yyyy HH:mm",
+    "dd MMM yyyy",
+    "d MMM yyyy",
+    "dd/MM/yyyy HH:mm",
+    "dd/MM/yyyy"
+)
+
+/**
+ * Parses an event date/time value: epoch millis, an ISO-8601 instant, or
+ * one of [EVENT_DATE_TIME_FORMATS]. Returns null when unparseable — callers
+ * must fail honestly instead of silently substituting "now".
+ */
+private fun parseEventInstant(raw: String): Long? {
+    val trimmed = raw.trim()
+    if (trimmed.isEmpty()) return null
+    trimmed.toLongOrNull()?.let { return it }
+    try {
+        return java.time.Instant.parse(trimmed).toEpochMilli()
+    } catch (_: Exception) {
+        // Not an ISO instant — fall through to the pattern list.
+    }
+    for (pattern in EVENT_DATE_TIME_FORMATS) {
+        try {
+            val sdf = java.text.SimpleDateFormat(pattern, java.util.Locale.US)
+            sdf.isLenient = false
+            val parsed = sdf.parse(trimmed)
+            if (parsed != null) return parsed.time
+        } catch (_: Exception) {
+            // Try the next pattern.
+        }
+    }
+    return null
+}
+
+/** Parses a time-of-day value ("17:00", "5:30 pm", "5 pm") to hour/minute. */
+private fun parseEventTimeOfDay(raw: String): Pair<Int, Int>? {
+    val clean = raw.trim().lowercase()
+    val amPm = Regex("""^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$""").matchEntire(clean)
+    if (amPm != null) {
+        var hour = amPm.groupValues[1].toInt()
+        val minute = amPm.groupValues[2].toIntOrNull() ?: 0
+        if (amPm.groupValues[3] == "pm" && hour != 12) hour += 12
+        if (amPm.groupValues[3] == "am" && hour == 12) hour = 0
+        return if (hour in 0..23 && minute in 0..59) hour to minute else null
+    }
+    val h24 = Regex("""^(\d{1,2}):(\d{2})$""").matchEntire(clean)
+    if (h24 != null) {
+        val hour = h24.groupValues[1].toInt()
+        val minute = h24.groupValues[2].toInt()
+        return if (hour in 0..23 && minute in 0..59) hour to minute else null
+    }
+    return null
+}
+
+/**
+ * Resolves the start instant from separate `date` / `time` params: the date
+ * supplies the day, the time-of-day replaces its clock time. A time with no
+ * date means today at that time (tomorrow once it has passed). Returns null
+ * when a supplied value is unparseable.
+ */
+private fun resolveDateTimeParams(dateParam: String?, timeParam: String?): Long? {
+    if (dateParam == null && timeParam == null) return null
+    val calendar = Calendar.getInstance()
+    if (dateParam != null) {
+        val dateMillis = parseEventInstant(dateParam) ?: return null
+        calendar.timeInMillis = dateMillis
+    }
+    if (timeParam != null) {
+        val (hour, minute) = parseEventTimeOfDay(timeParam) ?: return null
+        val hadDate = dateParam != null
+        calendar.set(Calendar.HOUR_OF_DAY, hour)
+        calendar.set(Calendar.MINUTE, minute)
+        calendar.set(Calendar.SECOND, 0)
+        calendar.set(Calendar.MILLISECOND, 0)
+        if (!hadDate && calendar.timeInMillis <= System.currentTimeMillis()) {
+            calendar.add(Calendar.DAY_OF_YEAR, 1)
+        }
+    }
+    return calendar.timeInMillis
+}
+
+/** Finds a writable calendar id (highest access level), or null if none. */
+private fun resolveWritableCalendarId(context: Context): Long? {
+    return try {
+        val projection = arrayOf(
+            CalendarContract.Calendars._ID,
+            CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL
+        )
+        context.contentResolver.query(
+            CalendarContract.Calendars.CONTENT_URI, projection, null, null, null
+        )?.use { cursor ->
+            val idIndex = cursor.getColumnIndex(CalendarContract.Calendars._ID)
+            val accessIndex = cursor.getColumnIndex(CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL)
+            if (idIndex < 0) return null
+            var bestId: Long? = null
+            var bestAccess = -1
+            while (cursor.moveToNext()) {
+                val access = if (accessIndex >= 0) cursor.getInt(accessIndex) else 0
+                if (access > bestAccess) {
+                    bestAccess = access
+                    bestId = cursor.getLong(idIndex)
+                }
+            }
+            bestId
+        }
+    } catch (e: Exception) {
+        null
+    }
+}
+
 @Singleton
 class CalendarActions @Inject constructor(
     private val memoryRepository: MemoryRepository,
@@ -39,7 +155,7 @@ class CalendarActions @Inject constructor(
         ListCalendarTodayAction(),
         ListCalendarWeekAction(),
         SetReminderAction(),
-        CreateTaskAction(),
+        CreateTaskAction(memoryRepository),
         ReadNotesAction(memoryRepository),
         ReadAndRememberScreenAction(visionEngine, memoryRepository),
         RecallMemoryAction(memoryRepository),
@@ -52,14 +168,43 @@ class CalendarActions @Inject constructor(
         override val name: String = "CREATE_CALENDAR_EVENT"
         override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
             val title = params["title"] ?: "New Event"
+
+            // Use the date/time the planner actually supplied — never
+            // silently substitute "now". A supplied value that cannot be
+            // parsed fails honestly instead of creating a wrong event.
+            val combinedStart = params["start"] ?: params["startTime"]
+                ?: params["startDateTime"] ?: params["datetime"]
+            val startMillis: Long = when {
+                combinedStart != null -> parseEventInstant(combinedStart)
+                    ?: return ActionResult(false, null, "Couldn't understand the event start time '$combinedStart'.")
+                params["date"] != null || params["time"] != null ->
+                    resolveDateTimeParams(params["date"], params["time"])
+                        ?: return ActionResult(false, null, "Couldn't understand the event date/time provided.")
+                else -> Calendar.getInstance().timeInMillis
+            }
+            val combinedEnd = params["end"] ?: params["endTime"]
+            val durationMinutes = params["durationMinutes"]?.toLongOrNull()
+                ?: params["duration"]?.toLongOrNull()
+            val endMillis: Long = when {
+                combinedEnd != null -> parseEventInstant(combinedEnd)
+                    ?: return ActionResult(false, null, "Couldn't understand the event end time '$combinedEnd'.")
+                durationMinutes != null -> startMillis + durationMinutes * 60 * 1000
+                else -> startMillis + 60 * 60 * 1000 // 1 hr duration
+            }
+            if (endMillis <= startMillis) {
+                return ActionResult(false, null, "The event end time must be after its start time.")
+            }
+            val calendarId = resolveWritableCalendarId(context)
+                ?: return ActionResult(false, null, "No writable calendar was found on this device.")
+
             return try {
                 val cr = context.contentResolver
                 val values = ContentValues().apply {
-                    put(CalendarContract.Events.DTSTART, Calendar.getInstance().timeInMillis)
-                    put(CalendarContract.Events.DTEND, Calendar.getInstance().timeInMillis + 60 * 60 * 1000) // 1 hr duration
+                    put(CalendarContract.Events.DTSTART, startMillis)
+                    put(CalendarContract.Events.DTEND, endMillis)
                     put(CalendarContract.Events.TITLE, title)
                     put(CalendarContract.Events.DESCRIPTION, params["description"] ?: "Created by OpenDroid")
-                    put(CalendarContract.Events.CALENDAR_ID, 1)
+                    put(CalendarContract.Events.CALENDAR_ID, calendarId)
                     put(CalendarContract.Events.EVENT_TIMEZONE, TimeZone.getDefault().id)
                 }
                 
@@ -71,10 +216,13 @@ class CalendarActions @Inject constructor(
                     throw IllegalStateException("Insert returned null URI")
                 }
             } catch (e: Exception) {
-                // Fallback: Open compose intent in system calendar
+                // Fallback: Open compose intent in system calendar, carrying
+                // the requested start/end so the user isn't re-typing them.
                 val intent = Intent(Intent.ACTION_INSERT).apply {
                     data = CalendarContract.Events.CONTENT_URI
                     putExtra(CalendarContract.Events.TITLE, title)
+                    putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, startMillis)
+                    putExtra(CalendarContract.EXTRA_EVENT_END_TIME, endMillis)
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 context.startActivity(intent)
@@ -162,8 +310,10 @@ class CalendarActions @Inject constructor(
                     clockIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     context.startActivity(clockIntent)
                     val timeFormatted = formatTime(hour, minute)
-                    ActionResult(true,
-                        "I opened the Clock app — please set your alarm for $timeFormatted there.", null)
+                    // Non-success: opening the Clock app sets no alarm — the
+                    // user still has to create it there.
+                    ActionResult(false,
+                        "I opened the Clock app — please set your alarm for $timeFormatted there.", null, true)
                 } else {
                     null
                 }
@@ -268,7 +418,13 @@ class CalendarActions @Inject constructor(
     private class SetTimerAction : Action {
         override val name: String = "SET_TIMER"
         override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
-            val durationSecs = params["duration"]?.let { DurationParser.parseToSeconds(it) } ?: 60
+            // A supplied-but-unparseable duration must fail, not silently
+            // become a 60-second timer.
+            val durationSecs = when (val raw = params["duration"]) {
+                null -> 60
+                else -> DurationParser.parseToSeconds(raw)
+                    ?: return ActionResult(false, null, "Couldn't understand the timer duration '$raw'. Try '10 minutes' or '90 seconds'.")
+            }
             val label = params["label"] ?: "OpenDroid Timer"
             return try {
                 val intent = Intent(AlarmClock.ACTION_SET_TIMER).apply {
@@ -365,35 +521,126 @@ class CalendarActions @Inject constructor(
         override val name: String = "SET_REMINDER"
         override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
             val title = params["title"] ?: "New Reminder"
-            val timeStr = params["time"]
-            val startMillis = if (timeStr != null) {
-                Calendar.getInstance().timeInMillis
-            } else {
-                Calendar.getInstance().timeInMillis
+            // Parse the supplied time/date — previously both branches of
+            // this computation assigned "now", so every reminder was set
+            // for the current instant regardless of what was asked.
+            val combined = params["datetime"] ?: params["start"] ?: params["startTime"]
+            val startMillis: Long? = when {
+                combined != null -> parseEventInstant(combined)
+                    ?: return ActionResult(false, null, "Couldn't understand the reminder time '$combined'.")
+                params["date"] != null || params["time"] != null ->
+                    resolveDateTimeParams(params["date"], params["time"])
+                        ?: return ActionResult(false, null, "Couldn't understand the reminder time provided.")
+                else -> null
             }
-            return try {
-                val intent = Intent(Intent.ACTION_INSERT).apply {
-                    data = CalendarContract.Events.CONTENT_URI
-                    putExtra(CalendarContract.Events.TITLE, title)
-                    putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, startMillis)
-                    putExtra(CalendarContract.Events.DESCRIPTION, params["description"] ?: "Created by OpenDroid")
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+            if (startMillis == null) {
+                // No time supplied: nothing can be inserted, so hand the
+                // compose UI to the user as a non-success result.
+                return try {
+                    val intent = Intent(Intent.ACTION_INSERT).apply {
+                        data = CalendarContract.Events.CONTENT_URI
+                        putExtra(CalendarContract.Events.TITLE, title)
+                        putExtra(CalendarContract.Events.DESCRIPTION, params["description"] ?: "Created by OpenDroid")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                    ActionResult(
+                        false,
+                        "I opened the calendar so you can set up your reminder '$title' — no time was given, so nothing is set yet.",
+                        "Reminder time missing; compose UI opened for the user",
+                        true
+                    )
+                } catch (e: Exception) {
+                    Log.e("SetReminder", "Reminder failed: ${e.localizedMessage}")
+                    ActionResult(false, null, "Couldn't set up that reminder.")
                 }
-                context.startActivity(intent)
-                ActionResult(true, "I opened the calendar so you can set up your reminder '$title'.", null)
+            }
+
+            // Insert the reminder event directly; success is claimed only
+            // once the row actually exists.
+            val calendarId = resolveWritableCalendarId(context)
+                ?: return ActionResult(false, null, "No writable calendar was found on this device.")
+            return try {
+                val values = ContentValues().apply {
+                    put(CalendarContract.Events.DTSTART, startMillis)
+                    put(CalendarContract.Events.DTEND, startMillis + 15 * 60 * 1000) // 15 min reminder block
+                    put(CalendarContract.Events.TITLE, title)
+                    put(CalendarContract.Events.DESCRIPTION, params["description"] ?: "Created by OpenDroid")
+                    put(CalendarContract.Events.CALENDAR_ID, calendarId)
+                    put(CalendarContract.Events.EVENT_TIMEZONE, TimeZone.getDefault().id)
+                    put(CalendarContract.Events.HAS_ALARM, 1)
+                }
+                val uri = context.contentResolver.insert(CalendarContract.Events.CONTENT_URI, values)
+                if (uri != null) {
+                    // Attach the alert that makes it a reminder, not just an event.
+                    val reminderValues = ContentValues().apply {
+                        put(CalendarContract.Reminders.EVENT_ID, ContentUris.parseId(uri))
+                        put(CalendarContract.Reminders.MINUTES, 0)
+                        put(CalendarContract.Reminders.METHOD, CalendarContract.Reminders.METHOD_ALERT)
+                    }
+                    try {
+                        context.contentResolver.insert(CalendarContract.Reminders.CONTENT_URI, reminderValues)
+                    } catch (e: Exception) {
+                        Log.w("SetReminder", "Event created but reminder alert failed: ${e.localizedMessage}")
+                    }
+                    ActionResult(true, "Reminder '$title' is set.", null)
+                } else {
+                    throw IllegalStateException("Insert returned null URI")
+                }
             } catch (e: Exception) {
-                Log.e("SetReminder", "Reminder failed: ${e.localizedMessage}")
-                ActionResult(false, null, "Couldn't set up that reminder.")
+                Log.e("SetReminder", "Reminder insert failed: ${e.localizedMessage}")
+                // Fallback: compose UI pre-filled with the parsed time.
+                try {
+                    val intent = Intent(Intent.ACTION_INSERT).apply {
+                        data = CalendarContract.Events.CONTENT_URI
+                        putExtra(CalendarContract.Events.TITLE, title)
+                        putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, startMillis)
+                        putExtra(CalendarContract.Events.DESCRIPTION, params["description"] ?: "Created by OpenDroid")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                    ActionResult(false, "Couldn't save the reminder directly, but I opened the calendar with its time filled in.", e.localizedMessage, true)
+                } catch (fallbackError: Exception) {
+                    ActionResult(false, null, "Couldn't set up that reminder.")
+                }
             }
         }
     }
 
-    private class CreateTaskAction : Action {
+    private class CreateTaskAction(
+        private val memoryRepository: MemoryRepository
+    ) : Action {
         override val name: String = "CREATE_TASK"
         override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
             val title = params["title"] ?: "New Task"
             val description = params["description"] ?: ""
-            return ActionResult(true, "Done! Task '$title' is created.", null)
+            // Persist the task in the same memory store notes use — the
+            // previous body stored nothing anywhere and still told the user
+            // the task was created.
+            val timestamp = System.currentTimeMillis()
+            val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
+            val dateStr = dateFormat.format(java.util.Date(timestamp))
+            val sanitizedTitle = title.replace(Regex("[^a-zA-Z0-9_]"), "_").take(30)
+            val key = "task_${sanitizedTitle}_$timestamp"
+            val value = buildString {
+                append("Task: $title\nCreated: $dateStr\nStatus: pending")
+                if (description.isNotBlank()) append("\n$description")
+            }
+            return try {
+                memoryRepository.saveMemory(
+                    Memory(
+                        key = key,
+                        value = value,
+                        type = MemoryType.SEMANTIC,
+                        timestamp = timestamp
+                    )
+                )
+                ActionResult(true, "Done! Task '$title' is created.", null)
+            } catch (e: Exception) {
+                Log.e("CreateTask", "Task save failed: ${e.localizedMessage}")
+                ActionResult(false, null, "Couldn't save that task.")
+            }
         }
     }
 

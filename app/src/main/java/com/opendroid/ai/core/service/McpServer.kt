@@ -17,6 +17,8 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.security.MessageDigest
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -33,6 +35,17 @@ class McpServer @Inject constructor(
     private val running = AtomicBoolean(false)
     private var serverSocket: ServerSocket? = null
     private var serverThread: Thread? = null
+
+    /**
+     * Accepted sockets are handled on this bounded pool, NOT on the accept
+     * thread: [handle] blocks in `runBlocking` for the whole duration of an
+     * action/terminal call (routinely tens of seconds), so a single-threaded
+     * accept/handle loop starved every other MCP client behind one slow
+     * request.
+     */
+    private val clientExecutor: ExecutorService = Executors.newFixedThreadPool(MAX_CLIENT_WORKERS) { runnable ->
+        Thread(runnable, "OpenDroid-MCP-Client").apply { isDaemon = true }
+    }
 
     @Synchronized
     fun start() {
@@ -53,6 +66,7 @@ class McpServer @Inject constructor(
         val thread = serverThread
         serverThread = null
         thread?.join(JOIN_TIMEOUT_MS)
+        clientExecutor.shutdownNow()
         terminalManager.closeAll()
     }
 
@@ -62,7 +76,14 @@ class McpServer @Inject constructor(
                 serverSocket = socket
                 while (running.get()) {
                     try {
-                        socket.accept().use(::handle)
+                        val client = socket.accept()
+                        clientExecutor.execute {
+                            try {
+                                client.use(::handle)
+                            } catch (error: Exception) {
+                                if (running.get()) Log.e(TAG, "MCP request failed", error)
+                            }
+                        }
                     } catch (error: Exception) {
                         if (running.get()) Log.e(TAG, "MCP request failed", error)
                     }
@@ -324,6 +345,7 @@ class McpServer @Inject constructor(
         const val MAX_REQUEST_BYTES = 1_048_576
         const val MAX_HEADER_LINE_BYTES = 8192
         const val REQUEST_TIMEOUT_MS = 15_000
+        const val MAX_CLIENT_WORKERS = 4
         const val JOIN_TIMEOUT_MS = 2_000L
         const val THREAD_NAME = "OpenDroid-MCP"
     }

@@ -25,32 +25,49 @@ class FinanceActions @Inject constructor() {
         override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
             val to = params["to"] ?: return ActionResult(false, null, "to UPI ID parameter is missing")
             val amount = params["amount"] ?: return ActionResult(false, null, "amount parameter is missing")
+            if (amount.toDoubleOrNull() == null) {
+                return ActionResult(false, null, "Amount '$amount' is not a valid number")
+            }
             val note = params["note"] ?: "Sent via OpenDroid"
             val app = params["app"] ?: "gpay"
-            
+            // Real payee name when the planner supplied one; otherwise the
+            // UPI id's local part — never a hardcoded placeholder.
+            val payeeName = params["name"] ?: params["payeeName"] ?: to.substringBefore("@")
+
             return try {
+                // EVERY parameter is URL-encoded: a payee id or amount
+                // containing '&' or '=' must not inject or override params.
+                val encTo = URLEncoder.encode(to, "UTF-8")
+                val encName = URLEncoder.encode(payeeName, "UTF-8")
                 val encNote = URLEncoder.encode(note, "UTF-8")
-                val upiUri = "upi://pay?pa=$to&pn=Recipient&tn=$encNote&am=$amount&cu=INR".toUri()
+                val encAmount = URLEncoder.encode(amount, "UTF-8")
+                val upiUri = "upi://pay?pa=$encTo&pn=$encName&tn=$encNote&am=$encAmount&cu=INR".toUri()
                 val intent = Intent(Intent.ACTION_VIEW, upiUri).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
-                
+
                 intent.setPackage(paymentApp(app).packageName)
-                
+
                 if (intent.resolveActivity(context.packageManager) != null) {
                     context.startActivity(intent)
-                    ActionResult(true, "Sending ₹$amount to $to!", null)
+                    // Launching the UPI app is NOT a payment: report the
+                    // hand-off honestly until a result/confirmation exists.
+                    ActionResult.UserActionRequired(
+                        "Payment app opened for ₹$amount to $to — complete the payment in the app. It isn't sent until you confirm there."
+                    )
                 } else {
                     // Try without setting package to allow chooser
                     val chooserIntent = Intent(Intent.ACTION_VIEW, upiUri).apply {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
                     context.startActivity(chooserIntent)
-                    ActionResult(true, "$app isn't installed, so I opened the default payment app.", null, true)
+                    ActionResult.UserActionRequired(
+                        "$app isn't installed, so I opened your default payment app for ₹$amount to $to — complete the payment there. It isn't sent until you confirm."
+                    )
                 }
             } catch (e: Exception) {
                 Log.e("PayUPI", "UPI failed: ${e.localizedMessage}")
-                ActionResult(false, null, "Payment didn't go through. Try again?")
+                ActionResult(false, null, "Couldn't open the payment app. Try again?")
             }
         }
     }

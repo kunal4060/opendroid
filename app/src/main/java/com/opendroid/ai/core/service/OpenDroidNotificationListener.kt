@@ -289,7 +289,11 @@ class OpenDroidNotificationListener : NotificationListenerService() {
     fun getActiveNotification(packageName: String, contactName: String?): StatusBarNotification? {
         return try {
             val activeNotifications = getActiveNotifications() ?: return null
-            // Try to find a matching notification by package and sender name
+            // Find a matching notification by package and sender name. There
+            // is deliberately NO package-only fallback: when the intended
+            // contact's notification is gone, replying into a different
+            // conversation of the same app would send the message to the
+            // wrong person. No contact match = no reply.
             activeNotifications.firstOrNull { sbn ->
                 sbn.packageName == packageName &&
                 sbn.notification?.extras?.let { extras ->
@@ -297,10 +301,6 @@ class OpenDroidNotificationListener : NotificationListenerService() {
                     val convTitle = extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)?.toString() ?: ""
                     contactName == null || title == contactName || convTitle == contactName
                 } == true &&
-                sbn.notification?.actions?.any { it.remoteInputs?.isNotEmpty() == true } == true
-            } ?: activeNotifications.firstOrNull { sbn ->
-                // Fallback: any notification from the same package that has reply actions
-                sbn.packageName == packageName &&
                 sbn.notification?.actions?.any { it.remoteInputs?.isNotEmpty() == true } == true
             }
         } catch (e: Exception) {

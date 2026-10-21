@@ -9,7 +9,14 @@ sealed class ActionResult {
     abstract val error: String?
 
     @Serializable
-    data class Success(val dataMap: Map<String, String> = emptyMap()) : ActionResult() {
+    data class Success(
+        val dataMap: Map<String, String> = emptyMap(),
+        /** True when this success was produced by a fallback path rather than
+         *  the action's primary mechanism. Preserved for successes too —
+         *  [invoke] used to drop it, so callers could not tell a primary
+         *  success from a fallback one. */
+        val fallbackExecuted: Boolean = false
+    ) : ActionResult() {
         override val success: Boolean get() = true
         override val data: String? get() = dataMap["message"] ?: if (dataMap.isNotEmpty()) dataMap.toString() else null
         override val error: String? get() = null
@@ -82,7 +89,7 @@ sealed class ActionResult {
         ): ActionResult {
             return if (success) {
                 val dataMap = if (data != null) mapOf("message" to data) else emptyMap()
-                Success(dataMap)
+                Success(dataMap, fallbackExecuted = fallbackExecuted)
             } else {
                 Failure(
                     errorMsg = error ?: data ?: "Unknown error",

@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.opendroid.ai.core.service.OpenDroidService
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,8 +25,20 @@ import kotlinx.coroutines.launch
 class ExternalCommandReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        val pendingResult = goAsync()
         val appContext = context.applicationContext
+        // A broadcast's goAsync() window is only ~10s, but a macro (or
+        // command) can run far longer — executing inside that window got
+        // runs frozen/killed mid-flight with the stored last-run record
+        // stuck at RUNNING. Hand execution off to the app's foreground
+        // service so the process outlives the broadcast, finish the
+        // pending result immediately, and let the gateway deliver the
+        // outcome asynchronously through its reply broadcast.
+        try {
+            OpenDroidService.start(appContext)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not start foreground service for external command", e)
+        }
+        val pendingResult = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
             try {
                 val entryPoint = EntryPointAccessors.fromApplication(
@@ -35,10 +48,9 @@ class ExternalCommandReceiver : BroadcastReceiver() {
                 entryPoint.externalCommandGateway().handle(intent, ExternalCaller.BROADCAST)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to handle external intent", e)
-            } finally {
-                pendingResult.finish()
             }
         }
+        pendingResult.finish()
     }
 
     companion object {

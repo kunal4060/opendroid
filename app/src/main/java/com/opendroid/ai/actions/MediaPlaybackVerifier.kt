@@ -36,6 +36,14 @@ class AndroidMediaPlaybackVerifier @Inject constructor() : MediaPlaybackVerifier
         val sessionManager = context.getSystemService(MediaSessionManager::class.java)
             ?: return false
         val listenerComponent = ComponentName(context, OpenDroidNotificationListener::class.java)
+        // For "local" playback the target is whichever player the system
+        // resolved for the play-from-search intent — match THAT package,
+        // not whatever happens to be playing.
+        val localTargetPackage = if (app.equals("local", ignoreCase = true)) {
+            resolveLocalPlayerPackage(context)
+        } else {
+            null
+        }
         val deadline = System.currentTimeMillis() + VERIFICATION_TIMEOUT_MS
 
         do {
@@ -50,7 +58,8 @@ class AndroidMediaPlaybackVerifier @Inject constructor() : MediaPlaybackVerifier
             }
 
             if (controllers.any { controller ->
-                    isTargetApp(controller.packageName, app) &&
+                    (isTargetApp(controller.packageName, app) ||
+                        (localTargetPackage != null && controller.packageName == localTargetPackage)) &&
                         controller.playbackState?.state == PlaybackState.STATE_PLAYING &&
                         matchesQuery(controller.metadata, query)
                 }) {
@@ -73,7 +82,23 @@ class AndroidMediaPlaybackVerifier @Inject constructor() : MediaPlaybackVerifier
             return when (app.lowercase()) {
                 "spotify" -> packageName == SPOTIFY_PACKAGE
                 "youtube" -> packageName == YOUTUBE_PACKAGE || packageName == YOUTUBE_MUSIC_PACKAGE
-                else -> true
+                // Fail closed for anything else: the old `else -> true`
+                // branch let ANY app's playing session "verify" playback in
+                // the requested app. "local" is matched separately against
+                // the resolved player package in awaitVerifiedPlayback.
+                else -> false
+            }
+        }
+
+        /** The package the system would hand a local play-from-search intent to. */
+        private fun resolveLocalPlayerPackage(context: Context): String? {
+            val intent = android.content.Intent(android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH)
+            return try {
+                context.packageManager.resolveActivity(
+                    intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
+                )?.activityInfo?.packageName
+            } catch (_: RuntimeException) {
+                null
             }
         }
 

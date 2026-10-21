@@ -39,8 +39,18 @@ class RoutineActions @Inject constructor(
                 routineId
             } else if (!routineName.isNullOrBlank()) {
                 val all = habitDao.getAllRoutines()
-                val match = all.firstOrNull { it.name.equals(routineName, ignoreCase = true) }
-                    ?: all.firstOrNull { it.name.contains(routineName, ignoreCase = true) }
+                val exact = all.firstOrNull { it.name.equals(routineName, ignoreCase = true) }
+                val match = exact ?: run {
+                    val partialMatches = all.filter { it.name.contains(routineName, ignoreCase = true) }
+                    // A partial name matching several routines must not run
+                    // the first one (side effects included) — fail and ask.
+                    if (partialMatches.size > 1) {
+                        return ActionResult.Failure(
+                            "'$routineName' matches ${partialMatches.size} routines (${partialMatches.joinToString(", ") { it.name }}). Please use the exact routine name."
+                        )
+                    }
+                    partialMatches.firstOrNull()
+                }
                 match?.id ?: return ActionResult.Failure("Routine '$routineName' not found.")
             } else {
                 return ActionResult.Failure("routineId or routineName parameter missing")

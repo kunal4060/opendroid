@@ -14,6 +14,7 @@ import com.opendroid.ai.data.db.dao.UnknownActionDao
 import com.opendroid.ai.data.db.entities.UnknownActionEntity
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 
 /**
  * Central action execution engine.
@@ -407,6 +408,12 @@ class ActionDispatcher @Inject constructor(
     ): ActionResult {
         return try {
             handler.execute(params, context)
+        } catch (e: CancellationException) {
+            // Cancellation is control flow, not an execution failure:
+            // converting it into a Failure result lets callers keep running
+            // work that was supposed to be cancelled (timeout, user stop,
+            // scope teardown). Rethrow it, like MacroActions does.
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Execution failed for $actionName: ${e.message}")
             ActionResult.Failure(

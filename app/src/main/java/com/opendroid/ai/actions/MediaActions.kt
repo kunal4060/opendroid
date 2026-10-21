@@ -1,8 +1,12 @@
 package com.opendroid.ai.actions
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
+import android.media.MediaMetadata
+import android.media.session.MediaSessionManager
+import android.media.session.PlaybackState
 import android.os.SystemClock
 import android.provider.MediaStore
 import android.util.Log
@@ -10,10 +14,12 @@ import android.view.KeyEvent
 import androidx.core.net.toUri
 import com.opendroid.ai.actions.base.Action
 import com.opendroid.ai.actions.base.ActionResult
+import com.opendroid.ai.core.service.OpenDroidNotificationListener
 import com.opendroid.ai.core.util.DeviceCapabilities
 import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.delay
 
 @Singleton
 class MediaActions @Inject constructor(
@@ -84,8 +90,23 @@ class MediaActions @Inject constructor(
         override val name: String = "PAUSE_MUSIC"
         override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
             return try {
+                // Verify by reading the media session state back — the old
+                // code claimed success the instant the key event was sent,
+                // even with no active session or the event ignored.
+                val before = playbackSnapshot(context)
+                    ?: return ActionResult(false, null, "Couldn't check playback state to pause safely.")
+                if (!before.hasSession) {
+                    return ActionResult(false, null, "Nothing is playing right now.")
+                }
                 sendMediaKeyEvent(context, KeyEvent.KEYCODE_MEDIA_PAUSE)
-                ActionResult(true, "Music paused!", null)
+                val paused = awaitPlaybackCondition(context, timeoutMs = 1500) { snapshot ->
+                    snapshot.hasSession && !snapshot.anyPlaying
+                }
+                if (paused) {
+                    ActionResult(true, "Music paused!", null)
+                } else {
+                    ActionResult(false, null, "I sent the pause command, but playback is still going.")
+                }
             } catch (e: Exception) {
                 Log.e("PauseMusic", "Pause failed: ${e.localizedMessage}")
                 ActionResult(false, null, "Couldn't pause the music.")
@@ -97,8 +118,20 @@ class MediaActions @Inject constructor(
         override val name: String = "RESUME_MUSIC"
         override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
             return try {
+                val before = playbackSnapshot(context)
+                    ?: return ActionResult(false, null, "Couldn't check playback state to resume safely.")
+                if (!before.hasSession) {
+                    return ActionResult(false, null, "There's no paused playback session to resume.")
+                }
                 sendMediaKeyEvent(context, KeyEvent.KEYCODE_MEDIA_PLAY)
-                ActionResult(true, "Music resumed!", null)
+                val resumed = awaitPlaybackCondition(context, timeoutMs = 2000) { snapshot ->
+                    snapshot.anyPlaying
+                }
+                if (resumed) {
+                    ActionResult(true, "Music resumed!", null)
+                } else {
+                    ActionResult(false, null, "I sent the play command, but playback didn't start.")
+                }
             } catch (e: Exception) {
                 Log.e("ResumeMusic", "Resume failed: ${e.localizedMessage}")
                 ActionResult(false, null, "Couldn't resume the music.")
@@ -110,8 +143,21 @@ class MediaActions @Inject constructor(
         override val name: String = "NEXT_TRACK"
         override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
             return try {
+                val before = playbackSnapshot(context)
+                    ?: return ActionResult(false, null, "Couldn't check playback state to skip safely.")
+                if (!before.hasSession) {
+                    return ActionResult(false, null, "Nothing is playing right now.")
+                }
                 sendMediaKeyEvent(context, KeyEvent.KEYCODE_MEDIA_NEXT)
-                ActionResult(true, "Skipped to the next song!", null)
+                // Verified when a track title appears that wasn't there before.
+                val skipped = awaitPlaybackCondition(context, timeoutMs = 2000) { snapshot ->
+                    snapshot.titles.isNotEmpty() && snapshot.titles != before.titles
+                }
+                if (skipped) {
+                    ActionResult(true, "Skipped to the next song!", null)
+                } else {
+                    ActionResult(false, null, "I sent the skip command, but the track didn't change.")
+                }
             } catch (e: Exception) {
                 Log.e("NextTrack", "Skip failed: ${e.localizedMessage}")
                 ActionResult(false, null, "Couldn't skip the track.")
@@ -123,8 +169,20 @@ class MediaActions @Inject constructor(
         override val name: String = "PREV_TRACK"
         override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
             return try {
+                val before = playbackSnapshot(context)
+                    ?: return ActionResult(false, null, "Couldn't check playback state to go back safely.")
+                if (!before.hasSession) {
+                    return ActionResult(false, null, "Nothing is playing right now.")
+                }
                 sendMediaKeyEvent(context, KeyEvent.KEYCODE_MEDIA_PREVIOUS)
-                ActionResult(true, "Going back to the previous song!", null)
+                val wentBack = awaitPlaybackCondition(context, timeoutMs = 2000) { snapshot ->
+                    snapshot.titles.isNotEmpty() && snapshot.titles != before.titles
+                }
+                if (wentBack) {
+                    ActionResult(true, "Going back to the previous song!", null)
+                } else {
+                    ActionResult(false, null, "I sent the previous-track command, but the track didn't change.")
+                }
             } catch (e: Exception) {
                 Log.e("PrevTrack", "Back failed: ${e.localizedMessage}")
                 ActionResult(false, null, "Couldn't go back.")
@@ -239,6 +297,53 @@ class MediaActions @Inject constructor(
     }
 
     companion object {
+        /** Point-in-time view of the device's active media sessions. */
+        private data class PlaybackSnapshot(
+            val hasSession: Boolean,
+            val anyPlaying: Boolean,
+            val titles: Set<String>
+        )
+
+        /**
+         * Reads the active media sessions (the same listener-component
+         * mechanism the playback verifier uses). Returns null when the
+         * state cannot be inspected — callers must fail honestly instead
+         * of assuming a dispatched key event worked.
+         */
+        private fun playbackSnapshot(context: Context): PlaybackSnapshot? {
+            val sessionManager = context.getSystemService(MediaSessionManager::class.java) ?: return null
+            val listenerComponent = ComponentName(context, OpenDroidNotificationListener::class.java)
+            val controllers = try {
+                sessionManager.getActiveSessions(listenerComponent)
+            } catch (_: SecurityException) {
+                return null
+            } catch (_: RuntimeException) {
+                return null
+            }
+            val titles = controllers.mapNotNull {
+                it.metadata?.getString(MediaMetadata.METADATA_KEY_TITLE)
+            }.toSet()
+            val anyPlaying = controllers.any {
+                it.playbackState?.state == PlaybackState.STATE_PLAYING
+            }
+            return PlaybackSnapshot(controllers.isNotEmpty(), anyPlaying, titles)
+        }
+
+        /** Polls [playbackSnapshot] until [condition] holds or the timeout passes. */
+        private suspend fun awaitPlaybackCondition(
+            context: Context,
+            timeoutMs: Long,
+            condition: (PlaybackSnapshot) -> Boolean
+        ): Boolean {
+            val deadline = System.currentTimeMillis() + timeoutMs
+            while (true) {
+                val snapshot = playbackSnapshot(context) ?: return false
+                if (condition(snapshot)) return true
+                if (System.currentTimeMillis() >= deadline) return false
+                delay(150)
+            }
+        }
+
         private fun sendMediaKeyEvent(context: Context, keyCode: Int) {
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             val eventTime = SystemClock.uptimeMillis()

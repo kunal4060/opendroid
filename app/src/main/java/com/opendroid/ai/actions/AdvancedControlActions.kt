@@ -239,7 +239,9 @@ class AdvancedControlActions @Inject constructor() {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 context.startActivity(intent)
-                ActionResult(true, "$msg Camera app opened.", null, true)
+                // Non-success: opening the camera app is not a photo — no
+                // image was captured on any of these fallback paths.
+                ActionResult(false, "$msg Camera app opened — no photo was taken.", null, true)
             } catch (e: Exception) {
                 ActionResult(false, null, "Couldn't open the camera app.")
             }
@@ -423,7 +425,14 @@ class AdvancedControlActions @Inject constructor() {
         override val name: String = "SCROLL"
         override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
             val direction = params["direction"] ?: "forward"
-            val forward = direction.lowercase() == "forward"
+            // Map the direction words the planner actually emits: the old
+            // check treated everything except the exact string "forward"
+            // (including "down") as backward.
+            val forward = when (direction.trim().lowercase()) {
+                "forward", "down", "page-down", "page down", "next" -> true
+                "backward", "back", "up", "page-up", "page up", "previous" -> false
+                else -> return ActionResult(false, null, "Unknown scroll direction '$direction'. Use 'down' or 'up'.")
+            }
             val success = GenericAppAutomator.scroll(forward)
             return ActionResult(success, if (success) "Scrolled $direction!" else "Can't scroll here.", null)
         }

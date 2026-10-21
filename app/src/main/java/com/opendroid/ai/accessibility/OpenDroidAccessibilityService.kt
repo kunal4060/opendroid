@@ -483,21 +483,26 @@ class OpenDroidAccessibilityService : AccessibilityService() {
         val nodes = rootNode.findAccessibilityNodeInfosByViewId(viewId)
         for (node in nodes) {
             if (node.isClickable) {
-                node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                // Propagate the performAction result: a node that refuses the
+                // click (stale node, overlay) must not report success — try
+                // the next candidate instead.
+                val clicked = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                 node.recycle()
-                return true
+                if (clicked) return true
+                continue
             }
             var parent = node.parent
-            while (parent != null) {
+            var parentClicked = false
+            while (parent != null && !parentClicked) {
                 if (parent.isClickable) {
-                    parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    parent.recycle()
-                    node.recycle()
-                    return true
+                    parentClicked = parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                 }
-                parent = parent.parent
+                val next = if (parentClicked) null else parent.parent
+                parent.recycle()
+                parent = next
             }
             node.recycle()
+            if (parentClicked) return true
         }
         return false
     }
@@ -510,9 +515,10 @@ class OpenDroidAccessibilityService : AccessibilityService() {
                 val arguments = Bundle().apply {
                     putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, content)
                 }
-                node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+                val typed = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
                 node.recycle()
-                return true
+                if (typed) return true
+                continue
             }
             node.recycle()
         }
@@ -527,9 +533,10 @@ class OpenDroidAccessibilityService : AccessibilityService() {
                 val arguments = Bundle().apply {
                     putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, content)
                 }
-                node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+                val typed = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
                 node.recycle()
-                return true
+                if (typed) return true
+                continue
             }
             node.recycle()
         }
@@ -546,27 +553,31 @@ class OpenDroidAccessibilityService : AccessibilityService() {
      */
     fun performImeEnter(): Boolean {
         val focusedNode = rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-        val success = if (focusedNode != null) {
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    focusedNode.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
-                } else {
-                    false
-                }
-            } finally {
-                focusedNode.recycle()
+            ?: return false
+        // The submit fallback is scoped to the focused field's own window
+        // tree (the topmost ancestor of the focused node), so pressing enter
+        // in one app can never fire an unrelated Send/OK button visible in
+        // another window on screen. With no focused field there is nothing
+        // safe to scope to, so no fallback runs at all.
+        var scopedRoot: AccessibilityNodeInfo? = null
+        try {
+            var ancestor = focusedNode.parent
+            while (ancestor != null) {
+                scopedRoot?.recycle()
+                scopedRoot = ancestor
+                ancestor = ancestor.parent
             }
-        } else {
-            false
+            val success = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                focusedNode.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
+            } else {
+                false
+            }
+            if (success) return true
+            return nodeTraversal.findAndClickSubmitControl(scopedRoot ?: focusedNode, imeSubmitLabels)
+        } finally {
+            scopedRoot?.recycle()
+            focusedNode.recycle()
         }
-        return success || performSubmitFallback()
-    }
-
-    private fun performSubmitFallback(): Boolean {
-        val rootNode = rootInActiveWindow ?: return false
-        val result = nodeTraversal.findAndClickSubmitControl(rootNode, imeSubmitLabels)
-        rootNode.recycle()
-        return result
     }
 
     fun performScroll(forward: Boolean): Boolean {

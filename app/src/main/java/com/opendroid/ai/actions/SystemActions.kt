@@ -221,35 +221,41 @@ class SystemActions @Inject constructor(
 
             val stateWord = if (targetOn) "on" else "off"
 
-            // Method 1: Direct toggle (works on API < 29)
+            // Method 1: Direct toggle (works on API < 29). The setter's
+            // Boolean is honoured: on API 29+ it refuses (returns false)
+            // instead of throwing, which must not be reported as success.
             try {
                 @Suppress("DEPRECATION")
-                wifiManager.isWifiEnabled = targetOn
-                return ActionResult(true, "WiFi turned $stateWord!", null)
+                if (wifiManager.setWifiEnabled(targetOn)) {
+                    return ActionResult(true, "WiFi turned $stateWord!", null)
+                }
+                Log.w("ToggleWifi", "Direct toggle refused by the system")
             } catch (e: Exception) {
                 Log.w("ToggleWifi", "Direct toggle failed: ${e.message}")
             }
 
-            // Method 2: Quick Settings Panel (API 29+) — inline overlay toggle
+            // Method 2: Quick Settings Panel (API 29+) — the panel only lets
+            // the USER flip the switch, so this is a hand-off, not a toggle:
+            // report it as a non-success fallback, never "WiFi turned on/off".
             if (android.os.Build.VERSION.SDK_INT >= 29) {
                 try {
                     val intent = Intent(Settings.Panel.ACTION_WIFI).apply {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
                     context.startActivity(intent)
-                    return ActionResult(true, "WiFi turned $stateWord!", null)
+                    return ActionResult(false, "I opened the WiFi panel — please turn WiFi $stateWord there. I can't change it directly on this Android version.", null, true)
                 } catch (e: Exception) {
                     Log.w("ToggleWifi", "Panel failed: ${e.message}")
                 }
             }
 
-            // Method 3: Full settings (last resort)
+            // Method 3: Full settings (last resort) — same hand-off semantics.
             return try {
                 val intent = Intent(Settings.ACTION_WIFI_SETTINGS).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 context.startActivity(intent)
-                ActionResult(true, "WiFi turned $stateWord!", null)
+                ActionResult(false, "I opened WiFi settings — please turn WiFi $stateWord there. I can't change it directly on this Android version.", null, true)
             } catch (ex: Exception) {
                 Log.e("ToggleWifi", "All methods failed: ${ex.message}")
                 ActionResult(false, null, "Couldn't toggle WiFi.")
@@ -323,7 +329,6 @@ class SystemActions @Inject constructor(
         override val name: String = "SET_VOLUME"
         override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
             val typeStr = params["type"] ?: "media"
-            val level = params["level"]?.toIntOrNull()?.coerceIn(0, 100) ?: 50
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             val streamType = when (typeStr.lowercase().trim()) {
                 "ring", "ringtone", "ringer" -> AudioManager.STREAM_RING
@@ -331,6 +336,21 @@ class SystemActions @Inject constructor(
                 "notification", "notif" -> AudioManager.STREAM_NOTIFICATION
                 "system" -> AudioManager.STREAM_SYSTEM
                 else -> AudioManager.STREAM_MUSIC
+            }
+            // Relative adjustment ("adjust" delta, injected by the mapper for
+            // VOLUME_UP / VOLUME_DOWN): move from the CURRENT level instead
+            // of jumping to an absolute default — "volume up" at 80% must
+            // never lower the volume to 50.
+            val adjust = params["adjust"]?.toIntOrNull()
+            val explicitLevel = params["level"]?.toIntOrNull()?.coerceIn(0, 100)
+            val level = when {
+                explicitLevel != null -> explicitLevel
+                adjust != null -> {
+                    val max = audioManager.getStreamMaxVolume(streamType).coerceAtLeast(1)
+                    val currentPercent = audioManager.getStreamVolume(streamType) * 100 / max
+                    (currentPercent + adjust).coerceIn(0, 100)
+                }
+                else -> 50
             }
             val streamLabel = when (streamType) {
                 AudioManager.STREAM_RING -> "Ringtone"
@@ -452,8 +472,15 @@ class SystemActions @Inject constructor(
         override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
             val service = OpenDroidAccessibilityService.getInstance()
             return if (service != null) {
-                val success = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_POWER_DIALOG)
-                ActionResult(success, if (success) "Power dialog opened. Action pending user touch." else "Failed to open dialog", null)
+                val dialogOpened = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_POWER_DIALOG)
+                // Opening the power dialog is not a restart — nothing has
+                // happened until the user taps Restart, so report a
+                // non-success pending result, not success.
+                if (dialogOpened) {
+                    ActionResult(false, "Power dialog opened. The device has NOT restarted — tap Restart there to proceed.", null, true)
+                } else {
+                    ActionResult(false, null, "Failed to open the power dialog.")
+                }
             } else {
                 ActionResult(false, null, "Accessibility Service not running to trigger power dialog.")
             }
@@ -636,26 +663,27 @@ class SystemActions @Inject constructor(
                 Log.w("MobileData", "Reflection failed: ${e.message}")
             }
 
-            // Method 2: Internet connectivity panel (API 29+)
+            // Method 2: Internet connectivity panel (API 29+) — a hand-off
+            // to the user, not a toggle: report non-success.
             if (android.os.Build.VERSION.SDK_INT >= 29) {
                 try {
                     val intent = Intent(Settings.Panel.ACTION_INTERNET_CONNECTIVITY).apply {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
                     context.startActivity(intent)
-                    return ActionResult(true, "Mobile data turned $stateWord!", null)
+                    return ActionResult(false, "I opened the internet panel — please turn mobile data $stateWord there. I can't change it directly on this Android version.", null, true)
                 } catch (e: Exception) {
                     Log.w("MobileData", "Panel failed: ${e.message}")
                 }
             }
 
-            // Method 3: Full settings (last resort)
+            // Method 3: Full settings (last resort) — same hand-off semantics.
             return try {
                 val intent = Intent(Settings.ACTION_DATA_ROAMING_SETTINGS).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 context.startActivity(intent)
-                ActionResult(true, "Mobile data turned $stateWord!", null)
+                ActionResult(false, "I opened mobile data settings — please turn it $stateWord there. I can't change it directly on this Android version.", null, true)
             } catch (e: Exception) {
                 ActionResult(false, null, "Couldn't toggle mobile data.")
             }
@@ -689,26 +717,16 @@ class SystemActions @Inject constructor(
                 Log.w("ToggleHotspot", "Reflection failed: ${e.message}")
             }
 
-            // Method 2: Quick panel (API 29+)
-            if (android.os.Build.VERSION.SDK_INT >= 29) {
-                try {
-                    val intent = Intent(Settings.Panel.ACTION_WIFI).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    context.startActivity(intent)
-                    return ActionResult(true, "Hotspot turned $stateWord!", null)
-                } catch (e: Exception) {
-                    Log.w("ToggleHotspot", "Panel failed: ${e.message}")
-                }
-            }
-
-            // Method 4: Tether settings (last resort)
+            // Method 2: Tether settings — there is no Settings.Panel for the
+            // hotspot (the old code opened the Wi-Fi panel while claiming
+            // the hotspot was toggled). Opening tethering settings is a
+            // hand-off to the user: report non-success.
             return try {
                 val intent = Intent("android.settings.TETHER_SETTINGS").apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 context.startActivity(intent)
-                ActionResult(true, "Hotspot turned $stateWord!", null)
+                ActionResult(false, "I opened the hotspot settings — please turn the hotspot $stateWord there. I can't change it directly on this Android version.", null, true)
             } catch (e: Exception) {
                 ActionResult(false, null, "Couldn't toggle hotspot.")
             }
@@ -734,8 +752,10 @@ class SystemActions @Inject constructor(
     private class RecordScreenAction : Action {
         override val name: String = "RECORD_SCREEN"
         override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
-            val start = params["start"]?.toBoolean() ?: true
-            return ActionResult(true, if (start) "Screen recording started (simulated)" else "Screen recording stopped (simulated)", null)
+            // No MediaProjection recording exists in OpenDroid — the old
+            // body returned simulated success while recording nothing.
+            // Fail honestly rather than pretend.
+            return ActionResult(false, null, "Screen recording isn't supported yet — OpenDroid can't record the screen.")
         }
     }
 
@@ -787,11 +807,19 @@ class SystemActions @Inject constructor(
                         ActionResult(false, null, "Device does not support hardware feature: $hardwareFeature")
                     }
                 } else {
+                    // Unknown feature name: the result must mirror the
+                    // actual check — reporting a false check as success
+                    // makes callers branch on support never established.
                     val hasFeature = pm.hasSystemFeature("android.hardware.${hardwareFeature.lowercase()}")
-                    ActionResult(true, "Hardware feature '$hardwareFeature' check returned: $hasFeature", null)
+                    if (hasFeature) {
+                        ActionResult(true, "Device supports hardware feature: $hardwareFeature", null)
+                    } else {
+                        ActionResult(false, null, "Device does not support hardware feature: $hardwareFeature")
+                    }
                 }
             } catch (e: Exception) {
-                ActionResult(true, "Hardware feature '$hardwareFeature' assumed supported (fallback).", null)
+                // Unknown is not supported: report failure, never assume.
+                ActionResult(false, null, "Couldn't check hardware feature '$hardwareFeature'.")
             }
         }
     }
@@ -953,6 +981,12 @@ class SystemActions @Inject constructor(
 
         private fun matchResponseToOption(response: String, options: List<ContactOption>): ContactOption? {
             val cleanResponse = response.trim().lowercase()
+            // An empty/unintelligible response must NEVER match: the old
+            // substring logic matched the first option for "" because
+            // contains("") is always true.
+            if (cleanResponse.isEmpty() || options.isEmpty()) return null
+            val tokens = cleanResponse.split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }
+            if (tokens.isEmpty()) return null
 
             val indexMap = mapOf(
                 "1" to 0, "one" to 0, "first" to 0,
@@ -961,22 +995,29 @@ class SystemActions @Inject constructor(
                 "4" to 3, "four" to 3, "fourth" to 3,
                 "5" to 4, "five" to 4, "fifth" to 4
             )
-            for ((key, value) in indexMap) {
-                if (cleanResponse.contains(key) && value < options.size) {
+            // Whole-token matching, longest key first: in "second one" the
+            // word "second" must win over the "one" it contains — raw
+            // substring matching in map order picked option 1 there.
+            for ((key, value) in indexMap.entries.sortedByDescending { it.key.length }) {
+                if (key in tokens && value < options.size) {
                     return options[value]
                 }
             }
 
+            // Name matching on whole tokens only (every name token must
+            // appear as a complete token in the response).
             for (option in options) {
-                val cleanName = option.name.lowercase()
-                if (cleanResponse.contains(cleanName) || cleanName.contains(cleanResponse)) {
+                val cleanName = option.name.trim().lowercase()
+                if (cleanName.isEmpty()) continue
+                val nameTokens = cleanName.split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }
+                if (nameTokens.isNotEmpty() && tokens.containsAll(nameTokens)) {
                     return option
                 }
             }
 
-            val digit = cleanResponse.firstOrNull { it.isDigit() }?.toString()
+            val digit = tokens.firstOrNull { it.toIntOrNull() != null }?.toIntOrNull()
             if (digit != null) {
-                val idx = digit.toInt() - 1
+                val idx = digit - 1
                 if (idx in options.indices) {
                     return options[idx]
                 }
@@ -1217,7 +1258,9 @@ class SystemActions @Inject constructor(
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
                     context.startActivity(fallback)
-                    ActionResult(true, "Browser is open — you can switch to private/incognito mode manually.", null, true)
+                    // Non-success: a normal tab was opened, private mode was
+                    // NOT enabled — the user must switch manually.
+                    ActionResult(false, "Browser is open — you can switch to private/incognito mode manually.", null, true)
                 }
             } catch (e: Exception) {
                 Log.e("PrivateMode", "Failed: ${e.localizedMessage}")
@@ -1246,7 +1289,9 @@ class SystemActions @Inject constructor(
                 try {
                     if (chromeSettingsIntent.resolveActivity(context.packageManager) != null) {
                         context.startActivity(chromeSettingsIntent)
-                        ActionResult(true, "Chrome's clear data page is open — select what to clear and confirm.", null)
+                        // Non-success: the page is open, nothing is cleared
+                        // until the user selects and confirms there.
+                        ActionResult(false, "Chrome's clear data page is open — select what to clear and confirm.", null, true)
                     } else {
                         throw Exception("Chrome settings not available")
                     }
@@ -1258,10 +1303,10 @@ class SystemActions @Inject constructor(
                     }
                     try {
                         context.startActivity(appInfoIntent)
-                        ActionResult(true, "Chrome app settings are open — tap 'Clear Data' to clear browser data.", null, true)
+                        ActionResult(false, "Chrome app settings are open — tap 'Clear Data' to clear browser data.", null, true)
                     } catch (_: Exception) {
                         context.startActivity(intent)
-                        ActionResult(true, "App settings are open — find your browser and clear its data.", null, true)
+                        ActionResult(false, "App settings are open — find your browser and clear its data.", null, true)
                     }
                 }
             } catch (e: Exception) {
