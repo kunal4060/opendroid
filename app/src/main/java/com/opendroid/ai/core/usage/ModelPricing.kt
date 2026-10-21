@@ -35,6 +35,15 @@ object ModelPricing {
         FamilyRate("OpenAI", "o3-mini", ModelRate(1.10, 4.40)),
         FamilyRate("OpenAI", "o1-mini", ModelRate(1.10, 4.40)),
         // Google Gemini
+        // "gemini-flash-latest" is the seeded default model (ProviderCatalog)
+        // and the current Flash alias, so it prices at the Flash rate; the
+        // app's gemini-3.x line is Flash-tier too ("gemini-3.8-flash" in
+        // GeminiProvider.availableModels), priced the same until Google
+        // publishes per-model 3.x rates — users can override any model in
+        // the dashboard. Without these two entries the default provider had
+        // NO rate at all and its spend silently vanished from cost totals.
+        FamilyRate("Google Gemini", "gemini-flash-latest", ModelRate(0.30, 2.50)),
+        FamilyRate("Google Gemini", "gemini-3", ModelRate(0.30, 2.50)),
         FamilyRate("Google Gemini", "gemini-2.5-flash", ModelRate(0.30, 2.50)),
         FamilyRate("Google Gemini", "gemini-2.5-pro", ModelRate(1.25, 10.00)),
         FamilyRate("Google Gemini", "gemini-2.0-flash", ModelRate(0.10, 0.40)),
