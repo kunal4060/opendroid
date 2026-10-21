@@ -80,6 +80,14 @@ object McpJsonRpc {
         }
     }
 
+    /**
+     * The pagination cursor from a `tools/list` result, or null when this
+     * page is the last. Servers that paginate return an opaque
+     * `nextCursor` the client echoes back as `params.cursor`.
+     */
+    fun parseNextCursor(result: JSONObject): String? =
+        result.optString("nextCursor").takeIf { it.isNotBlank() }
+
     /** Extracts the tool list from a `tools/list` result object. */
     fun parseTools(result: JSONObject): List<McpTool> {
         val tools = result.optJSONArray("tools") ?: JSONArray()

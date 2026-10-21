@@ -17,6 +17,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -106,8 +107,21 @@ class WearStatusPublisher @Inject constructor(
                     }
                 } else if (publishedApprovalPlanId != proposed.plan.planId) {
                     val payload = pendingApprovalPayload(proposed.plan)
-                    putDataItem(WearProtocol.PATH_PENDING_APPROVAL, json.encodeToString(payload), urgent = true)
-                    publishedApprovalPlanId = proposed.plan.planId
+                    val payloadJson = json.encodeToString(payload)
+                    // Latch the plan id ONLY on a confirmed publish: a
+                    // transient DataClient failure must not silently cost
+                    // the user the wrist-approval card for this plan
+                    // (finding #5). agentState will not re-emit for an
+                    // unchanged plan, so retry here while this plan stays
+                    // proposed — collectLatest cancels the wait as soon as
+                    // the gate state changes.
+                    while (publishedApprovalPlanId != proposed.plan.planId) {
+                        if (putDataItem(WearProtocol.PATH_PENDING_APPROVAL, payloadJson, urgent = true)) {
+                            publishedApprovalPlanId = proposed.plan.planId
+                        } else {
+                            delay(APPROVAL_PUBLISH_RETRY_MS)
+                        }
+                    }
                 }
             }
     }
@@ -122,8 +136,9 @@ class WearStatusPublisher @Inject constructor(
             expiresAtMs = System.currentTimeMillis() + WearProtocol.APPROVAL_TTL_MS
         )
 
-    private suspend fun putDataItem(path: String, payloadJson: String, urgent: Boolean) {
-        try {
+    /** @return true when the item was accepted by the DataClient. */
+    private suspend fun putDataItem(path: String, payloadJson: String, urgent: Boolean): Boolean {
+        return try {
             val request = PutDataMapRequest.create(path).apply {
                 dataMap.putString(WearProtocol.DATA_KEY_PAYLOAD, payloadJson)
             }.asPutDataRequest()
@@ -131,8 +146,10 @@ class WearStatusPublisher @Inject constructor(
             kotlinx.coroutines.withContext(Dispatchers.IO) {
                 Tasks.await(Wearable.getDataClient(appContext).putDataItem(request))
             }
+            true
         } catch (e: Exception) {
             Log.w(TAG, "Failed to publish $path to watch", e)
+            false
         }
     }
 
@@ -171,5 +188,8 @@ class WearStatusPublisher @Inject constructor(
         private const val MAX_GOAL_CHARS = 200
         private const val MAX_STEP_CHARS = 120
         private const val MAX_APPROVAL_STEPS = 12
+
+        /** Delay between pending-approval publish retries after a failure. */
+        private const val APPROVAL_PUBLISH_RETRY_MS = 5_000L
     }
 }

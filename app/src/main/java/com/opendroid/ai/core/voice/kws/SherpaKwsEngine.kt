@@ -95,6 +95,10 @@ class SherpaKwsEngine(private val context: Context) : KeywordSpotterEngine {
             }
             WakeWordStatus.publish(WakeWordEngineState.Listening, kind, fallbackNote)
             captureLoop(newSpotter, newStream)
+            // The capture thread owns native release on exit: stop() frees
+            // the handles itself only after a successful join, so they are
+            // never released from under a live capture thread (finding #2).
+            releaseNative()
         } catch (e: Exception) {
             running = false
             releaseNative()
@@ -104,6 +108,11 @@ class SherpaKwsEngine(private val context: Context) : KeywordSpotterEngine {
                 ),
                 kind
             )
+        } finally {
+            // Self-clean so a later stop()/start() never acts on a dead
+            // thread reference. Identity-checked: start() may already have
+            // installed a successor thread.
+            if (captureThread === Thread.currentThread()) captureThread = null
         }
     }
 
@@ -157,9 +166,30 @@ class SherpaKwsEngine(private val context: Context) : KeywordSpotterEngine {
         try {
             record.startRecording()
             val shorts = ShortArray(CHUNK_SAMPLES)
+            var consecutiveReadErrors = 0
             while (running) {
                 val read = record.read(shorts, 0, shorts.size)
-                if (read <= 0) continue
+                if (read <= 0) {
+                    // A transient bad read is worth a short retry, but a
+                    // persistent error (audio server died, mic seized by
+                    // another app) must not spin this thread at 100% CPU
+                    // until the battery dies: back off, count, and give up
+                    // into the Error state (finding #1).
+                    consecutiveReadErrors++
+                    if (consecutiveReadErrors >= MAX_CONSECUTIVE_READ_ERRORS) {
+                        throw IllegalStateException(
+                            "Microphone reads kept failing (last read result $read)"
+                        )
+                    }
+                    try {
+                        Thread.sleep(READ_ERROR_BACKOFF_MS)
+                    } catch (_: InterruptedException) {
+                        // Nobody interrupts this thread; the loop re-checks
+                        // `running` and exits promptly on stop either way.
+                    }
+                    continue
+                }
+                consecutiveReadErrors = 0
                 val samples = FloatArray(read) { shorts[it] / 32768.0f }
                 activeStream.acceptWaveform(samples, SAMPLE_RATE_HZ)
                 while (activeSpotter.isReady(activeStream)) {
@@ -194,11 +224,31 @@ class SherpaKwsEngine(private val context: Context) : KeywordSpotterEngine {
         } catch (_: Exception) {
         }
         val thread = captureThread
-        if (thread != null && thread !== Thread.currentThread()) {
-            thread.join(STOP_JOIN_TIMEOUT_MS)
+        when {
+            thread == null -> releaseNative()
+            thread === Thread.currentThread() -> {
+                // stop() from the capture thread itself: release inline;
+                // the loop observes `running == false` and exits.
+                captureThread = null
+                releaseNative()
+            }
+            else -> {
+                thread.join(STOP_JOIN_TIMEOUT_MS)
+                if (!thread.isAlive) {
+                    // Successful join: the capture thread already released
+                    // the native handles and the mic on its way out, so
+                    // stop() returns with the engine fully torn down.
+                    if (captureThread === thread) captureThread = null
+                }
+                // Join timed out — the capture thread may still be inside
+                // native init/decode or a stuck read(). Do NOT null the
+                // reference or release here: that defeated releaseNative()'s
+                // own "never free under a live capture thread" guard and
+                // risked a native use-after-release crash (finding #2).
+                // The capture thread owns release on exit; the still-set
+                // reference keeps the guard armed until it is truly done.
+            }
         }
-        captureThread = null
-        releaseNative()
         if (WakeWordStatus.info.value.state !is WakeWordEngineState.Error) {
             WakeWordStatus.publish(WakeWordEngineState.Stopped, kind)
         }
@@ -237,6 +287,12 @@ class SherpaKwsEngine(private val context: Context) : KeywordSpotterEngine {
         /** Battery/CPU bound: the 3M int8 spotter needs very little. */
         private const val NUM_INFERENCE_THREADS = 2
         private const val STOP_JOIN_TIMEOUT_MS = 1000L
+
+        /** Pause between retries of a failing [AudioRecord.read] (finding #1). */
+        private const val READ_ERROR_BACKOFF_MS = 50L
+
+        /** Consecutive read failures tolerated before the engine errors out. */
+        private const val MAX_CONSECUTIVE_READ_ERRORS = 50
 
         /** True when the KWS model files are bundled in this build's assets. */
         fun isModelBundled(context: Context): Boolean {

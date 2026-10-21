@@ -6,8 +6,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -24,6 +28,7 @@ import androidx.wear.compose.material.PositionIndicator
 import androidx.wear.compose.material.Scaffold
 import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.TimeText
+import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -47,6 +52,21 @@ fun WearApp(repository: WearRepository, onVoiceCommand: () -> Unit) {
     val commandState by repository.commandState.collectAsState()
     val decisions by repository.sentDecisions.collectAsState()
     val listState = rememberScalingLazyListState()
+
+    // Composition-time clock for the approval card's TTL: refreshed when a
+    // card (dis)appears and once more the moment its expiry passes, so a
+    // card left on screen flips to "expired" instead of staying tappable
+    // past its TTL (finding #7). The repository still re-validates at tap.
+    var nowMs by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(approval) {
+        nowMs = System.currentTimeMillis()
+        val current = approval ?: return@LaunchedEffect
+        val remainingMs = current.expiresAtMs - nowMs
+        if (remainingMs > 0) {
+            delay(remainingMs + 1)
+            nowMs = System.currentTimeMillis()
+        }
+    }
 
     MaterialTheme {
         Scaffold(
@@ -86,7 +106,7 @@ fun WearApp(repository: WearRepository, onVoiceCommand: () -> Unit) {
                 }
 
                 // ── Pending plan approval ──────────────────────────────
-                val liveApproval = approval?.takeIf { it.expiresAtMs > System.currentTimeMillis() }
+                val liveApproval = approval?.takeIf { it.expiresAtMs > nowMs }
                 if (liveApproval != null) {
                     item {
                         Text(
@@ -128,14 +148,14 @@ fun WearApp(repository: WearRepository, onVoiceCommand: () -> Unit) {
                             ) {
                                 Button(
                                     onClick = {
-                                        repository.sendApprovalDecision(liveApproval.planId, approved = false)
+                                        repository.sendApprovalDecision(liveApproval, approved = false)
                                     },
                                     colors = ButtonDefaults.secondaryButtonColors(),
                                     modifier = Modifier.weight(1f)
                                 ) { Text("Deny") }
                                 Button(
                                     onClick = {
-                                        repository.sendApprovalDecision(liveApproval.planId, approved = true)
+                                        repository.sendApprovalDecision(liveApproval, approved = true)
                                     },
                                     modifier = Modifier.weight(1f)
                                 ) { Text("Approve") }

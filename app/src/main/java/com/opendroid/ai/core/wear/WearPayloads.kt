@@ -54,7 +54,14 @@ data class WearCommandResult(
 data class WearApprovalDecision(
     val planId: String,
     val approved: Boolean,
-    val decidedAtMs: Long = 0L
+    val decidedAtMs: Long = 0L,
+    /**
+     * The expiry of the approval card the user acted on, echoed back so
+     * the phone can reject decisions taken after the card's TTL
+     * (finding #7). 0 = the sender did not stamp one (old watch build);
+     * the phone then applies no expiry check.
+     */
+    val expiresAtMs: Long = 0L
 )
 
 /**
