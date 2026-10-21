@@ -56,6 +56,40 @@ class BackupRestoreViewModel @Inject constructor(
 
     private var job: Job? = null
 
+    // Pending SAF handoff: parameters captured by the password dialogs,
+    // consumed by the file-picker result callbacks in the section. They
+    // live in the ViewModel — not in composable `remember` state — because
+    // an activity recreation while the system picker is open (rotation,
+    // process death) recreated the section with empty remember state, so
+    // the callback ran with nothing pending and silently dropped the
+    // user's picked file. Plain fields on purpose: a backup password must
+    // never be persisted (no SavedStateHandle / rememberSaveable), and the
+    // ViewModel survives the recreation that kills remember state.
+    private var pendingExport: Pair<String, Boolean>? = null
+    private var pendingImportPassword: String? = null
+
+    fun beginExport(passphrase: String, includeCredentials: Boolean) {
+        pendingExport = passphrase to includeCredentials
+    }
+
+    /** Returns and clears the pending export parameters, if any. */
+    fun consumePendingExport(): Pair<String, Boolean>? {
+        val pending = pendingExport
+        pendingExport = null
+        return pending
+    }
+
+    fun beginImport(passphrase: String) {
+        pendingImportPassword = passphrase
+    }
+
+    /** Returns and clears the pending import password, if any. */
+    fun consumePendingImportPassword(): String? {
+        val password = pendingImportPassword
+        pendingImportPassword = null
+        return password
+    }
+
     fun suggestedFileName(): String = backupManager.suggestedFileName()
 
     /** Encrypts a backup of the live stores into the SAF destination [uri]. */
@@ -128,6 +162,8 @@ class BackupRestoreViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        pendingExport = null
+        pendingImportPassword = null
         backupManager.discardPending()
         super.onCleared()
     }

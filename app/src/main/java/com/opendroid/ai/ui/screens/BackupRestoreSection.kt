@@ -74,15 +74,15 @@ fun BackupRestoreSection(viewModel: BackupRestoreViewModel = hiltViewModel()) {
 
     var showExportDialog by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
-    // Passphrase/options captured by a dialog, consumed by the SAF result.
-    var pendingExport by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
-    var pendingImportPassword by remember { mutableStateOf<String?>(null) }
+    // The passphrase/options captured by the dialogs live in the ViewModel
+    // (beginExport/beginImport), not in remember state: if the activity is
+    // recreated while the SAF picker is open, remember state is gone and
+    // the result callback below would silently drop the picked file.
 
     val createDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/octet-stream")
     ) { uri: Uri? ->
-        val pending = pendingExport
-        pendingExport = null
+        val pending = viewModel.consumePendingExport()
         if (uri != null && pending != null) {
             viewModel.exportTo(uri, pending.first, pending.second)
         }
@@ -90,8 +90,7 @@ fun BackupRestoreSection(viewModel: BackupRestoreViewModel = hiltViewModel()) {
     val openDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
-        val password = pendingImportPassword
-        pendingImportPassword = null
+        val password = viewModel.consumePendingImportPassword()
         if (uri != null && password != null) {
             viewModel.importFrom(uri, password)
         }
@@ -208,7 +207,7 @@ fun BackupRestoreSection(viewModel: BackupRestoreViewModel = hiltViewModel()) {
             onDismiss = { showExportDialog = false },
             onContinue = { password, includeCredentials ->
                 showExportDialog = false
-                pendingExport = password to includeCredentials
+                viewModel.beginExport(password, includeCredentials)
                 createDocumentLauncher.launch(viewModel.suggestedFileName())
             }
         )
@@ -219,7 +218,7 @@ fun BackupRestoreSection(viewModel: BackupRestoreViewModel = hiltViewModel()) {
             onDismiss = { showImportDialog = false },
             onContinue = { password ->
                 showImportDialog = false
-                pendingImportPassword = password
+                viewModel.beginImport(password)
                 openDocumentLauncher.launch(arrayOf("*/*"))
             }
         )

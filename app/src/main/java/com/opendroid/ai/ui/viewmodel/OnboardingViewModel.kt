@@ -432,12 +432,24 @@ class OnboardingViewModel @Inject constructor(
 
     fun onByokProviderChange(providerDisplayName: String) {
         mutableProviderState.update {
-            it.copy(
-                byokProvider = providerDisplayName,
-                byokError = null,
-                byokResult = null,
-                byokDone = false
-            )
+            if (it.byokProvider == providerDisplayName) {
+                it.copy(byokError = null, byokResult = null, byokDone = false)
+            } else {
+                // Clear the shared key/endpoint/model fields on a real
+                // provider switch: they used to survive, so a key or URL
+                // typed for one provider was displayed for — and on
+                // "Save & test" saved under — a different provider (an
+                // OpenAI key stored as the Anthropic key).
+                it.copy(
+                    byokProvider = providerDisplayName,
+                    byokKey = "",
+                    byokEndpoint = "",
+                    byokModel = "",
+                    byokError = null,
+                    byokResult = null,
+                    byokDone = false
+                )
+            }
         }
     }
 

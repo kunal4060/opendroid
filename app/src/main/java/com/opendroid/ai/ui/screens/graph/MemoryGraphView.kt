@@ -158,7 +158,11 @@ fun MemoryGraphView(
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     var scale by remember { mutableStateOf(0.3f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
-    var viewInitialised by remember { mutableStateOf(false) }
+    // The canvas size the fit transform was last computed for. The fit is
+    // (re)computed whenever the canvas size differs from this — the old
+    // one-shot flag meant a resize (split-screen, foldable) kept the stale
+    // scale/offset and left the graph off-centre or partly off-screen.
+    var fittedSize by remember { mutableStateOf(IntSize.Zero) }
     var focusedId by remember { mutableStateOf<String?>(null) }
     var selectedId by remember { mutableStateOf<String?>(null) }
 
@@ -223,7 +227,7 @@ fun MemoryGraphView(
                 .fillMaxSize()
                 .onSizeChanged { size ->
                     canvasSize = size
-                    if (!viewInitialised && size != IntSize.Zero) {
+                    if (size != IntSize.Zero && size != fittedSize) {
                         val fit = minOf(
                             size.width / KnowledgeGraphLayout.WORLD_WIDTH,
                             size.height / KnowledgeGraphLayout.WORLD_HEIGHT
@@ -233,7 +237,7 @@ fun MemoryGraphView(
                             x = (size.width - KnowledgeGraphLayout.WORLD_WIDTH * fit) / 2f,
                             y = (size.height - KnowledgeGraphLayout.WORLD_HEIGHT * fit) / 2f
                         )
-                        viewInitialised = true
+                        fittedSize = size
                     }
                 }
                 .pointerInput(Unit) {

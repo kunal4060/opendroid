@@ -36,6 +36,17 @@ class ExternalAutomationViewModel @Inject constructor(
     private val _lastRun = MutableStateFlow(store.lastRun())
     val lastRun: StateFlow<LastExternalRun?> = _lastRun.asStateFlow()
 
+    /**
+     * The most recently generated plaintext token, held in memory only
+     * until the section's one-time dialog is dismissed. It used to live in
+     * composable `remember` state — an activity recreation while the
+     * dialog was open destroyed the only copy (only the token's hash
+     * persists), forcing the user to regenerate and re-paste it into
+     * Tasker/ADB. Never written to disk; cleared on dismiss and onCleared.
+     */
+    private val _newlyGeneratedToken = MutableStateFlow<String?>(null)
+    val newlyGeneratedToken: StateFlow<String?> = _newlyGeneratedToken.asStateFlow()
+
     val hasToken: Boolean get() = store.tokenRecord() != null
 
     fun setEnabled(enabled: Boolean) {
@@ -55,13 +66,25 @@ class ExternalAutomationViewModel @Inject constructor(
             hint = ExternalApiToken.hintFor(token)
         )
         _tokenHint.value = ExternalApiToken.hintFor(token)
+        _newlyGeneratedToken.value = token
         return token
+    }
+
+    /** The one-time token dialog was dismissed — drop the plaintext copy. */
+    fun dismissNewlyGeneratedToken() {
+        _newlyGeneratedToken.value = null
     }
 
     /** Revokes the current token; all external intents are rejected until a new one is generated. */
     fun revokeToken() {
         store.clearToken()
         _tokenHint.value = null
+        _newlyGeneratedToken.value = null
+    }
+
+    override fun onCleared() {
+        _newlyGeneratedToken.value = null
+        super.onCleared()
     }
 
     /** Re-reads the last-run record (runs finish asynchronously in the gateway). */

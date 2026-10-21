@@ -185,6 +185,8 @@ fun McpServersSection(viewModel: McpServersViewModel = hiltViewModel()) {
         McpServerEditorDialog(
             draft = draft,
             isEdit = editorOriginalName != null,
+            existingNames = servers.map { it.config.name }.toSet(),
+            originalName = editorOriginalName,
             onDismiss = { editorDraft = null },
             onSave = { updated ->
                 viewModel.saveServer(editorOriginalName, updated)
@@ -359,11 +361,13 @@ private fun McpServerRow(
 private fun McpServerEditorDialog(
     draft: McpServerDraft,
     isEdit: Boolean,
+    existingNames: Set<String>,
+    originalName: String?,
     onDismiss: () -> Unit,
     onSave: (McpServerDraft) -> Unit
 ) {
     var current by remember(draft) { mutableStateOf(draft) }
-    val error = current.validationError()
+    val error = current.validationError(existingNames, originalName)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (isEdit) "Edit MCP server" else "Add MCP server") },

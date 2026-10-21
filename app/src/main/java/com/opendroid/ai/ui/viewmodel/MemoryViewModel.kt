@@ -158,6 +158,18 @@ class MemoryViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Wipes the whole knowledge graph — all four tiers, including the
+     * Keystore-backed sensitive store. The Growth Graph tab displays all
+     * four tiers, so its wipe must clear all of them (it previously cleared
+     * only LEARNED_PATTERN while the user believed the graph was wiped).
+     */
+    fun clearAllGraphTiers() {
+        viewModelScope.launch {
+            MemoryTier.values().forEach { personalGrowthEngine.clearTier(it) }
+        }
+    }
+
     fun deleteMemory(key: String) {
         viewModelScope.launch {
             memoryRepository.deleteMemory(key)
