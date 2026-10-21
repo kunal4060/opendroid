@@ -33,15 +33,20 @@ class NotificationIntelligence @Inject constructor(
     suspend fun analyzeIfNeeded() {
         val now = System.currentTimeMillis()
         if (now - lastAnalysisTimestamp < ANALYSIS_INTERVAL_MS) return
-        lastAnalysisTimestamp = now
-        analyzePatterns()
+        // Stamp only on success: previously the timestamp was set before the
+        // run, so one transient DAO failure suppressed analysis for the
+        // whole 6-hour interval even though nothing was stored.
+        if (analyzePatterns()) {
+            lastAnalysisTimestamp = now
+        }
     }
 
     /**
      * Full pattern analysis — extracts communication patterns from notification history.
+     * Returns true when the analysis completed; false when it failed.
      */
-    suspend fun analyzePatterns() {
-        try {
+    suspend fun analyzePatterns(): Boolean {
+        return try {
             val sevenDaysAgo = System.currentTimeMillis() - (7 * 24 * 3600 * 1000L)
 
             // 1. Most active contacts
@@ -73,8 +78,10 @@ class NotificationIntelligence @Inject constructor(
                 "Total notifications captured: $totalCount. Auto-replied: $autoRepliedCount.")
 
             Log.d(TAG, "Pattern analysis complete: ${topContacts.size} contacts, ${topApps.size} apps")
+            true
         } catch (e: Exception) {
             Log.e(TAG, "Pattern analysis failed: ${e.message}")
+            false
         }
     }
 
@@ -101,7 +108,10 @@ class NotificationIntelligence @Inject constructor(
             .filter { !it.contactName.isNullOrBlank() }
             .groupBy { it.contactName!! }
 
-        for ((contact, notifs) in contactGroups.entries.take(5)) {
+        // Top contacts by volume — groupBy encounter order is just database
+        // order, which used to pick five arbitrary first-seen contacts.
+        val topGroups = contactGroups.entries.sortedByDescending { it.value.size }.take(5)
+        for ((contact, notifs) in topGroups) {
             val contactHours = IntArray(24)
             for (n in notifs) {
                 val cal = java.util.Calendar.getInstance().apply { timeInMillis = n.timestamp }
@@ -133,7 +143,13 @@ class NotificationIntelligence @Inject constructor(
                 val replyPreview = notif.autoReplyText?.let { text ->
                     if (text.length > 30) "${text.take(30)}..." else text
                 }
-                val replied = if (notif.isAutoReplied) " [Auto-replied: $replyPreview]" else ""
+                // Only append the suffix when there is an actual reply text
+                // to preview — otherwise this printed "[Auto-replied: null]".
+                val replied = if (notif.isAutoReplied && replyPreview != null) {
+                    " [Auto-replied: $replyPreview]"
+                } else {
+                    ""
+                }
                 "• ${notif.appName} — ${notif.contactName ?: notif.title}: ${notif.text.take(80)}$replied ($time)"
             }
         } catch (e: Exception) {

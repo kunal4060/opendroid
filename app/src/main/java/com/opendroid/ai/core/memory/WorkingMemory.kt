@@ -13,8 +13,17 @@ class WorkingMemory @Inject constructor(
     @ApplicationContext private val context: Context,
     private val deviceStateProvider: DeviceStateProvider
 ) {
+    private val historyLock = Any()
     private val _conversationHistory = mutableListOf<ChatMessage>()
-    val conversationHistory: List<ChatMessage> get() = _conversationHistory
+
+    /**
+     * A snapshot copy of the recent conversation. The backing list used to
+     * be handed out directly while agent coroutines mutated it —
+     * iterating it during composition could throw
+     * ConcurrentModificationException or lose updates.
+     */
+    val conversationHistory: List<ChatMessage>
+        get() = synchronized(historyLock) { _conversationHistory.toList() }
 
     var activePlan: Plan? = null
     var location: String = "Unknown"
@@ -39,14 +48,16 @@ class WorkingMemory @Inject constructor(
         }
 
     fun addMessage(msg: ChatMessage) {
-        _conversationHistory.add(msg)
-        if (_conversationHistory.size > 20) {
-            _conversationHistory.removeAt(0)
+        synchronized(historyLock) {
+            _conversationHistory.add(msg)
+            if (_conversationHistory.size > 20) {
+                _conversationHistory.removeAt(0)
+            }
         }
     }
 
     fun clear() {
-        _conversationHistory.clear()
+        synchronized(historyLock) { _conversationHistory.clear() }
         activePlan = null
     }
 }
