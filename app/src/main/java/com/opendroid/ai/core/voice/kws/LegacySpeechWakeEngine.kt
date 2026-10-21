@@ -37,10 +37,17 @@ class LegacySpeechWakeEngine(private val context: Context) : KeywordSpotterEngin
     @Volatile private var isListening = false
 
     /**
-     * Consecutive times listening could not even start (no recognition
-     * service / recogniser creation failed). Past a small bound the
-     * engine gives up into the Error state instead of polling forever
-     * while claiming to be "Listening" (finding #4).
+     * Consecutive listening failures: sessions that could not even start
+     * (no recognition service / recogniser creation failed / start threw)
+     * AND sessions that started but died with a recogniser error. Both
+     * feed the same counter (finding #6): a recogniser that starts fine
+     * but errors immediately every session must give up exactly like one
+     * that never starts. The counter resets only when a session ends
+     * healthily — results delivered, or a "heard nothing" error — never
+     * merely because a start didn't throw, or the error path would reset
+     * its own streak on every retry. Past a small bound the engine gives
+     * up into the Error state instead of polling forever while claiming
+     * to be "Listening" (finding #4).
      */
     private var consecutiveStartFailures = 0
 
@@ -94,10 +101,32 @@ class LegacySpeechWakeEngine(private val context: Context) : KeywordSpotterEngin
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {}
             override fun onError(error: Int) {
-                scheduleRestart()
+                if (!isListening) return
+                if (error == SpeechRecognizer.ERROR_NO_MATCH ||
+                    error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+                ) {
+                    // The recogniser ran a full session and simply heard
+                    // nothing usable — the normal rhythm of a wake-word
+                    // loop, and proof the service works: the failure
+                    // streak resets and the loop carries on.
+                    consecutiveStartFailures = 0
+                    scheduleRestart()
+                } else {
+                    // A real recogniser failure (busy, server, audio,
+                    // permissions, ...). Counted on the SAME give-up
+                    // counter as synchronous start failures (finding #6):
+                    // before this, onError restarted unconditionally, so
+                    // a start-then-error recogniser looped destroy/recreate
+                    // every second forever while status claimed Listening.
+                    noteStartFailure()
+                }
             }
 
             override fun onResults(results: Bundle?) {
+                // A session that produced results proves the recogniser
+                // works — the failure streak resets here (and on benign
+                // errors above), not on a mere successful start.
+                consecutiveStartFailures = 0
                 handleMatches(results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION))
                 scheduleRestart()
             }
@@ -111,20 +140,24 @@ class LegacySpeechWakeEngine(private val context: Context) : KeywordSpotterEngin
 
         try {
             speechRecognizer?.startListening(intent)
-            // Listening actually started — earlier start failures were
-            // transient, so the give-up counter starts over.
-            consecutiveStartFailures = 0
+            // Deliberately NO counter reset here: a start that doesn't
+            // throw proves nothing — the session may still die with an
+            // immediate recogniser error, and resetting here would let
+            // that loop clear its own give-up streak every retry
+            // (finding #6). The streak resets when a session ends
+            // healthily (results / "heard nothing" error).
         } catch (_: Exception) {
             noteStartFailure()
         }
     }
 
     /**
-     * Counts a failure to even start listening. The first few retry on
-     * the usual 1 s loop (a recogniser can be briefly unavailable while
-     * another app holds it); past [MAX_START_FAILURES] the failure is
-     * clearly permanent on this device, so the engine stops retrying and
-     * says so instead of polling silently forever.
+     * Counts one listening failure — a start that couldn't happen or a
+     * session that died with a real recogniser error. The first few
+     * retry on the usual 1 s loop (a recogniser can be briefly
+     * unavailable while another app holds it); past [MAX_START_FAILURES]
+     * the failure is clearly permanent on this device, so the engine
+     * stops retrying and says so instead of polling silently forever.
      */
     private fun noteStartFailure() {
         consecutiveStartFailures++
@@ -195,7 +228,7 @@ class LegacySpeechWakeEngine(private val context: Context) : KeywordSpotterEngin
     private companion object {
         const val RESTART_DELAY_MS = 1000L
 
-        /** Start failures tolerated (with 1 s retries) before giving up. */
+        /** Listening failures tolerated (with 1 s retries) before giving up. */
         const val MAX_START_FAILURES = 3
     }
 }
