@@ -13,6 +13,7 @@ import com.opendroid.ai.core.schedule.ScheduledTaskSweepWorker
 import com.opendroid.ai.core.security.AppLockManager
 import com.opendroid.ai.core.security.LegacyPreferenceMigration
 import com.opendroid.ai.core.wear.WearStatusPublisher
+import com.opendroid.ai.social.core.worker.SocialScheduleWorker
 import com.opendroid.ai.widget.WidgetStateSync
 import com.opendroid.ai.data.crash.CrashLogRepository
 import dagger.hilt.android.HiltAndroidApp
@@ -119,6 +120,20 @@ class OpenDroidApp : Application() {
                 scheduledTaskScheduler.rearmAll()
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to arm scheduled tasks", e)
+            }
+        }
+
+        // Social scheduling: the periodic worker that publishes due
+        // SCHEDULED posts must be registered too — without this it is
+        // never enqueued anywhere and scheduled posts sit SCHEDULED
+        // forever. Same unique-work discipline (unique name + KEEP)
+        // as the sweep worker above; re-registering on every cold
+        // start is the cheap self-heal.
+        appScope.launch {
+            try {
+                SocialScheduleWorker.enqueuePeriodicWork(this@OpenDroidApp)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to arm social schedule worker", e)
             }
         }
     }
