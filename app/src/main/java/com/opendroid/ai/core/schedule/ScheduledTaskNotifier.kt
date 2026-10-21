@@ -90,10 +90,18 @@ class ScheduledTaskNotifier @Inject constructor(
         )
     }
 
-    private fun notificationId(taskId: String): Int = BASE_NOTIFICATION_ID + (taskId.hashCode() and 0x3FFF)
+    /**
+     * Spread over a wide ID range: masking the hash to 14 bits squeezed
+     * every task into 16,384 IDs, so different tasks' notifications
+     * routinely replaced each other. The full hash modulo a large space
+     * keeps collisions vanishingly rare at any realistic task count.
+     */
+    private fun notificationId(taskId: String): Int =
+        BASE_NOTIFICATION_ID + (taskId.hashCode() and Int.MAX_VALUE) % ID_SPACE
 
     companion object {
         const val CHANNEL_ID = "opendroid_scheduled_tasks"
         private const val BASE_NOTIFICATION_ID = 4100
+        private const val ID_SPACE = 100_000_000
     }
 }

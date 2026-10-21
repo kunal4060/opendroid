@@ -93,8 +93,15 @@ class ScheduledTaskRunWorker(
                 .build()
             // Unique per (task, occurrence): the alarm lane and the sweep
             // lane enqueue the same name for the same occurrence and
-            // WorkManager keeps only one of them.
-            val uniqueName = "schedule_run_${taskId}_${occurrenceMillis ?: "adhoc"}"
+            // WorkManager keeps only one of them. Manual "run now" gets
+            // its own name component: sharing the occurrence-less name
+            // with scheduled work under KEEP silently dropped whichever
+            // request arrived second.
+            val uniqueName = when {
+                manual -> "schedule_run_${taskId}_manual"
+                occurrenceMillis != null -> "schedule_run_${taskId}_$occurrenceMillis"
+                else -> "schedule_run_${taskId}_adhoc"
+            }
             WorkManager.getInstance(context).enqueueUniqueWork(
                 uniqueName,
                 ExistingWorkPolicy.KEEP,
