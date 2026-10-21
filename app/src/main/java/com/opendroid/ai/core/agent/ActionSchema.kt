@@ -1405,13 +1405,13 @@ object ActionSchema {
 
     // ── Utility functions ───────────────────────────────
 
-    /** Get all action names — inject into LLM prompt */
+    /** Get all action names — inject into LLM prompt. Built-ins ∪ dynamically registered (D5/MCP). */
     fun getAllActionNames(): List<String> =
-        ALL_ACTIONS.map { it.name }.sorted()
+        (ALL_ACTIONS.map { it.name } + DynamicActionRegistry.actionNames()).distinct().sorted()
 
-    /** Get action by name */
+    /** Get action by name — built-ins first, then the dynamic registry (D5/MCP tools). */
     fun getAction(name: String): ActionDefinition? =
-        ALL_ACTIONS.find { it.name == name }
+        ALL_ACTIONS.find { it.name == name } ?: DynamicActionRegistry.definitionFor(name)
 
     fun riskForAction(actionName: String): ActionRisk =
         getAction(actionName)?.let(ActionRiskPolicy::forDefinition) ?: ActionRisk.SENSITIVE
@@ -1419,13 +1419,14 @@ object ActionSchema {
     fun highestRisk(actionNames: Iterable<String>): ActionRisk =
         ActionRiskPolicy.highest(actionNames.map(::riskForAction))
 
-    /** Check if action exists in schema */
+    /** Check if action exists in schema (built-in or dynamically registered) */
     fun isValid(name: String): Boolean =
-        ALL_ACTIONS.any { it.name == name }
+        ALL_ACTIONS.any { it.name == name } || DynamicActionRegistry.contains(name)
 
-    /** Get actions by category */
+    /** Get actions by category (dynamic tools file under ADVANCED) */
     fun getByCategory(category: ActionCategory): List<ActionDefinition> =
-        ALL_ACTIONS.filter { it.category == category }
+        ALL_ACTIONS.filter { it.category == category } +
+            DynamicActionRegistry.allDefinitions().filter { it.category == category }
 
     /** Get simple actions (never need a plan) */
     fun getSimpleActions(): List<String> =
@@ -1433,7 +1434,7 @@ object ActionSchema {
 
     /** Check if action should never be auto-approved (moves money or irreversible) */
     fun isNeverAutoApprove(actionName: String): Boolean =
-        ALL_ACTIONS.firstOrNull { it.name == actionName }?.neverAutoApprove ?: false
+        getAction(actionName)?.neverAutoApprove ?: false
 
     /**
      * Build strict schema text for LLM prompt.
@@ -1476,7 +1477,32 @@ object ActionSchema {
             }
         }
 
-        sb.appendLine("TOTAL: ${ALL_ACTIONS.size} actions available.")
+        // Dynamically registered external tools (D5/MCP): listed in their own
+        // section so the planner sees them as server-provided, not built-in.
+        val dynamicActions = DynamicActionRegistry.allDefinitions()
+        if (dynamicActions.isNotEmpty()) {
+            sb.appendLine("── EXTERNAL (MCP SERVERS) ──")
+            dynamicActions.forEach { action ->
+                sb.appendLine("${action.name}:")
+                sb.appendLine("  What: ${action.description}")
+                if (action.params.isNotEmpty()) {
+                    sb.appendLine("  Params:")
+                    action.params.forEach { param ->
+                        val req = if (param.required) "REQUIRED" else "optional"
+                        val enumStr = if (param.enumValues.isNotEmpty())
+                            " [${param.enumValues.joinToString("|")}]" else ""
+                        val defStr = if (param.defaultValue != null)
+                            " (default: ${param.defaultValue})" else ""
+                        sb.appendLine("    - ${param.name} ($req)$enumStr: ${param.description}$defStr")
+                    }
+                } else {
+                    sb.appendLine("  Params: none")
+                }
+                sb.appendLine()
+            }
+        }
+
+        sb.appendLine("TOTAL: ${ALL_ACTIONS.size + dynamicActions.size} actions available.")
         sb.appendLine("ANY action NOT in this list = INVALID. Use CHAT for unsupported requests.")
         return sb.toString()
     }
@@ -1503,6 +1529,21 @@ object ActionSchema {
             }
             sb.appendLine()
             categoryIndex++
+        }
+
+        // Dynamically registered external tools (D5/MCP) as a final section.
+        val dynamicActions = DynamicActionRegistry.allDefinitions()
+        if (dynamicActions.isNotEmpty()) {
+            sb.appendLine("$categoryIndex. EXTERNAL (MCP)")
+            dynamicActions.forEach { action ->
+                val paramStr = if (action.params.isEmpty()) "{}"
+                else "{${action.params.joinToString(", ") { p ->
+                    val enumHint = if (p.enumValues.isNotEmpty()) " (${p.enumValues.joinToString("|")})" else ""
+                    "${p.name}: String$enumHint"
+                }}}"
+                sb.appendLine("   - ${action.name} $paramStr")
+            }
+            sb.appendLine()
         }
 
         return sb.toString()

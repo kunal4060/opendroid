@@ -2,6 +2,7 @@ package com.opendroid.ai.core.service
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.opendroid.ai.core.mcp.McpTransportKind
 import com.opendroid.ai.core.security.AndroidKeyStoreAeadCipher
 import com.opendroid.ai.core.security.KeystoreSecretRecords
 import com.opendroid.ai.core.security.SecretEnvelope
@@ -20,7 +21,23 @@ data class McpEndpointConfig(
     val name: String,
     val url: String,
     val enabled: Boolean,
-    val headers: Map<String, String>
+    val headers: Map<String, String>,
+    /** D5 client transport: AUTO tries Streamable HTTP, then legacy HTTP+SSE. */
+    val transport: McpTransportKind = McpTransportKind.AUTO,
+    /** D5: user-consented plain-HTTP access for a local-network server. */
+    val allowInsecureLocal: Boolean = false,
+    /** D5: per-tool enable + rug-pull fingerprint, keyed by the server's tool name. */
+    val toolSettings: Map<String, McpToolSetting> = emptyMap()
+) {
+    /** A tool is usable unless the user explicitly unticked it in Settings. */
+    fun isToolEnabled(toolName: String): Boolean = toolSettings[toolName]?.enabled ?: true
+}
+
+/** Per-tool client state persisted with the endpoint (D5). */
+data class McpToolSetting(
+    val enabled: Boolean = true,
+    /** Schema/description fingerprint at last sight; a change revokes the tool's grant. */
+    val fingerprint: String = ""
 )
 
 @Serializable
@@ -28,7 +45,16 @@ private data class StoredMcpEndpoint(
     val name: String,
     val url: String,
     val enabled: Boolean = true,
-    val headers: Map<String, String> = emptyMap()
+    val headers: Map<String, String> = emptyMap(),
+    val transport: String = "AUTO",
+    val allowInsecureLocal: Boolean = false,
+    val toolSettings: Map<String, StoredMcpToolSetting> = emptyMap()
+)
+
+@Serializable
+private data class StoredMcpToolSetting(
+    val enabled: Boolean = true,
+    val fingerprint: String = ""
 )
 
 /**
@@ -69,7 +95,13 @@ class McpConfigStore private constructor(
                     name = stored.name,
                     url = stored.url,
                     enabled = stored.enabled,
-                    headers = stored.headers
+                    headers = stored.headers,
+                    transport = runCatching { McpTransportKind.valueOf(stored.transport) }
+                        .getOrDefault(McpTransportKind.AUTO),
+                    allowInsecureLocal = stored.allowInsecureLocal,
+                    toolSettings = stored.toolSettings.mapValues { (_, setting) ->
+                        McpToolSetting(enabled = setting.enabled, fingerprint = setting.fingerprint)
+                    }
                 )
             }
         } catch (_: Exception) {
@@ -92,6 +124,16 @@ class McpConfigStore private constructor(
         writeSecret(ENDPOINTS_KEY, ENDPOINTS_AAD, encode(list().filterNot { it.name == name }))
     }
 
+    /** Replaces one endpoint's per-tool settings (D5), leaving everything else untouched. */
+    @Synchronized
+    fun updateToolSettings(name: String, toolSettings: Map<String, McpToolSetting>) {
+        val current = list().firstOrNull { it.name == name } ?: return
+        val updated = list().map { config ->
+            if (config.name == name) current.copy(toolSettings = toolSettings) else config
+        }
+        writeSecret(ENDPOINTS_KEY, ENDPOINTS_AAD, encode(updated))
+    }
+
     private fun encode(configs: List<McpEndpointConfig>): String =
         json.encodeToString(
             configs.map { config ->
@@ -99,7 +141,12 @@ class McpConfigStore private constructor(
                     name = config.name,
                     url = config.url,
                     enabled = config.enabled,
-                    headers = config.headers
+                    headers = config.headers,
+                    transport = config.transport.name,
+                    allowInsecureLocal = config.allowInsecureLocal,
+                    toolSettings = config.toolSettings.mapValues { (_, setting) ->
+                        StoredMcpToolSetting(enabled = setting.enabled, fingerprint = setting.fingerprint)
+                    }
                 )
             }
         )

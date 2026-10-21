@@ -6,6 +6,7 @@ import com.opendroid.ai.actions.base.Action
 import com.opendroid.ai.actions.base.ActionResult
 import com.opendroid.ai.core.agent.ActionSchema
 import com.opendroid.ai.core.agent.DeviceStateProvider
+import com.opendroid.ai.core.agent.DynamicActionRegistry
 import com.opendroid.ai.core.learning.LearnedActionStore
 import com.opendroid.ai.core.learning.LearnedResolution
 import com.opendroid.ai.core.learning.resolve
@@ -98,7 +99,11 @@ class ActionDispatcher @Inject constructor(
         val normalized = autoMapper.normalizeActionName(actionName)
         // A verb with a user-taught mapping (B5) counts as known: plan
         // validation accepts it and dispatch resolves it in execute().
+        // Dynamically registered actions (D5/MCP tools) count as known too —
+        // checked before the automapper so fuzzy aliases can never hijack
+        // (or be hijacked by) an external tool name.
         return actionsMap.containsKey(actionName) || actionsMap.containsKey(normalized) ||
+            DynamicActionRegistry.contains(normalized) ||
             learnedActionStore.hasMapping(normalized)
     }
 
@@ -123,9 +128,10 @@ class ActionDispatcher @Inject constructor(
 
     fun isRegistered(actionName: String): Boolean = hasAction(actionName)
 
-    fun getAllRegisteredActions(): List<String> = actionsMap.keys.toList()
+    fun getAllRegisteredActions(): List<String> =
+        (actionsMap.keys + DynamicActionRegistry.actionNames()).distinct()
 
-    fun getActionCount(): Int = actionsMap.size
+    fun getActionCount(): Int = actionsMap.size + DynamicActionRegistry.actionNames().size
 
     // ════════════════════════════════════════════════════════════════
     //  EXECUTE — full resolution + execution pipeline
@@ -350,7 +356,9 @@ class ActionDispatcher @Inject constructor(
 
         return when (validation) {
             is ActionSchema.ValidationResult.Valid -> {
-                val handler = actionsMap[actionName] ?: return null
+                val handler = actionsMap[actionName]
+                    ?: DynamicActionRegistry.handlerFor(actionName)
+                    ?: return null
                 val stringParams = enrichedParams.mapValues { it.value.toString() }
                 safeExecute(handler, stringParams, context, actionName)
             }
@@ -362,7 +370,9 @@ class ActionDispatcher @Inject constructor(
                 }
 
                 if (allHaveDefaults) {
-                    val handler = actionsMap[actionName] ?: return null
+                    val handler = actionsMap[actionName]
+                        ?: DynamicActionRegistry.handlerFor(actionName)
+                        ?: return null
                     val withDefaults = ActionSchema.applyDefaults(actionName, params)
                     val stringParams = withDefaults.mapValues { it.value.toString() }
                     safeExecute(handler, stringParams, context, actionName)

@@ -6,6 +6,7 @@ import com.opendroid.ai.core.crash.CrashLogRecorder
 import com.opendroid.ai.core.crash.DeviceMetadata
 import com.opendroid.ai.core.crash.OpenDroidCrashHandler
 import com.opendroid.ai.core.memory.MemoryManager
+import com.opendroid.ai.core.mcp.McpToolBridge
 import com.opendroid.ai.core.schedule.ScheduledTaskScheduler
 import com.opendroid.ai.core.schedule.ScheduledTaskSweepWorker
 import com.opendroid.ai.core.security.AppLockManager
@@ -40,6 +41,9 @@ class OpenDroidApp : Application() {
     @Inject
     lateinit var scheduledTaskScheduler: ScheduledTaskScheduler
 
+    @Inject
+    lateinit var mcpToolBridge: McpToolBridge
+
     private val appScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     override fun onCreate() {
@@ -58,6 +62,11 @@ class OpenDroidApp : Application() {
         // briefing stamps for the whole process lifetime. Best-effort — the
         // sync guards its own writes, so a failure here never blocks startup.
         widgetStateSync.start()
+
+        // D5: connect the configured MCP servers and register their tools
+        // with the agent (background; unreachable servers simply contribute
+        // no tools and show their error in Settings → MCP Servers).
+        mcpToolBridge.start()
 
         // Retire the legacy preference files into the direct-Keystore stores. This opens the
         // Keystore and the legacy keyset, so it runs off the main thread; splash routing and
