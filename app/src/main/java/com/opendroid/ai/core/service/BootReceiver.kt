@@ -32,7 +32,10 @@ class BootReceiver : BroadcastReceiver() {
             // Wall-clock schedules are stored as local time + zone, so a
             // clock or timezone change (and an app update, which can drop
             // registered alarms) must recompute every alarm.
-            Intent.ACTION_TIME_SET,
+            // ACTION_TIME_CHANGED's value is "android.intent.action.TIME_SET"
+            // (the action declared in the manifest); there is no
+            // Intent.ACTION_TIME_SET constant in the SDK.
+            Intent.ACTION_TIME_CHANGED,
             Intent.ACTION_TIMEZONE_CHANGED,
             Intent.ACTION_MY_PACKAGE_REPLACED -> rearmSchedules(context)
         }

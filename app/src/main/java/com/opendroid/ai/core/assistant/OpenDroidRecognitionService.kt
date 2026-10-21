@@ -29,21 +29,26 @@ class OpenDroidRecognitionService : RecognitionService() {
 
     override fun onStartListening(recognizerIntent: Intent?, listener: Callback) {
         mainHandler.post {
-            listener.onReadyForSpeech(Bundle())
+            // RecognitionService.Callback methods have no "on" prefix —
+            // those names (onResults, onError, …) belong to the client-side
+            // RecognitionListener interface. The Callback protocol is
+            // readyForSpeech / endOfSpeech / results / partialResults /
+            // error (android.speech.RecognitionService.Callback).
+            listener.readyForSpeech(Bundle())
             val active = engine ?: SpeechRecognitionEngine(this).also { engine = it }
             active.startListening(
                 onResult = { text ->
-                    listener.onEndOfSpeech()
-                    listener.onResults(resultsBundle(text))
+                    listener.endOfSpeech()
+                    listener.results(resultsBundle(text))
                 },
                 onPartialResult = { partial ->
-                    listener.onPartialResults(resultsBundle(partial))
+                    listener.partialResults(resultsBundle(partial))
                 },
                 onError = {
                     // The engine reports errors as display strings; the
                     // protocol only carries codes, so map to a generic
                     // client error (the session UI surfaces the string).
-                    listener.onError(SpeechRecognizer.ERROR_CLIENT)
+                    listener.error(SpeechRecognizer.ERROR_CLIENT)
                 }
             )
         }

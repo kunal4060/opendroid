@@ -7,9 +7,9 @@ import android.os.Bundle
 import android.service.voice.VoiceInteractionSession
 import android.view.View
 import androidx.compose.ui.platform.ComposeView
-import androidx.lifecycle.ViewTreeLifecycleOwner
-import androidx.lifecycle.ViewTreeViewModelStoreOwner
-import androidx.savedstate.ViewTreeSavedStateRegistryOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.opendroid.ai.ui.assistant.AssistantSessionContent
 import com.opendroid.ai.ui.theme.OpenDroidTheme
 import dagger.hilt.android.EntryPointAccessors
@@ -57,9 +57,13 @@ class OpenDroidAssistantSession(context: Context) : VoiceInteractionSession(cont
         lifecycleOwner = owner
 
         return ComposeView(context).apply {
-            ViewTreeLifecycleOwner.set(this, owner)
-            ViewTreeViewModelStoreOwner.set(this, owner)
-            ViewTreeSavedStateRegistryOwner.set(this, owner)
+            // ViewTree*Owner are no longer types in the KMP lifecycle /
+            // savedstate artifacts: the Kotlin API is the View extension
+            // setters below (the bytecode class only carries those
+            // top-level functions, so importing it as a type is unresolved).
+            this.setViewTreeLifecycleOwner(owner)
+            this.setViewTreeViewModelStoreOwner(owner)
+            this.setViewTreeSavedStateRegistryOwner(owner)
             setContent {
                 OpenDroidTheme(isDarkTheme = true) {
                     AssistantSessionContent(
