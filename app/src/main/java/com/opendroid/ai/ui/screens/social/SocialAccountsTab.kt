@@ -15,11 +15,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.opendroid.ai.social.domain.model.*
+import com.opendroid.ai.ui.components.StatusBadge
 import com.opendroid.ai.ui.theme.AppTheme
 import java.text.SimpleDateFormat
 import java.util.*
@@ -45,8 +44,8 @@ fun SocialAccountsTab(
         item {
             Card(
                 modifier = Modifier.fillMaxWidth()
-                    .border(1.dp, theme.borderColor, RoundedCornerShape(16.dp)),
-                shape = RoundedCornerShape(16.dp),
+                    .border(1.dp, theme.borderColor, RoundedCornerShape(18.dp)),
+                shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
             ) {
                 Row(
@@ -54,24 +53,23 @@ fun SocialAccountsTab(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
-                        modifier = Modifier.size(38.dp).clip(CircleShape).background(theme.accentCyan.copy(alpha = 0.15f)),
+                        modifier = Modifier.size(38.dp).clip(CircleShape).background(theme.accentContainer),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.Lock, contentDescription = null, tint = theme.accentCyan, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.Lock, contentDescription = null, tint = theme.accentNeonGreen, modifier = Modifier.size(20.dp))
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             "Hardware-Encrypted Credentials",
                             color = theme.textPrimary,
-                            fontSize = 13.sp,
+                            style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
                             "All API tokens are stored in Android KeyStore (AES-256-GCM). Tokens are never logged or stored in plaintext.",
                             color = theme.textSecondary,
-                            fontSize = 11.sp,
-                            lineHeight = 15.sp
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
                 }
@@ -83,8 +81,7 @@ fun SocialAccountsTab(
             Text(
                 "Connected Platforms",
                 color = theme.textPrimary,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold
+                style = MaterialTheme.typography.titleSmall
             )
         }
 
@@ -116,15 +113,16 @@ fun SocialAccountsTab(
     revokingAccount?.let { account ->
         AlertDialog(
             onDismissRequest = { revokingAccount = null },
-            containerColor = theme.cardBackground,
+            containerColor = theme.surfaceRaised,
+            shape = RoundedCornerShape(24.dp),
             title = {
-                Text("Revoke Access to ${account.platform.displayName}?", color = theme.textPrimary, fontWeight = FontWeight.Bold)
+                Text("Revoke Access to ${account.platform.displayName}?", color = theme.textPrimary, style = MaterialTheme.typography.titleMedium)
             },
             text = {
                 Text(
                     "This will delete all hardware-encrypted cryptographic keys and credentials from Android KeyStore. Any active automated tasks for this platform will stop immediately.",
                     color = theme.textSecondary,
-                    fontSize = 13.sp
+                    style = MaterialTheme.typography.bodyMedium
                 )
             },
             confirmButton = {
@@ -135,7 +133,7 @@ fun SocialAccountsTab(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = theme.accentRed)
                 ) {
-                    Text("Revoke & Purge", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text("Revoke & Purge", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -160,8 +158,8 @@ private fun AccountCard(
 
     Card(
         modifier = Modifier.fillMaxWidth()
-            .border(1.dp, if (isConnected) theme.accentCyan.copy(alpha = 0.35f) else theme.borderColor, RoundedCornerShape(16.dp)),
-        shape = RoundedCornerShape(16.dp),
+            .border(1.dp, theme.borderColor, RoundedCornerShape(18.dp)),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -173,14 +171,14 @@ private fun AccountCard(
                 Box(
                     modifier = Modifier.size(44.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(if (isConnected) theme.accentCyan.copy(alpha = 0.15f) else theme.borderColor.copy(alpha = 0.3f)),
+                        .background(if (isConnected) theme.accentContainer else theme.surface),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         platform.displayName.take(2).uppercase(),
-                        color = if (isConnected) theme.accentCyan else theme.textSecondary,
+                        color = if (isConnected) theme.onAccentContainer else theme.textSecondary,
                         fontWeight = FontWeight.ExtraBold,
-                        fontSize = 16.sp
+                        style = MaterialTheme.typography.titleMedium
                     )
                 }
 
@@ -191,24 +189,32 @@ private fun AccountCard(
                         Text(
                             platform.displayName,
                             color = theme.textPrimary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
+                            style = MaterialTheme.typography.titleSmall
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        StatusBadge(account?.status ?: AccountStatus.DISCONNECTED)
+                        val status = account?.status ?: AccountStatus.DISCONNECTED
+                        val (badgeLabel, badgeColor) = when (status) {
+                            AccountStatus.CONNECTED -> "Connected" to theme.success
+                            AccountStatus.DISCONNECTED -> "Offline" to theme.textSecondary
+                            AccountStatus.EXPIRED -> "Expired" to theme.accentOrange
+                            AccountStatus.REAUTH_REQUIRED -> "Reauth Needed" to theme.accentOrange
+                            AccountStatus.PERMISSION_DENIED -> "Denied" to theme.accentRed
+                            AccountStatus.ERROR -> "Error" to theme.accentRed
+                        }
+                        StatusBadge(label = badgeLabel, color = badgeColor)
                     }
 
                     if (isConnected && account != null) {
                         Text(
                             if (account.username.isNotBlank()) "@${account.username}" else account.displayName,
                             color = theme.textSecondary,
-                            fontSize = 12.sp
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     } else {
                         Text(
                             "Not connected",
                             color = theme.textSecondary,
-                            fontSize = 12.sp
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
                 }
@@ -216,18 +222,18 @@ private fun AccountCard(
                 if (!isConnected) {
                     Button(
                         onClick = onConnect,
-                        colors = ButtonDefaults.buttonColors(containerColor = theme.accentCyan),
+                        colors = ButtonDefaults.buttonColors(containerColor = theme.accentGreenButton, contentColor = theme.onAccent),
                         shape = RoundedCornerShape(20.dp),
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
                     ) {
-                        Text("Connect", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Connect", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                     }
                 }
             }
 
             if (isConnected && account != null) {
                 Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider(color = theme.borderColor.copy(alpha = 0.5f), thickness = 0.5.dp)
+                HorizontalDivider(color = theme.borderSubtle, thickness = 0.5.dp)
                 Spacer(modifier = Modifier.height(10.dp))
 
                 // Permissions list
@@ -236,7 +242,7 @@ private fun AccountCard(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Permissions:", color = theme.textSecondary, fontSize = 11.sp)
+                    Text("Permissions:", color = theme.textTertiary, style = MaterialTheme.typography.labelMedium)
                     account.permissions.forEach { perm ->
                         Box(
                             modifier = Modifier
@@ -245,7 +251,7 @@ private fun AccountCard(
                                 .border(0.5.dp, theme.borderColor, RoundedCornerShape(6.dp))
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
-                            Text(perm.title, color = theme.textSecondary, fontSize = 9.sp)
+                            Text(perm.title, color = theme.textSecondary, style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }
@@ -264,48 +270,26 @@ private fun AccountCard(
                     } else {
                         "Not synced yet"
                     }
-                    Text(syncText, color = theme.textSecondary, fontSize = 11.sp)
+                    Text(syncText, color = theme.textTertiary, style = MaterialTheme.typography.labelMedium)
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(
                             onClick = onDisconnect,
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                         ) {
-                            Text("Disconnect", color = theme.textSecondary, fontSize = 11.sp)
+                            Text("Disconnect", color = theme.textSecondary, style = MaterialTheme.typography.labelMedium)
                         }
 
                         TextButton(
                             onClick = onRevoke,
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                         ) {
-                            Text("Revoke", color = theme.accentRed, fontSize = 11.sp)
+                            Text("Revoke", color = theme.accentRed, style = MaterialTheme.typography.labelMedium)
                         }
                     }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun StatusBadge(status: AccountStatus) {
-    val theme = AppTheme.colors
-    val (bgColor, textColor, text) = when (status) {
-        AccountStatus.CONNECTED -> Triple(theme.accentCyan.copy(alpha = 0.15f), theme.accentCyan, "Connected")
-        AccountStatus.DISCONNECTED -> Triple(theme.surface, theme.textSecondary, "Offline")
-        AccountStatus.EXPIRED -> Triple(theme.accentOrange.copy(alpha = 0.15f), theme.accentOrange, "Expired")
-        AccountStatus.REAUTH_REQUIRED -> Triple(theme.accentOrange.copy(alpha = 0.15f), theme.accentOrange, "Reauth Needed")
-        AccountStatus.PERMISSION_DENIED -> Triple(theme.accentRed.copy(alpha = 0.15f), theme.accentRed, "Denied")
-        AccountStatus.ERROR -> Triple(theme.accentRed.copy(alpha = 0.15f), theme.accentRed, "Error")
-    }
-
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(bgColor)
-            .padding(horizontal = 6.dp, vertical = 2.dp)
-    ) {
-        Text(text, color = textColor, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -333,9 +317,10 @@ private fun ConnectAccountDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = theme.cardBackground,
+        containerColor = theme.surfaceRaised,
+        shape = RoundedCornerShape(24.dp),
         title = {
-            Text("Connect ${platform.displayName}", color = theme.textPrimary, fontWeight = FontWeight.Bold)
+            Text("Connect ${platform.displayName}", color = theme.textPrimary, style = MaterialTheme.typography.titleMedium)
         },
         text = {
             Column(
@@ -345,7 +330,7 @@ private fun ConnectAccountDialog(
                 Text(
                     "Credentials will be encrypted with AES-256-GCM hardware keys.",
                     color = theme.textSecondary,
-                    fontSize = 11.sp
+                    style = MaterialTheme.typography.bodyMedium
                 )
 
                 // Sandbox toggle
@@ -356,12 +341,12 @@ private fun ConnectAccountDialog(
                     Checkbox(
                         checked = useSandboxMock,
                         onCheckedChange = { useSandboxMock = it },
-                        colors = CheckboxDefaults.colors(checkedColor = theme.accentCyan)
+                        colors = CheckboxDefaults.colors(checkedColor = theme.accentNeonGreen, uncheckedColor = theme.textSecondary)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Column {
-                        Text("Use Sandbox Mock Mode", color = theme.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        Text("Simulates live API without external accounts", color = theme.textSecondary, fontSize = 10.sp)
+                        Text("Use Sandbox Mock Mode", color = theme.textPrimary, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Text("Simulates live API without external accounts", color = theme.textTertiary, style = MaterialTheme.typography.labelMedium)
                     }
                 }
 
@@ -379,14 +364,16 @@ private fun ConnectAccountDialog(
                     OutlinedTextField(
                         value = tokenOrKey,
                         onValueChange = { tokenOrKey = it },
-                        label = { Text(label1, fontSize = 12.sp) },
+                        label = { Text(label1, style = MaterialTheme.typography.bodyMedium) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = theme.textPrimary,
                             unfocusedTextColor = theme.textPrimary,
-                            focusedBorderColor = theme.accentCyan,
-                            unfocusedBorderColor = theme.borderColor
+                            focusedBorderColor = theme.accentNeonGreen,
+                            unfocusedBorderColor = theme.borderStrong,
+                            focusedLabelColor = theme.accentNeonGreen,
+                            unfocusedLabelColor = theme.textSecondary
                         )
                     )
 
@@ -395,20 +382,22 @@ private fun ConnectAccountDialog(
                         OutlinedTextField(
                             value = channelOrChatId,
                             onValueChange = { channelOrChatId = it },
-                            label = { Text(label2, fontSize = 12.sp) },
+                            label = { Text(label2, style = MaterialTheme.typography.bodyMedium) },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = theme.textPrimary,
                                 unfocusedTextColor = theme.textPrimary,
-                                focusedBorderColor = theme.accentCyan,
-                                unfocusedBorderColor = theme.borderColor
+                                focusedBorderColor = theme.accentNeonGreen,
+                                unfocusedBorderColor = theme.borderStrong,
+                                focusedLabelColor = theme.accentNeonGreen,
+                                unfocusedLabelColor = theme.textSecondary
                             )
                         )
                     }
                 }
 
-                Text("Granted Permissions:", color = theme.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text("Granted Permissions:", color = theme.textPrimary, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -420,10 +409,12 @@ private fun ConnectAccountDialog(
                             onClick = {
                                 if (isChecked) selectedPermissions.remove(perm) else selectedPermissions.add(perm)
                             },
-                            label = { Text(perm.title, fontSize = 10.sp) },
+                            label = { Text(perm.title, style = MaterialTheme.typography.labelSmall) },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = theme.accentCyan.copy(alpha = 0.2f),
-                                selectedLabelColor = theme.accentCyan
+                                selectedContainerColor = theme.accentContainer,
+                                selectedLabelColor = theme.onAccentContainer,
+                                containerColor = theme.cardBackground,
+                                labelColor = theme.textSecondary
                             )
                         )
                     }
@@ -451,9 +442,9 @@ private fun ConnectAccountDialog(
                     onConfirm(creds, selectedPermissions.toList())
                 },
                 enabled = useSandboxMock || tokenOrKey.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(containerColor = theme.accentCyan)
+                colors = ButtonDefaults.buttonColors(containerColor = theme.accentGreenButton, contentColor = theme.onAccent)
             ) {
-                Text("Authorize & Connect", color = Color.Black, fontWeight = FontWeight.Bold)
+                Text("Authorize & Connect", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {

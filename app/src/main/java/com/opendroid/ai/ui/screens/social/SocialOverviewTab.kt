@@ -16,7 +16,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.opendroid.ai.social.core.analytics.AnalyticsSummary
 import com.opendroid.ai.social.domain.model.*
 import com.opendroid.ai.ui.theme.AppTheme
@@ -88,8 +87,8 @@ fun SocialOverviewTab(
         item {
             Card(
                 modifier = Modifier.fillMaxWidth()
-                    .border(1.dp, theme.accentCyan.copy(alpha = 0.4f), RoundedCornerShape(16.dp)),
-                shape = RoundedCornerShape(16.dp),
+                    .border(1.dp, theme.borderColor, RoundedCornerShape(18.dp)),
+                shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -102,22 +101,20 @@ fun SocialOverviewTab(
                             Icon(
                                 imageVector = Icons.Default.AutoAwesome,
                                 contentDescription = null,
-                                tint = theme.accentCyan,
+                                tint = theme.accentNeonGreen,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "AI SOCIAL INSIGHTS",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = theme.accentCyan,
-                                letterSpacing = 1.sp
+                                text = "AI Social Insights",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = theme.textPrimary
                             )
                         }
                         Text(
                             text = "Grounded Analysis",
-                            fontSize = 10.sp,
-                            color = theme.textSecondary
+                            style = MaterialTheme.typography.labelMedium,
+                            color = theme.textTertiary
                         )
                     }
 
@@ -125,16 +122,25 @@ fun SocialOverviewTab(
 
                     val topInsight = insights.firstOrNull()
                     if (topInsight != null) {
-                        Text(
-                            text = "💡 ${topInsight.calculatedInsight}",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = theme.textPrimary
-                        )
+                        Row(verticalAlignment = Alignment.Top) {
+                            Icon(
+                                imageVector = Icons.Default.Lightbulb,
+                                contentDescription = null,
+                                tint = theme.accentNeonGreen,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = topInsight.calculatedInsight,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = theme.textPrimary
+                            )
+                        }
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = "Observed: ${topInsight.observedData}",
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = theme.textSecondary
                         )
                         Spacer(modifier = Modifier.height(8.dp))
@@ -144,17 +150,26 @@ fun SocialOverviewTab(
                                 .background(theme.surface)
                                 .padding(10.dp)
                         ) {
-                            Text(
-                                text = "👉 Recommendation: ${topInsight.aiRecommendation}",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = theme.textPrimary
-                            )
+                            Row(verticalAlignment = Alignment.Top) {
+                                Icon(
+                                    imageVector = Icons.Default.ArrowForward,
+                                    contentDescription = null,
+                                    tint = theme.accentNeonGreen,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Recommendation: ${topInsight.aiRecommendation}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    color = theme.textPrimary
+                                )
+                            }
                         }
                     } else {
                         Text(
                             text = "Analyzing historical records... Connect accounts to generate tailored strategies.",
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = theme.textSecondary
                         )
                     }
@@ -174,18 +189,20 @@ fun SocialOverviewTab(
         if (interactions.isEmpty()) {
             item {
                 Card(
-                    modifier = Modifier.fillMaxWidth().border(1.dp, theme.borderColor, RoundedCornerShape(12.dp)),
+                    modifier = Modifier.fillMaxWidth().border(1.dp, theme.borderColor, RoundedCornerShape(18.dp)),
+                    shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
                 ) {
                     Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                        Text("No recent social activity recorded.", color = theme.textSecondary, fontSize = 13.sp)
+                        Text("No recent social activity recorded.", color = theme.textSecondary, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
         } else {
             items(interactions.take(3)) { item ->
                 Card(
-                    modifier = Modifier.fillMaxWidth().border(1.dp, theme.borderColor, RoundedCornerShape(12.dp)),
+                    modifier = Modifier.fillMaxWidth().border(1.dp, theme.borderColor, RoundedCornerShape(18.dp)),
+                    shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
                 ) {
                     Row(
@@ -201,15 +218,15 @@ fun SocialOverviewTab(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(item.authorName, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = theme.textPrimary)
+                                Text(item.authorName, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium, color = theme.textPrimary)
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Box(
                                     modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(theme.surface).padding(horizontal = 4.dp, vertical = 2.dp)
                                 ) {
-                                    Text(item.category.name, fontSize = 9.sp, color = theme.accentCyan)
+                                    Text(item.category.name, style = MaterialTheme.typography.labelSmall, color = theme.accentInfo)
                                 }
                             }
-                            Text(item.content, maxLines = 1, fontSize = 12.sp, color = theme.textSecondary)
+                            Text(item.content, maxLines = 1, style = MaterialTheme.typography.bodyMedium, color = theme.textSecondary)
                         }
                     }
                 }
@@ -228,18 +245,20 @@ fun SocialOverviewTab(
         if (scheduledPosts.isEmpty()) {
             item {
                 Card(
-                    modifier = Modifier.fillMaxWidth().border(1.dp, theme.borderColor, RoundedCornerShape(12.dp)),
+                    modifier = Modifier.fillMaxWidth().border(1.dp, theme.borderColor, RoundedCornerShape(18.dp)),
+                    shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
                 ) {
                     Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
-                        Text("No upcoming scheduled posts. Create one in Content Composer!", color = theme.textSecondary, fontSize = 12.sp)
+                        Text("No upcoming scheduled posts. Create one in Content Composer!", color = theme.textSecondary, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
         } else {
             items(scheduledPosts.take(2)) { post ->
                 Card(
-                    modifier = Modifier.fillMaxWidth().border(1.dp, theme.borderColor, RoundedCornerShape(12.dp)),
+                    modifier = Modifier.fillMaxWidth().border(1.dp, theme.borderColor, RoundedCornerShape(18.dp)),
+                    shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
@@ -248,20 +267,20 @@ fun SocialOverviewTab(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(post.platform.displayName, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = theme.accentCyan)
-                            Text(if (post.requiresApproval) "NEEDS APPROVAL" else "SCHEDULED", fontSize = 10.sp, color = theme.textSecondary)
+                            Text(post.platform.displayName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium, color = theme.accentNeonGreen)
+                            Text(if (post.requiresApproval) "Needs approval" else "Scheduled", style = MaterialTheme.typography.labelMedium, color = theme.textTertiary)
                         }
                         Spacer(modifier = Modifier.height(6.dp))
-                        Text(post.content, fontSize = 13.sp, color = theme.textPrimary, maxLines = 2)
+                        Text(post.content, style = MaterialTheme.typography.bodyMedium, color = theme.textPrimary, maxLines = 2)
                         if (post.requiresApproval) {
                             Spacer(modifier = Modifier.height(10.dp))
                             Button(
                                 onClick = { onApprovePost(post.id) },
                                 modifier = Modifier.fillMaxWidth().height(36.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = theme.textPrimary, contentColor = theme.background),
+                                colors = ButtonDefaults.buttonColors(containerColor = theme.accentGreenButton, contentColor = theme.onAccent),
                                 shape = RoundedCornerShape(8.dp)
                             ) {
-                                Text("Approve Post", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Approve Post", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -281,17 +300,18 @@ fun SocialOverviewTab(
 
             items(topPosts) { post ->
                 Card(
-                    modifier = Modifier.fillMaxWidth().border(1.dp, theme.borderColor, RoundedCornerShape(12.dp)),
+                    modifier = Modifier.fillMaxWidth().border(1.dp, theme.borderColor, RoundedCornerShape(18.dp)),
+                    shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
                 ) {
                     Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(post.platform.displayName, fontSize = 11.sp, color = theme.accentCyan, fontWeight = FontWeight.SemiBold)
-                            Text(post.content, fontSize = 12.sp, color = theme.textPrimary, maxLines = 1)
+                            Text(post.platform.displayName, style = MaterialTheme.typography.labelMedium, color = theme.accentNeonGreen, fontWeight = FontWeight.SemiBold)
+                            Text(post.content, style = MaterialTheme.typography.bodyMedium, color = theme.textPrimary, maxLines = 1)
                         }
                         Column(horizontalAlignment = Alignment.End) {
-                            Text("${post.reach} reach", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = theme.textPrimary)
-                            Text("${String.format("%.1f", post.engagementRate)}% engage", fontSize = 10.sp, color = theme.textSecondary)
+                            Text("${post.reach} reach", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = theme.textPrimary)
+                            Text("${String.format("%.1f", post.engagementRate)}% engage", style = MaterialTheme.typography.labelMedium, color = theme.textTertiary)
                         }
                     }
                 }
@@ -310,8 +330,8 @@ fun MetricCard(
 ) {
     val theme = AppTheme.colors
     Card(
-        modifier = modifier.border(1.dp, theme.borderColor, RoundedCornerShape(14.dp)),
-        shape = RoundedCornerShape(14.dp),
+        modifier = modifier.border(1.dp, theme.borderColor, RoundedCornerShape(18.dp)),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -320,13 +340,13 @@ fun MetricCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(text = title, fontSize = 11.sp, color = theme.textSecondary, fontWeight = FontWeight.Medium)
+                Text(text = title, style = MaterialTheme.typography.labelMedium, color = theme.textTertiary, fontWeight = FontWeight.Medium)
                 Icon(imageVector = icon, contentDescription = null, tint = theme.textSecondary, modifier = Modifier.size(16.dp))
             }
             Spacer(modifier = Modifier.height(8.dp))
-            Text(text = value, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = theme.textPrimary)
+            Text(text = value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = theme.textPrimary)
             Spacer(modifier = Modifier.height(4.dp))
-            Text(text = delta, fontSize = 11.sp, color = theme.accentCyan, fontWeight = FontWeight.SemiBold)
+            Text(text = delta, style = MaterialTheme.typography.labelMedium, color = theme.accentNeonGreen, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -345,13 +365,12 @@ fun SectionHeader(
     ) {
         Text(
             text = title,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleSmall,
             color = theme.textPrimary
         )
         if (actionLabel != null && onAction != null) {
             TextButton(onClick = onAction) {
-                Text(actionLabel, fontSize = 12.sp, color = theme.accentCyan, fontWeight = FontWeight.SemiBold)
+                Text(actionLabel, style = MaterialTheme.typography.labelMedium, color = theme.accentNeonGreen, fontWeight = FontWeight.SemiBold)
             }
         }
     }
