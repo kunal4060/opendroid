@@ -139,7 +139,12 @@ data class ConversationBackup(
     val timestamp: Long,
     val modelBadge: String? = null,
     val contactPickerData: String? = null,
-    val sessionId: String
+    val sessionId: String,
+    // B1 attachment fields (Room v11). Defaulted so pre-v11 backups decode
+    // with null attachments, exactly as their rows were stored.
+    val imageBase64: String? = null,
+    val attachmentMimeType: String? = null,
+    val attachmentName: String? = null
 ) {
     fun toEntity(): ConversationEntity = ConversationEntity(
         id = id,
@@ -148,7 +153,10 @@ data class ConversationBackup(
         timestamp = timestamp,
         modelBadge = modelBadge,
         contactPickerData = contactPickerData,
-        sessionId = sessionId
+        sessionId = sessionId,
+        imageBase64 = imageBase64,
+        attachmentMimeType = attachmentMimeType,
+        attachmentName = attachmentName
     )
 
     companion object {
@@ -159,7 +167,10 @@ data class ConversationBackup(
             timestamp = entity.timestamp,
             modelBadge = entity.modelBadge,
             contactPickerData = entity.contactPickerData,
-            sessionId = entity.sessionId
+            sessionId = entity.sessionId,
+            imageBase64 = entity.imageBase64,
+            attachmentMimeType = entity.attachmentMimeType,
+            attachmentName = entity.attachmentName
         )
     }
 }
