@@ -20,6 +20,8 @@ import com.opendroid.ai.data.db.entities.ModelEntity
 import com.opendroid.ai.data.db.entities.ModelStatus
 import com.opendroid.ai.data.models.AutoMode
 import com.opendroid.ai.data.models.ChatMessage
+import com.opendroid.ai.data.models.Persona
+import com.opendroid.ai.data.models.PersonaKind
 import com.opendroid.ai.data.models.LLMConfig
 import com.opendroid.ai.data.models.effectiveWithSessionOverride
 import com.opendroid.ai.data.models.isProviderConfiguredForUse
@@ -30,6 +32,7 @@ import com.opendroid.ai.data.models.withSelectedModel
 import com.opendroid.ai.data.repository.ChatSession
 import com.opendroid.ai.data.repository.ConversationRepository
 import com.opendroid.ai.data.repository.ModelRepository
+import com.opendroid.ai.data.repository.PersonaRepository
 import com.opendroid.ai.data.repository.SettingsRepository
 import com.opendroid.ai.ui.components.EffectiveProviderModel
 import com.opendroid.ai.ui.components.ModelPickerUiState
@@ -50,6 +53,7 @@ import javax.inject.Inject
 class ChatViewModel @Inject constructor(
     private val agentLoop: AgentLoop,
     private val conversationRepository: ConversationRepository,
+    private val personaRepository: PersonaRepository,
     private val settingsRepository: SettingsRepository,
     private val modelRepository: ModelRepository,
     private val modelFetcher: dagger.Lazy<ModelFetcher>,
@@ -291,6 +295,39 @@ class ChatViewModel @Inject constructor(
             val sessionId = sessions.value.firstOrNull { it.isCurrent }?.id
                 ?: conversationRepository.ensureCurrentSessionId()
             conversationRepository.updateSessionModelOverride(sessionId, null, null)
+        }
+    }
+
+    // ── Per-chat persona (B6) ──────────────────────────────────────────
+    // The binding lives in PersonaRepository (sessionId → personaId), so it
+    // persists across restarts, is strictly per chat, and disappears with
+    // the persona if the persona is deleted. AgentLoop resolves the same
+    // binding at send time and prepends the persona's prompt to the system
+    // prompt — the chip below and the request path read one source.
+
+    /** The whole persona library (personas + quick commands) for the picker sheet. */
+    val personas: StateFlow<List<Persona>> = personaRepository.personas
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /**
+     * The persona bound to the CURRENT chat, or null when the chat follows
+     * the default prompt (no binding, or the bound persona was deleted).
+     * Drives the header persona chip.
+     */
+    val activePersona: StateFlow<Persona?> = combine(
+        sessions, personaRepository.personas, personaRepository.sessionBindings
+    ) { sessionList, personaList, bindings ->
+        val current = sessionList.firstOrNull { it.isCurrent }
+        val boundId = current?.let { bindings[it.id] }
+        personaList.firstOrNull { it.id == boundId && it.kind == PersonaKind.PERSONA }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /** Binds a persona to the CURRENT chat only; null clears the binding. */
+    fun setSessionPersona(personaId: String?) {
+        viewModelScope.launch {
+            val sessionId = sessions.value.firstOrNull { it.isCurrent }?.id
+                ?: conversationRepository.ensureCurrentSessionId()
+            personaRepository.setSessionPersona(sessionId, personaId)
         }
     }
 

@@ -20,8 +20,10 @@ import com.opendroid.ai.data.models.PlanStep
 import com.opendroid.ai.data.models.StepStatus
 import com.opendroid.ai.data.models.effectiveGrantedActions
 import com.opendroid.ai.data.models.resolvedAutoMode
+import com.opendroid.ai.data.models.PersonaPromptComposer
 import com.opendroid.ai.data.models.approvalSettings
 import com.opendroid.ai.data.repository.ConversationRepository
+import com.opendroid.ai.data.repository.PersonaRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -86,6 +88,7 @@ class AgentLoop @Inject constructor(
     private val actionSequenceExecutor: ActionSequenceExecutor,
     private val memoryManager: MemoryManager,
     private val conversationRepository: ConversationRepository,
+    private val personaRepository: PersonaRepository,
     private val settingsRepository: com.opendroid.ai.data.repository.SettingsRepository,
     private val reEvalEngine: dagger.Lazy<ReEvaluationEngine>
 ) {
@@ -456,12 +459,21 @@ class AgentLoop @Inject constructor(
                     }
                 }
 
+                // 1f. Persona resolution (B6) — the persona bound to THIS
+                // session, resolved once per task and threaded into the two
+                // LLM paths below. The alias/alarm/timer/screen shortcuts
+                // above bypass the LLM entirely, so a persona correctly has
+                // no effect on them. A chat with no binding (or whose persona
+                // was deleted) resolves to null and behaves exactly as before.
+                val personaPrompt = personaRepository.personaForSession(sessionId)
+                    ?.prompt?.takeIf { it.isNotBlank() }
+
                 // 2. Intent Classification
                 val requiresAction = intentClassifier.requiresAction(query)
                 if (requiresAction) {
-                    generatePlan(userMsg, context, sessionId, configOverride)
+                    generatePlan(userMsg, context, sessionId, configOverride, personaPrompt)
                 } else {
-                    executeSimpleQuery(userMsg, sessionId, configOverride)
+                    executeSimpleQuery(userMsg, sessionId, configOverride, personaPrompt)
                 }
     }
 
@@ -518,7 +530,8 @@ class AgentLoop @Inject constructor(
     private suspend fun executeSimpleQuery(
         userMsg: ChatMessage,
         sessionId: String,
-        configOverride: LLMConfig? = null
+        configOverride: LLMConfig? = null,
+        personaPrompt: String? = null
     ) {
         val runId = UUID.randomUUID().toString()
         val requestId = userMsg.id
@@ -541,6 +554,10 @@ class AgentLoop @Inject constructor(
                 Context about user and device state:
                 $relevantContext
             """.trimIndent()
+
+            // B6: a bound persona's prompt leads the base system prompt
+            // (PersonaPromptComposer); null leaves the prompt untouched.
+            val effectiveSystemPrompt = PersonaPromptComposer.compose(personaPrompt, systemPrompt)
 
             val lastMsgs = conversationRepository.getLastMessages(sessionId, 10).map { msg ->
                 val withImage = if (msg.id == userMsg.id) {
@@ -570,7 +587,7 @@ class AgentLoop @Inject constructor(
             try {
                 provider.streamComplete(
                     LLMRequest(
-                        systemPrompt = systemPrompt,
+                        systemPrompt = effectiveSystemPrompt,
                         messages = lastMsgs,
                         temperature = 0.5f,
                         maxTokens = 500,
@@ -656,12 +673,20 @@ class AgentLoop @Inject constructor(
         userMsg: ChatMessage,
         context: Context,
         sessionId: String,
-        configOverride: LLMConfig? = null
+        configOverride: LLMConfig? = null,
+        personaPrompt: String? = null
     ) {
         try {
             val provider = llmProviderFactory.getActiveProvider(configOverride)
             val relevantContext = memoryManager.getRelevantContext(userMsg.text)
-            val sysPrompt = "${PlanningPrompts.PLANNING_SYSTEM_PROMPT}\n\nContext about user and device:\n$relevantContext"
+            // B6: the bound persona leads the PLANNING prompt (used by the
+            // planner request below and the single-agent request). The
+            // multi-agent critic and merge prompts deliberately do NOT get
+            // the persona — voicing them would corrupt their JSON contracts.
+            val sysPrompt = PersonaPromptComposer.compose(
+                personaPrompt,
+                "${PlanningPrompts.PLANNING_SYSTEM_PROMPT}\n\nContext about user and device:\n$relevantContext"
+            )
             
             val config = settingsRepository.llmConfig.first()
             val plan = if (config.multiAgentModeEnabled) {
@@ -760,7 +785,7 @@ class AgentLoop @Inject constructor(
                 )
             )
         } catch (e: Exception) {
-            fallbackOrError(userMsg, context, e, sessionId, configOverride)
+            fallbackOrError(userMsg, context, e, sessionId, configOverride, personaPrompt)
         }
     }
 
@@ -780,7 +805,8 @@ class AgentLoop @Inject constructor(
         context: Context,
         cause: Throwable,
         sessionId: String,
-        configOverride: LLMConfig? = null
+        configOverride: LLMConfig? = null,
+        personaPrompt: String? = null
     ) {
         android.util.Log.e("AgentLoop", "Plan generation failed: ${cause.localizedMessage}", cause)
 
@@ -808,7 +834,7 @@ class AgentLoop @Inject constructor(
         } catch (e: Exception) {
             android.util.Log.e("AgentLoop", "Failed to log plan generation failure: ${e.localizedMessage}")
         }
-        executeSimpleQuery(userMsg, sessionId, configOverride)
+        executeSimpleQuery(userMsg, sessionId, configOverride, personaPrompt)
     }
 
     fun approveProposedPlan(context: Context, grantActions: Set<String> = emptySet()) {

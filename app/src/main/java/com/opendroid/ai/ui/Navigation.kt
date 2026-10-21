@@ -56,6 +56,7 @@ object OpenDroidRoutes {
     const val CRASH_LOG = "crash_log"
     const val ROUTINES = "routines"
     const val SOCIAL = "social"
+    const val PERSONAS = "personas"
 }
 
 /**
@@ -170,6 +171,9 @@ fun OpenDroidNavigation(
                 },
                 onNavigateToRoutines = {
                     navController.navigate(OpenDroidRoutes.ROUTINES)
+                },
+                onNavigateToPersonas = {
+                    navController.navigate(OpenDroidRoutes.PERSONAS)
                 }
             )
         }
@@ -275,6 +279,16 @@ fun OpenDroidNavigation(
             val socialViewModel: SocialViewModel = hiltViewModel()
             SocialScreen(viewModel = socialViewModel)
         }
+
+        composable(OpenDroidRoutes.PERSONAS) {
+            val personasViewModel: PersonasViewModel = hiltViewModel()
+            PersonasScreen(
+                viewModel = personasViewModel,
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
     }
 }
 
@@ -300,7 +314,8 @@ fun MainDashboard(
     onNavigateToNotificationHistory: () -> Unit = {},
     onNavigateToPermissions: () -> Unit = {},
     onNavigateToCrashLog: () -> Unit = {},
-    onNavigateToRoutines: () -> Unit = {}
+    onNavigateToRoutines: () -> Unit = {},
+    onNavigateToPersonas: () -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -417,7 +432,9 @@ fun MainDashboard(
                         viewModel = chatViewModel,
                         // The A10 setup banner's way out: the Settings tab is
                         // where providers are configured.
-                        onNavigateToProviderSetup = { currentTab = Screen.Settings }
+                        onNavigateToProviderSetup = { currentTab = Screen.Settings },
+                        // The B6 persona sheet's library manager.
+                        onNavigateToPersonas = onNavigateToPersonas
                     )
                     Screen.Plan -> PlanScreen(viewModel = planViewModel)
                     Screen.Memory -> MemoryScreen(viewModel = memoryViewModel)
@@ -439,7 +456,8 @@ fun MainDashboard(
                         onNavigateToNotificationHistory = onNavigateToNotificationHistory,
                         onNavigateToPermissions = onNavigateToPermissions,
                         onNavigateToCrashLog = onNavigateToCrashLog,
-                        onNavigateToRoutines = onNavigateToRoutines
+                        onNavigateToRoutines = onNavigateToRoutines,
+                        onNavigateToPersonas = onNavigateToPersonas
                     )
                 }
             }
