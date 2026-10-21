@@ -100,9 +100,17 @@ class SessionModelResolutionTest {
     }
 
     @Test
-    fun `gemini override without a key is usable only for gemini-nano`() {
-        assertNotNull(LLMConfig().effectiveWithSessionOverride("Google Gemini", "gemini-nano"))
+    fun `gemini override without a key is never usable`() {
+        // "gemini-nano" used to be exempted as a keyless on-device mock;
+        // that mock fabricated replies and plans, so the exemption was
+        // removed (Loop-2 audit Area 1, Finding 1) and Gemini now always
+        // requires a key, whatever model id the override names.
+        assertNull(LLMConfig().effectiveWithSessionOverride("Google Gemini", "gemini-nano"))
         assertNull(LLMConfig().effectiveWithSessionOverride("Google Gemini", "gemini-2.5-flash"))
+        assertNotNull(
+            LLMConfig(apiKeys = mapOf("Google Gemini" to "gemini-key"))
+                .effectiveWithSessionOverride("Google Gemini", "gemini-nano")
+        )
     }
 
     @Test

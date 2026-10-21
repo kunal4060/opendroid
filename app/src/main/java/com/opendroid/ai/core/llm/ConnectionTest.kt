@@ -4,7 +4,6 @@ import com.opendroid.ai.core.llm.error.LLMError
 import com.opendroid.ai.core.llm.error.LLMErrorMapper
 import com.opendroid.ai.core.llm.error.LLMException
 import com.opendroid.ai.data.models.LLMConfig
-import com.opendroid.ai.data.models.selectedModelFor
 
 /**
  * Typed connection-test outcomes shared by Settings and Benchmark.
@@ -53,7 +52,6 @@ object ConnectionTestPlanner {
      */
     fun configurationGap(config: LLMConfig, providerName: String): ConnectionTestState.ConfigMissing? {
         val provider = ProviderCatalog.canonicalName(providerName)
-        val model = config.selectedModelFor(provider)
         when (provider) {
             "Ollama" -> if (config.ollamaUrl.isBlank()) {
                 return ConnectionTestState.ConfigMissing(provider, LLMError.RequestInvalid, 0L)
@@ -70,7 +68,6 @@ object ConnectionTestPlanner {
                 }
             }
             else -> if (ProviderCatalog.requiresApiKey(provider) &&
-                !(provider == "Google Gemini" && model == "gemini-nano") &&
                 config.apiKeys[provider].isNullOrBlank()
             ) {
                 return ConnectionTestState.ConfigMissing(provider, LLMError.AuthMissing, 0L)

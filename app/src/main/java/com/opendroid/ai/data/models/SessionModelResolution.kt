@@ -37,9 +37,7 @@ fun isProviderConfiguredForUse(config: LLMConfig, providerName: String): Boolean
             config.customEndpoints[provider].orEmpty().isNotBlank() &&
                 config.apiKeys[provider].orEmpty().isNotBlank()
         else -> {
-            val model = config.selectedModelFor(provider)
             !ProviderCatalog.requiresApiKey(provider) ||
-                (provider == "Google Gemini" && model == "gemini-nano") ||
                 config.apiKeys[provider].orEmpty().isNotBlank()
         }
     }
@@ -70,8 +68,7 @@ fun LLMConfig.effectiveWithSessionOverride(
         effective = effective.withSelectedModel(provider, model)
     }
     // Validate configured-ness on the EFFECTIVE config: its selected model
-    // for the provider is the one the request would actually carry (this is
-    // what lets a keyless Gemini override through only for gemini-nano).
+    // for the provider is the one the request would actually carry.
     if (!isProviderConfiguredForUse(effective, provider)) return null
     return effective
 }

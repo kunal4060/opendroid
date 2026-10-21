@@ -183,9 +183,7 @@ class LLMProviderFactory @Inject constructor(
                 config.customEndpoints[provider].orEmpty().isNotBlank() &&
                     config.apiKeys[provider].orEmpty().isNotBlank()
             else -> {
-                val model = config.selectedModelFor(provider)
                 !ProviderCatalog.requiresApiKey(provider) ||
-                    (provider == "Google Gemini" && model == "gemini-nano") ||
                     config.apiKeys[provider].orEmpty().isNotBlank()
             }
         }
@@ -343,10 +341,7 @@ class WrappedLLMProvider(
         }
         val apiKey = config.apiKeys[provider].orEmpty()
 
-        if (ProviderCatalog.requiresApiKey(provider) &&
-            !(provider == "Google Gemini" && model == "gemini-nano") &&
-            apiKey.isBlank()
-        ) {
+        if (ProviderCatalog.requiresApiKey(provider) && apiKey.isBlank()) {
             throw LLMErrorMapper.authMissing(provider, model)
         }
         if (provider in setOf("Custom OpenAI Compatible", "Copilot API", "Ollama") && endpoint.isBlank()) {

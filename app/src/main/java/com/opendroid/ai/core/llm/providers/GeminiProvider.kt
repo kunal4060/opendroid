@@ -28,8 +28,8 @@ class GeminiProvider @Inject constructor(
     override val name: String = "Google Gemini"
     // Fallback only (the live list replaces it when the fetch succeeds):
     // dated snapshots get retired for new accounts, so lead with the
-    // family-tracking alias. "gemini-nano" stays for the on-device mock path.
-    override val availableModels: List<String> = listOf("gemini-flash-latest", "gemini-3.8-flash", "gemini-nano")
+    // family-tracking alias.
+    override val availableModels: List<String> = listOf("gemini-flash-latest", "gemini-3.8-flash")
 
     private val gson = Gson()
     private val mediaType = "application/json; charset=utf-8".toMediaType()
@@ -38,11 +38,12 @@ class GeminiProvider @Inject constructor(
         val config = settingsRepository.llmConfig.first()
         val selectedModel = request.model?.takeIf { it.isNotBlank() } ?: ProviderCatalog.defaultModel(name)
 
-        // On-device Nano Mock fallback (to prevent crashes and support offline testing)
-        if (selectedModel == "gemini-nano") {
-            return executeNanoMock(request)
-        }
-
+        // Deliberately no local shortcut for any model id: a previous
+        // "gemini-nano" branch fabricated chat replies and a canned plan
+        // with no model behind them (Loop-2 audit Area 1, Finding 1). A
+        // stale persisted "gemini-nano" selection now reaches the key check
+        // below and the real API like any other id, failing honestly
+        // (missing key / unknown model) instead of faking a reply.
         val apiKey = request.providerConfig?.apiKey?.takeIf { it.isNotBlank() }
             ?: config.apiKeys[name]
             ?: throw IllegalStateException("API Key for $name is not set.")
@@ -152,40 +153,6 @@ class GeminiProvider @Inject constructor(
         } // withContext
     }
 
-    private fun executeNanoMock(request: LLMRequest): LLMResponse {
-        val startTime = System.currentTimeMillis()
-        // If it's a planning query, return a mocked but structured simple plan response
-        val mockContent = if (request.systemPrompt.contains("JSON") || request.responseFormat == ResponseFormat.JSON) {
-            """
-            {
-              "speech": "I have set up a quick on-device task flow.",
-              "type": "SIMPLE",
-              "action": "WEB_SEARCH",
-              "params": {"query": "OpenDroid on-device response"},
-              "plan": null,
-              "memoryUpdate": null,
-              "confidence": 0.95,
-              "needsClarification": false,
-              "clarificationQuestion": null
-            }
-            """.trimIndent()
-        } else {
-            "OpenDroid on-device Gemini Nano mock completed successfully."
-        }
-
-        return LLMResponse(
-            content = mockContent,
-            // This on-device mock has no real usage report; the historical
-            // placeholder total is kept for compatibility and flagged as an
-            // estimate so B3 metering never presents it as measured.
-            tokensUsed = 120,
-            model = "gemini-nano",
-            provider = name,
-            latencyMs = System.currentTimeMillis() - startTime,
-            usageEstimated = true
-        )
-    }
-
     override fun streamComplete(request: LLMRequest): Flow<String> = flow {
         val response = complete(request)
         val words = response.content.split(" ")
@@ -197,7 +164,6 @@ class GeminiProvider @Inject constructor(
 
     override suspend fun isAvailable(): Boolean {
         val config = settingsRepository.llmConfig.first()
-        if (config.activeModel == "gemini-nano") return true // always available locally
         return !config.apiKeys[name].isNullOrBlank()
     }
 }
