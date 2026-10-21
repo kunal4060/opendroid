@@ -39,4 +39,17 @@ class PendingAssistantCommand @Inject constructor() {
         _pendingQuery.value = null
         return current
     }
+
+    /**
+     * Clears the slot only when it still holds [expected]; returns whether
+     * it cleared. Audit-2 #11: delivery must clear the slot AFTER a
+     * successful dispatch, not before — consuming first and then having the
+     * send guard refuse (offline / no route) lost the user's spoken command
+     * with no trace and no way to recover it.
+     */
+    fun consumeIf(expected: String): Boolean {
+        if (_pendingQuery.value != expected) return false
+        _pendingQuery.value = null
+        return true
+    }
 }

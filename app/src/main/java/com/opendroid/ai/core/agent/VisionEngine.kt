@@ -7,6 +7,7 @@ import com.opendroid.ai.core.llm.LLMRequest
 import com.opendroid.ai.core.llm.ResponseFormat
 import com.opendroid.ai.data.models.ChatMessage
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -36,6 +37,8 @@ class VisionEngine @Inject constructor(
 
         return try {
             service.takeScreenshotAndEncode()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Screenshot capture failed: ${e.message}")
             null
@@ -119,6 +122,10 @@ class VisionEngine @Inject constructor(
                 )
             )
             response.content.trim()
+        } catch (e: CancellationException) {
+            // Audit-2 #22: a user Stop / task cancellation is not a vision
+            // result — never convert it into one (see extractWithText).
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Vision analysis failed: ${e.message}")
             "I captured the screenshot but couldn't analyze it: ${e.message}"
@@ -159,6 +166,8 @@ class VisionEngine @Inject constructor(
                 )
             )
             response.content.trim()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Text analysis failed: ${e.message}")
             "I read the screen text but couldn't analyze it: ${e.message}"
@@ -225,6 +234,8 @@ class VisionEngine @Inject constructor(
                 )
             )
             response.content.trim()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Image extraction failed: ${e.message}")
             val screenText = getScreenText()
@@ -280,6 +291,8 @@ class VisionEngine @Inject constructor(
                 )
             )
             response.content.trim()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Text extraction failed: ${e.message}")
             "I read the screen text but couldn't extract the details: ${e.localizedMessage ?: e.message}"

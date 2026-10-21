@@ -176,15 +176,22 @@ fun ChatScreen(
     // dashboard, so consuming here keeps the command behind the A5 lock
     // and on the exact same send path as typed input.
     val pendingAssistantQuery by viewModel.pendingAssistantQuery.collectAsState()
-    LaunchedEffect(pendingAssistantQuery) {
-        if (pendingAssistantQuery != null) {
-            viewModel.consumePendingAssistantQuery()?.let { query ->
-                viewModel.sendMessage(query, context)
-            }
+    // Audit-2 #11: dispatch FIRST, clear the parked slot only on success.
+    // Previously the slot was consumed before sendMessage ran and its
+    // Boolean result ignored, so a send refused by the offline guard
+    // silently destroyed the parked voice command. Keyed on routingStatus
+    // too, so when a route comes back the still-parked command is retried.
+    LaunchedEffect(pendingAssistantQuery, routingStatus) {
+        val query = pendingAssistantQuery ?: return@LaunchedEffect
+        if (viewModel.sendMessage(query, context)) {
+            viewModel.clearPendingAssistantQueryAfterDispatch(query)
         }
     }
     val currentSessionId = sessions.firstOrNull { it.isCurrent }?.id
     val runningElsewhere = runningSessionId != null && runningSessionId != currentSessionId
+    // Audit-2 #10: only the picker card tagged with the currently pending
+    // prompt's requestId is live; all historical pickers render inert.
+    val pendingPromptRequestId by viewModel.pendingPromptRequestId.collectAsState()
 
     val listState = rememberLazyListState()
     var inputQuery by remember { mutableStateOf("") }
@@ -251,10 +258,16 @@ fun ChatScreen(
         if (routingStatus is RoutingStatus.OfflineNoRoute) return
         val editing = editingMessageId
         if (editing != null) {
-            viewModel.editAndResend(editing, text, context)
-            editingMessageId = null
-            textBeforeEdit = ""
-            inputQuery = ""
+            // Audit-2 #13: clear the edit session and draft only when the
+            // resend was actually dispatched — editAndResend re-checks the
+            // no-route guard itself, and a refusal must leave the user
+            // exactly what they typed (the attachment branch below already
+            // honoured its Boolean this way).
+            if (viewModel.editAndResend(editing, text, context)) {
+                editingMessageId = null
+                textBeforeEdit = ""
+                inputQuery = ""
+            }
         } else if (hasAttachment) {
             // When this returns false the capability gate owns the outcome:
             // its dialog explains and offers a model switch while the draft
@@ -263,8 +276,12 @@ fun ChatScreen(
                 inputQuery = ""
             }
         } else {
-            viewModel.sendMessage(text, context)
-            inputQuery = ""
+            // Audit-2 #13: same rule for a plain send — a refused dispatch
+            // (routing flipped to OfflineNoRoute after the guard above ran)
+            // keeps the draft instead of discarding it without feedback.
+            if (viewModel.sendMessage(text, context)) {
+                inputQuery = ""
+            }
         }
     }
 
@@ -290,18 +307,23 @@ fun ChatScreen(
     // Moves a staged share draft into the composer: fills an empty composer
     // outright, appends below anything the user already typed rather than
     // clobbering it.
-    var lastAppliedShareDraft by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(pendingComposerDraft) {
+    // Audit-2 #18: dedupe on the share's sequence id, never its text — the
+    // same text shared twice is two shares and applies twice. And a draft
+    // is consumed only when it was actually applied; the old code consumed
+    // unconditionally, discarding the second identical share's caption.
+    var lastAppliedShareSeq by remember { mutableStateOf(0L) }
+    val composerDraftSeq by viewModel.composerDraftSeq.collectAsState()
+    LaunchedEffect(pendingComposerDraft, composerDraftSeq) {
         val draft = pendingComposerDraft ?: return@LaunchedEffect
-        if (draft != lastAppliedShareDraft) {
+        if (composerDraftSeq != lastAppliedShareSeq) {
             inputQuery = if (inputQuery.isBlank()) {
                 draft
             } else {
                 inputQuery.trimEnd() + "\n" + draft
             }
-            lastAppliedShareDraft = draft
+            lastAppliedShareSeq = composerDraftSeq
+            viewModel.consumeComposerDraft()
         }
-        viewModel.consumeComposerDraft()
     }
 
     // System file picker for the export destination (SAF — no storage
@@ -776,7 +798,8 @@ fun ChatScreen(
                                 context = context,
                                 speakingMessageId = speakingMessageId,
                                 onEditRequested = { startEditingMessage(it) },
-                                researchSources = researchSourcesByMessage[msg.id] ?: emptyList()
+                                researchSources = researchSourcesByMessage[msg.id] ?: emptyList(),
+                                pendingPromptRequestId = pendingPromptRequestId
                             )
                         }
                     }
@@ -1634,7 +1657,8 @@ fun ChatBubble(
     context: android.content.Context? = null,
     speakingMessageId: String? = null,
     onEditRequested: ((ChatMessage) -> Unit)? = null,
-    researchSources: List<com.opendroid.ai.data.db.entities.ResearchSourceEntity> = emptyList()
+    researchSources: List<com.opendroid.ai.data.db.entities.ResearchSourceEntity> = emptyList(),
+    pendingPromptRequestId: String? = null
 ) {
     val isAgent = message.sender == ChatMessage.Sender.AGENT
     val alignment = if (isAgent) Alignment.Start else Alignment.End
@@ -1665,12 +1689,23 @@ fun ChatBubble(
             // Extract query from text ("Which 'dad' do you mean?" ? "dad")
             val query = Regex("Which '(.*?)'").find(message.text)?.groupValues?.getOrNull(1) ?: "contact"
 
+            // Audit-2 #10: this card is live only while it is the prompt the
+            // agent is currently parked on — its payload is tagged with that
+            // prompt's requestId (older payloads, written before tagging,
+            // have no tag and are therefore inert, which is the safe
+            // default). A tap on a live card answers THAT prompt; the
+            // delivery path in AgentLoop re-validates the requestId, so the
+            // index can never be handed to a different prompt.
+            val pickerRequestId = matches.firstOrNull()?.get("requestId")
+            val isLivePicker = pickerRequestId != null && pickerRequestId == pendingPromptRequestId
+
             ContactPickerCard(
                 query = query,
                 matches = matches,
+                enabled = isLivePicker,
                 onContactSelected = { selected ->
                     val index = matches.indexOf(selected) + 1
-                    if (viewModel != null && context != null) {
+                    if (isLivePicker && viewModel != null && context != null) {
                         viewModel.sendMessage(index.toString(), context)
                     }
                 }

@@ -118,6 +118,16 @@ class ChatViewModel @Inject constructor(
     private val _pendingComposerDraft = MutableStateFlow<String?>(null)
     val pendingComposerDraft: StateFlow<String?> = _pendingComposerDraft
 
+    /**
+     * Monotonic id of the most recently staged share draft (audit-2 #18).
+     * The draft's identity is this sequence number, NOT its text: sharing
+     * the same text twice (e.g. the same link) is two shares and must be
+     * applied twice — text-keyed dedupe consumed the second share without
+     * applying it, losing its caption while staging its images.
+     */
+    private val _composerDraftSeq = MutableStateFlow(0L)
+    val composerDraftSeq: StateFlow<Long> = _composerDraftSeq
+
     /** Shared images waiting to ride the user's next sent message in this chat. */
     private val _pendingSharedImages = MutableStateFlow<List<SharedImageRef>>(emptyList())
     val pendingSharedImages: StateFlow<List<SharedImageRef>> = _pendingSharedImages
@@ -152,6 +162,7 @@ class ChatViewModel @Inject constructor(
             // earlier images pending too rather than silently dropping them.
             _pendingSharedImages.value = _pendingSharedImages.value + images
             _pendingComposerDraft.value = content.composerPrefill()
+            _composerDraftSeq.value += 1
         }
     }
 
@@ -182,6 +193,15 @@ class ChatViewModel @Inject constructor(
 
     /** Clears the parked assistant command; returns it so the caller can send it exactly once. */
     fun consumePendingAssistantQuery(): String? = pendingAssistantCommand.consume()
+
+    /**
+     * Audit-2 #11: clears the parked command only after it was actually
+     * dispatched, and only if the slot still holds that same command (a
+     * newer invocation may have replaced it meanwhile). A refused send
+     * leaves the command parked for a later retry instead of losing it.
+     */
+    fun clearPendingAssistantQueryAfterDispatch(query: String): Boolean =
+        pendingAssistantCommand.consumeIf(query)
 
     // Scoped to whichever session is current; re-collects automatically when the
     // user switches chats since the repository's flow is driven off the same
@@ -225,6 +245,13 @@ class ChatViewModel @Inject constructor(
     /** True while a research send is running (drives the thinking bubble). */
     private val _researchInFlight = MutableStateFlow(false)
     val researchInFlight: StateFlow<Boolean> = _researchInFlight
+
+    // Audit-2 #16: the Boolean above is derived from this COUNT of live
+    // research sends. A single shared Boolean raced when two sends
+    // overlapped — the first one's finally cleared the flag while the
+    // second was still working, so the "researching" indicator vanished
+    // mid-run.
+    private val researchInFlightCount = java.util.concurrent.atomic.AtomicInteger(0)
 
     /**
      * Stored citations for the messages of the current chat, keyed by
@@ -543,6 +570,13 @@ class ChatViewModel @Inject constructor(
     val agentState: StateFlow<AgentState> = agentLoop.agentState
 
     /**
+     * Audit-2 #10: requestId of the prompt the agent is currently parked
+     * on, if any. ChatScreen enables only the contact-picker card tagged
+     * with this id; every historical picker renders inert.
+     */
+    val pendingPromptRequestId: StateFlow<String?> = agentLoop.pendingPromptRequestId
+
+    /**
      * Live chat routing state (A8): which provider/on-device backend will
      * answer, or that no route exists while offline. Rendered as the header
      * badge and consulted by the send paths below — one shared state, so
@@ -655,7 +689,14 @@ class ChatViewModel @Inject constructor(
             if (agentIndex < 0) return@launch
             val userMessage = messages.subList(0, agentIndex)
                 .lastOrNull { it.sender == ChatMessage.Sender.USER } ?: return@launch
-            agentLoop.cancelCurrentTask()
+            // Audit-2 #17: supersede only THIS chat's task. AgentLoop is a
+            // singleton — an unconditional cancelCurrentTask() silently
+            // killed an unrelated task running for another chat (e.g. one
+            // started from the assistant window) whenever the user hit
+            // regenerate here.
+            if (agentLoop.currentTaskSessionId() == sessionId) {
+                agentLoop.cancelCurrentTask()
+            }
             conversationRepository.deleteMessageAndAfter(sessionId, agentMessageId)
             _taskSessionId.value = sessionId
             agentLoop.retryRequest(
@@ -1005,6 +1046,7 @@ class ChatViewModel @Inject constructor(
         pinnedSessionId: String?,
         configOverride: com.opendroid.ai.data.models.LLMConfig?
     ): Boolean {
+        researchInFlightCount.incrementAndGet()
         _researchInFlight.value = true
         viewModelScope.launch {
             try {
@@ -1012,7 +1054,12 @@ class ChatViewModel @Inject constructor(
                     ?: conversationRepository.ensureCurrentSessionId()
                 researchChatRunner.run(sessionId, query, configOverride)
             } finally {
-                _researchInFlight.value = false
+                // Audit-2 #16: only the LAST overlapping send to finish
+                // clears the flag.
+                if (researchInFlightCount.decrementAndGet() <= 0) {
+                    researchInFlightCount.set(0)
+                    _researchInFlight.value = false
+                }
             }
         }
         return true
@@ -1024,12 +1071,17 @@ class ChatViewModel @Inject constructor(
      * or swallow the resend), deletes that message and every message after it in the
      * current session so the conversation visibly rewinds, then sends the edited text
      * as a fresh query.
+     *
+     * Returns whether the resend was actually dispatched (audit-2 #13) —
+     * false when the text is blank or the no-route guard refuses, so the
+     * caller can keep the user's draft and edit session instead of clearing
+     * them for a send that never happened.
      */
-    fun editAndResend(messageId: String, newText: String, context: Context) {
-        if (newText.isBlank()) return
+    fun editAndResend(messageId: String, newText: String, context: Context): Boolean {
+        if (newText.isBlank()) return false
         // Same no-route guard as sendMessage: never rewind the conversation
         // for a resend that cannot be answered right now.
-        if (routingStatus.value is RoutingStatus.OfflineNoRoute) return
+        if (routingStatus.value is RoutingStatus.OfflineNoRoute) return false
         agentLoop.cancelCurrentTask()
         viewModelScope.launch {
             val sessionId = conversationRepository.ensureCurrentSessionId()
@@ -1039,6 +1091,7 @@ class ChatViewModel @Inject constructor(
                 .firstOrNull { it.id == sessionId }
             agentLoop.processQuery(newText, context, sessionId, configOverrideFor(session))
         }
+        return true
     }
 
     fun approvePlan(context: Context, grants: Set<String> = emptySet()) {

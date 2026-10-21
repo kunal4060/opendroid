@@ -47,8 +47,12 @@ class AutoReplyEngine @Inject constructor(
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
-    // Track pending auto-replies so we can cancel them if user replies manually
-    private val pendingReplies = mutableMapOf<String, Job>()
+    // Track pending auto-replies so we can cancel them if user replies manually.
+    // Audit-2 #12: ConcurrentHashMap — this map is mutated from
+    // notification-listener threads and the engine scope concurrently, and
+    // every access below is a single atomic map operation (conditional
+    // remove / put-and-cancel-previous), never a check-then-act pair.
+    private val pendingReplies = ConcurrentHashMap<String, Job>()
 
     // Track when we last sent an auto-reply per contact key to detect bouncebacks
     // Store both timestamp and the reply text to verify it's actually an echo
@@ -94,10 +98,8 @@ class AutoReplyEngine @Inject constructor(
     ) {
         val contactKey = "${notification.packageName}:${notification.contactName ?: notification.title}"
 
-        // Cancel any existing pending reply for this contact (they sent another message)
-        pendingReplies[contactKey]?.cancel()
-
-        val job = scope.launch {
+        lateinit var job: Job
+        job = scope.launch {
             try {
                 val config = settingsRepository.autoReplyConfig.first()
 
@@ -150,11 +152,19 @@ class AutoReplyEngine @Inject constructor(
             } catch (e: Exception) {
                 Log.e(TAG, "Auto-reply failed: ${e.message}")
             } finally {
-                pendingReplies.remove(contactKey)
+                // Audit-2 #12: conditional remove — only OUR registration.
+                // A newer message may already have replaced it with a fresh
+                // job under this key; an unconditional remove evicted that
+                // job's registration, after which cancelPendingReply found
+                // nothing and the "cancelled" newer reply still sent.
+                pendingReplies.remove(contactKey, job)
             }
         }
 
-        pendingReplies[contactKey] = job
+        // Register atomically and cancel whichever pending reply this one
+        // replaces (they sent another message) — put returns the displaced
+        // job, so cancel-and-register is a single atomic step.
+        pendingReplies.put(contactKey, job)?.cancel()
     }
 
     /**
@@ -162,15 +172,14 @@ class AutoReplyEngine @Inject constructor(
      */
     fun cancelPendingReply(packageName: String, contactName: String?) {
         val contactKey = "$packageName:${contactName ?: ""}"
-        pendingReplies[contactKey]?.cancel()
-        pendingReplies.remove(contactKey)
+        pendingReplies.remove(contactKey)?.cancel()
     }
 
     /**
      * Cancel all pending auto-replies.
      */
     fun cancelAll() {
-        pendingReplies.values.forEach { it.cancel() }
+        pendingReplies.values.toList().forEach { it.cancel() }
         pendingReplies.clear()
     }
 

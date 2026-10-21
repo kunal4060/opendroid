@@ -84,12 +84,18 @@ open class ContactResolver @Inject constructor(
             }
 
             // CASE 2: Exact name match in Android contacts
-            val exactMatch = searchContactsLegacy(context, cleaned, exact = true)
-            if (exactMatch != null) return exactMatch
+            val exactCandidates = searchContactsLegacy(context, cleaned, exact = true)
+            if (exactCandidates.isNotEmpty()) {
+                return unambiguousLegacyResult(exactCandidates, cleaned)
+                    ?: ContactResult.NotFound(cleaned)
+            }
 
             // CASE 3: Partial/LIKE match in Android contacts
-            val partialMatch = searchContactsLegacy(context, cleaned, exact = false)
-            if (partialMatch != null) return partialMatch
+            val partialCandidates = searchContactsLegacy(context, cleaned, exact = false)
+            if (partialCandidates.isNotEmpty()) {
+                return unambiguousLegacyResult(partialCandidates, cleaned)
+                    ?: ContactResult.NotFound(cleaned)
+            }
 
             // CASE 4: Fuzzy relationship matching
             val fuzzyMatch = fuzzyRelationshipSearchLegacy(context, cleaned)
@@ -99,10 +105,48 @@ open class ContactResolver @Inject constructor(
             return ContactResult.NotFound(cleaned)
         }
 
+        /**
+         * Audit-2 #4: the legacy result type has no Ambiguous variant, so
+         * the only safe outcomes are a genuinely unambiguous Found or
+         * NotFound. Candidates resolve to Found only when they carry exactly
+         * one distinct number, or when exactly one candidate's name equals
+         * the query; anything else returns null (→ NotFound) instead of the
+         * old behaviour of silently picking the shortest-named partial
+         * match and sending the call/message to a guessed person. Callers
+         * that can ask the user should use [resolveWithDisambiguation],
+         * which surfaces the picker — MAKE_VIDEO_CALL, the legacy path's
+         * last real consumer, now does exactly that.
+         */
+        private fun unambiguousLegacyResult(
+            candidates: List<Pair<String, String>>,
+            query: String
+        ): ContactResult.Found? {
+            val distinctNumbers = candidates.map { it.second }.distinct()
+            if (distinctNumbers.size == 1) {
+                val best = candidates
+                    .sortedWith(compareBy(
+                        { if (it.first.equals(query, ignoreCase = true)) 0 else 1 },
+                        { it.first.length }
+                    ))
+                    .first()
+                return ContactResult.Found(best.first, best.second)
+            }
+            val exactNamed = candidates.filter { it.first.equals(query, ignoreCase = true) }
+            val exactNumbers = exactNamed.map { it.second }.distinct()
+            if (exactNamed.isNotEmpty() && exactNumbers.size == 1) {
+                return ContactResult.Found(exactNamed.first().first, exactNamed.first().second)
+            }
+            return null
+        }
+
         // lint false positive: the cursor is closed by `?.use { }` on every path,
         // but the Recycle detector does not model Kotlin's use() inlining. See #67.
         @Suppress("Recycle")
-        private fun searchContactsLegacy(context: Context, name: String, exact: Boolean): ContactResult.Found? {
+        private fun searchContactsLegacy(
+            context: Context,
+            name: String,
+            exact: Boolean
+        ): List<Pair<String, String>> {
             val uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI
             val projection = arrayOf(
                 ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
@@ -132,18 +176,11 @@ open class ContactResolver @Inject constructor(
                         }
                     }
                 }
-                if (candidates.isEmpty()) return null
-                val bestMatch = candidates
-                    .sortedWith(compareBy(
-                        { if (it.first.equals(name, ignoreCase = true)) 0 else 1 },
-                        { it.first.length }
-                    ))
-                    .first()
-                return ContactResult.Found(bestMatch.first, bestMatch.second)
+                return candidates
             } catch (e: Exception) {
                 Log.e(TAG, "Contact search failed: ${e.message}")
             }
-            return null
+            return emptyList()
         }
 
         private val relationshipAliasesStatic: Map<String, List<String>> = mapOf(
@@ -165,10 +202,13 @@ open class ContactResolver @Inject constructor(
                     key == lower || aliases.any { it.equals(lower, ignoreCase = true) }
                 }?.value ?: return null
             for (term in searchTerms) {
+                // Audit-2 #4: same unambiguity rule as the direct searches —
+                // the first alias term that matches anything decides, and it
+                // only resolves when its matches carry a single number.
                 val exact = searchContactsLegacy(context, term, exact = true)
-                if (exact != null) return exact
+                if (exact.isNotEmpty()) return unambiguousLegacyResult(exact, term)
                 val partial = searchContactsLegacy(context, term, exact = false)
-                if (partial != null) return partial
+                if (partial.isNotEmpty()) return unambiguousLegacyResult(partial, term)
             }
             return null
         }
@@ -242,17 +282,49 @@ open class ContactResolver @Inject constructor(
                 val distinctExactNames = exactMatches.map { it.name.lowercase().trim() }.distinct()
 
                 if (exactMatches.isNotEmpty() && distinctExactNames.size == 1) {
-                    Log.d(TAG, "  → Found exact match, bypassing partial matches: ${exactMatches.first().name}")
-                    ContactResolution.Found(exactMatches.first())
+                    // Audit-2 #19: one name with several DIFFERENT numbers is
+                    // still ambiguous — the matches must not collapse to
+                    // whichever row happens to be first (an SMS could land on
+                    // a landline or the wrong SIM). Only a single distinct
+                    // number may bypass the picker.
+                    val distinctExactNumbers = exactMatches.map { it.phoneNumber }.distinct()
+                    if (distinctExactNumbers.size == 1) {
+                        Log.d(TAG, "  → Found exact match, bypassing partial matches: ${exactMatches.first().name}")
+                        ContactResolution.Found(exactMatches.first())
+                    } else {
+                        Log.d(TAG, "  → Exact name with ${distinctExactNumbers.size} different numbers — showing picker")
+                        ContactResolution.Ambiguous(
+                            query = query,
+                            matches = exactMatches
+                                .distinctBy { it.phoneNumber }
+                                .sortedByDescending { it.matchScore }
+                                .take(5)
+                        )
+                    }
                 } else {
                     // Multiple matches — check if they are all the SAME person
                     // (same display name, just different phone numbers)
                     val distinctNames = allMatches.map { it.name.lowercase().trim() }.distinct()
 
                     if (distinctNames.size == 1) {
-                        // All matches are the same person — pick the highest-scored one
-                        Log.d(TAG, "  → All same name, using highest score: ${allMatches.first().name}")
-                        ContactResolution.Found(allMatches.first())
+                        // All matches are the same name — unambiguous only
+                        // when they also share a single number (audit-2 #19);
+                        // several numbers under one name go to the picker,
+                        // deduped by NUMBER so the user can actually choose.
+                        val distinctNumbers = allMatches.map { it.phoneNumber }.distinct()
+                        if (distinctNumbers.size == 1) {
+                            Log.d(TAG, "  → All same name and number, using highest score: ${allMatches.first().name}")
+                            ContactResolution.Found(allMatches.first())
+                        } else {
+                            Log.d(TAG, "  → Same name with ${distinctNumbers.size} different numbers — showing picker")
+                            ContactResolution.Ambiguous(
+                                query = query,
+                                matches = allMatches
+                                    .distinctBy { it.phoneNumber }
+                                    .sortedByDescending { it.matchScore }
+                                    .take(5)
+                            )
+                        }
                     } else {
                         // Multiple DIFFERENT people matched → ALWAYS show picker
                         // Even if one is an exact match, user should choose

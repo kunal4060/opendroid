@@ -122,9 +122,22 @@ class PlanManager @Inject constructor(
         planRepository.savePlan(plan)
     }
 
-    fun clearPlan() {
+    /**
+     * Clears the current plan. [expectedPlanId], when non-null, pins the
+     * clear to that plan (mirrors [cancelPlan]'s guard): this hops onto
+     * [scope] to take the mutex, so it can run arbitrarily later than the
+     * call — by then a brand-new, unrelated plan may already have replaced
+     * [_currentPlan] via [startNewPlan], and an unpinned clear would erase
+     * that new plan mid-flight (audit-2 #6). Callers rejecting a specific
+     * proposal pass its id; passing null keeps the old "clear whatever is
+     * current" behaviour.
+     */
+    fun clearPlan(expectedPlanId: String? = null) {
         scope.launch {
             mutex.withLock {
+                if (expectedPlanId != null && _currentPlan.value?.planId != expectedPlanId) {
+                    return@withLock
+                }
                 _currentPlan.value = null
                 workingMemory.activePlan = null
             }
@@ -252,7 +265,20 @@ class PlanManager @Inject constructor(
             val plan = _currentPlan.value ?: return@withLock
             val targetStep = plan.steps.find { it.stepId == stepId } ?: return@withLock
             if (targetStep.status != StepStatus.PENDING) return@withLock
-            val updatedSteps = plan.steps.filterNot { it.stepId == stepId }
+            // Audit-2 #5: strip the removed id from every dependent's
+            // dependsOn — a dependency on a step that no longer exists can
+            // never be met (see hasDependenciesMet), so leaving it behind
+            // stranded the dependents as PENDING forever while the plan
+            // around them reported completion.
+            val updatedSteps = plan.steps
+                .filterNot { it.stepId == stepId }
+                .map { step ->
+                    if (stepId in step.dependsOn) {
+                        step.copy(dependsOn = step.dependsOn - stepId)
+                    } else {
+                        step
+                    }
+                }
             val updatedPlan = plan.copy(steps = updatedSteps)
             _currentPlan.value = updatedPlan
             workingMemory.activePlan = updatedPlan

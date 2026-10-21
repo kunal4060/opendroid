@@ -78,26 +78,10 @@ class CommunicationActions @Inject constructor(
         ReadEmailsAction()
     )
 
-    companion object {
-        /**
-         * Legacy static resolve for backward compat.
-         * Used by actions that don't yet support disambiguation.
-         */
-        private fun resolveContactToPhoneNumber(context: Context, contact: String): String {
-            if (contact.startsWith("$")) {
-                throw IllegalArgumentException("Unresolved contact placeholder: $contact")
-            }
-            val cleaned = contact.replace(" ", "").replace("-", "")
-            if (cleaned.startsWith("+") || (cleaned.isNotEmpty() && cleaned.all { it.isDigit() })) {
-                return cleaned
-            }
-            val result = ContactResolver.resolve(context, contact)
-            if (result is ContactResolver.ContactResult.Found) {
-                return result.phoneNumber
-            }
-            throw IllegalArgumentException("Contact '$contact' not found in your contacts")
-        }
-    }
+    // Audit-2 #4: the former companion-object legacy resolver wrapper was
+    // removed — every action (MAKE_VIDEO_CALL was the last) now resolves
+    // contacts through ContactResolver.resolveWithDisambiguation and
+    // surfaces the picker on ambiguity instead of guessing a match.
 
     /**
      * Build a NeedsInput with contact picker metadata.
@@ -541,7 +525,25 @@ class CommunicationActions @Inject constructor(
         override val name: String = "MAKE_VIDEO_CALL"
         override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
             val contact = params["contact"] ?: return ActionResult(false, null, "contact parameter missing")
-            val phone = resolveContactToPhoneNumber(context, contact)
+            // Audit-2 #4: resolve through the disambiguation pipeline like
+            // MAKE_CALL / SEND_WHATSAPP / SEND_TELEGRAM — the legacy static
+            // resolver silently picked one partial match, so a video call
+            // could go to a guessed person. Ambiguity now surfaces the
+            // contact picker; a direct number still resolves immediately
+            // (resolveWithDisambiguation step 1).
+            if (contact.startsWith("$")) {
+                return ActionResult(false, null, "Unresolved contact placeholder: $contact")
+            }
+            val phone = when (val resolved = contactResolver.resolveWithDisambiguation(contact)) {
+                is ContactResolution.Found -> resolved.contact.phoneNumber
+                is ContactResolution.Ambiguous -> return buildContactPickerResult(
+                    contact, resolved.matches, "MAKE_VIDEO_CALL"
+                )
+                is ContactResolution.NotFound -> return ActionResult.NeedsInput(
+                    question = "I couldn't find '$contact' in your contacts. What's their number?",
+                    metadata = mapOf("param" to "contact")
+                )
+            }
             val app = params["app"] ?: "whatsapp"
             return try {
                 when (app.lowercase()) {
