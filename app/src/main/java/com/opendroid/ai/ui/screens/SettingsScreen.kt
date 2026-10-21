@@ -46,7 +46,9 @@ import com.opendroid.ai.core.security.ProviderCredentialRecoveryState
 import com.opendroid.ai.data.repository.ProviderCredentialPersistenceState
 import com.google.mlkit.genai.prompt.*
 import com.google.mlkit.genai.common.FeatureStatus
+import com.opendroid.ai.core.privacy.WipeStepResult
 import com.opendroid.ai.ui.theme.*
+import com.opendroid.ai.ui.viewmodel.ForgetEverythingUiState
 import com.opendroid.ai.ui.viewmodel.SettingsViewModel
 import com.opendroid.ai.data.db.entities.ModelEntity
 import com.opendroid.ai.data.db.entities.ModelStatus
@@ -91,6 +93,7 @@ fun SettingsScreen(
     val hfToken by viewModel.huggingFaceToken.collectAsState()
     val providerCredentialRecoveryState by viewModel.providerCredentialRecoveryState.collectAsState()
     val providerCredentialPersistenceState by viewModel.providerCredentialPersistenceState.collectAsState()
+    val forgetEverythingState by viewModel.forgetEverythingState.collectAsState()
 
     val providers = listOf(
         "Google Gemini",
@@ -109,6 +112,8 @@ fun SettingsScreen(
         "On-Device AI"
     )
 
+    var showForgetEverythingConfirm by remember { mutableStateOf(false) }
+    var forgetEverythingUnderstood by remember { mutableStateOf(false) }
     var providerDropdownExpanded by remember { mutableStateOf(false) }
     var keysSectionExpanded by remember { mutableStateOf(false) }
     var voiceSectionExpanded by remember { mutableStateOf(false) }
@@ -1482,6 +1487,48 @@ fun SettingsScreen(
                 }
             }
 
+            // ─── Privacy — Danger Zone Card (A6: forget everything) ───
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, Color.Red.copy(alpha = 0.6f), RoundedCornerShape(12.dp)),
+                    colors = CardDefaults.cardColors(containerColor = CardBackground)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "PRIVACY — DANGER ZONE",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            color = Color.Red
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Forget everything permanently erases all OpenDroid data on " +
+                                "this device: chats, memories & the knowledge graph, plans, " +
+                                "macros, routines, API keys & account tokens, your profile, " +
+                                "settings, and downloaded on-device models. The app restarts " +
+                                "as if freshly installed. This cannot be undone.",
+                            fontSize = 11.sp,
+                            color = TextSecondary
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = {
+                                forgetEverythingUnderstood = false
+                                showForgetEverythingConfirm = true
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.8f)),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Forget Everything", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
             // Copilot Endpoint Config Card (Visible only when Copilot API is selected)
             if (config.activeProvider == "Copilot API") {
                 item {
@@ -2554,6 +2601,148 @@ fun SettingsScreen(
 
     val localImportStatus by viewModel.localImportStatus.collectAsState()
 
+    // ─── Forget everything (A6): deliberate confirmation ───
+    if (showForgetEverythingConfirm) {
+        AlertDialog(
+            onDismissRequest = { showForgetEverythingConfirm = false },
+            title = { Text("Forget everything?", color = TextPrimary) },
+            text = {
+                Column {
+                    Text(
+                        text = "This permanently erases, from this device:",
+                        color = TextSecondary,
+                        fontSize = 12.sp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    listOf(
+                        "• Chats, memories & the knowledge graph",
+                        "• Plans, macros, routines & history",
+                        "• AI provider API keys & social account tokens",
+                        "• Your profile (name & date of birth)",
+                        "• All app settings",
+                        "• Downloaded on-device models & workspace files"
+                    ).forEach { line ->
+                        Text(text = line, color = TextSecondary, fontSize = 12.sp)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "This cannot be undone.",
+                        color = Color.Red,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable { forgetEverythingUnderstood = !forgetEverythingUnderstood }
+                    ) {
+                        Checkbox(
+                            checked = forgetEverythingUnderstood,
+                            onCheckedChange = { forgetEverythingUnderstood = it }
+                        )
+                        Text(
+                            text = "I understand everything above will be permanently deleted.",
+                            color = TextPrimary,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showForgetEverythingConfirm = false
+                        viewModel.forgetEverything()
+                    },
+                    enabled = forgetEverythingUnderstood,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                ) {
+                    Text("Erase everything", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showForgetEverythingConfirm = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            },
+            containerColor = CardBackground,
+            titleContentColor = TextPrimary,
+            textContentColor = TextSecondary
+        )
+    }
+
+    // ─── Forget everything (A6): live progress ───
+    if (forgetEverythingState is ForgetEverythingUiState.Running) {
+        val completedSteps = (forgetEverythingState as ForgetEverythingUiState.Running).completedSteps
+        AlertDialog(
+            onDismissRequest = { /* Non-dismissible: the wipe must not be abandoned mid-run. */ },
+            title = { Text("Erasing…", color = TextPrimary) },
+            text = {
+                Column {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color.Red,
+                        trackColor = BorderColor
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    completedSteps.forEach { step -> WipeStepRow(step) }
+                }
+            },
+            confirmButton = {},
+            containerColor = CardBackground,
+            titleContentColor = TextPrimary,
+            textContentColor = TextSecondary
+        )
+    }
+
+    // ─── Forget everything (A6): per-store report ───
+    if (forgetEverythingState is ForgetEverythingUiState.Done) {
+        val report = (forgetEverythingState as ForgetEverythingUiState.Done).report
+        AlertDialog(
+            onDismissRequest = { /* Non-dismissible: the only way out is the restart below. */ },
+            title = {
+                Text(
+                    text = if (report.fullyErased) "Everything erased" else "Wipe finished — some data remains",
+                    color = TextPrimary
+                )
+            },
+            text = {
+                Column {
+                    report.steps.forEach { step -> WipeStepRow(step) }
+                    if (!report.fullyErased) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "The items marked above could not be erased and are still on " +
+                                "this device. You can try again, or restart now and wipe again later.",
+                            color = TextSecondary,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.restartAfterWipe() },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
+                ) {
+                    Text("Restart OpenDroid", color = DarkBackground)
+                }
+            },
+            dismissButton = if (!report.fullyErased) {
+                {
+                    TextButton(onClick = { viewModel.forgetEverything() }) {
+                        Text("Try again", color = TextSecondary)
+                    }
+                }
+            } else {
+                null
+            },
+            containerColor = CardBackground,
+            titleContentColor = TextPrimary,
+            textContentColor = TextSecondary
+        )
+    }
+
     if (showAuthRequiredDialog != null) {
         AlertDialog(
             onDismissRequest = { showAuthRequiredDialog = null },
@@ -2737,6 +2926,47 @@ private fun formatBytes(bytes: Long): String {
         bytes / Math.pow(1024.0, digitGroups.toDouble()),
         units[digitGroups]
     )
+}
+
+/** One row of the A6 wipe progress/report: what was erased, or what remains and why. */
+@Composable
+private fun WipeStepRow(step: WipeStepResult) {
+    Row(
+        verticalAlignment = Alignment.Top,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp)
+    ) {
+        Icon(
+            imageVector = if (step.cleared) Icons.Default.Check else Icons.Default.Warning,
+            contentDescription = if (step.cleared) "Erased" else "Not erased",
+            tint = if (step.cleared) Color(0xFF4CAF50) else Color.Red,
+            modifier = Modifier.size(16.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Column {
+            Text(
+                text = step.title,
+                color = TextPrimary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            )
+            if (!step.cleared) {
+                Text(
+                    text = step.remainingDescription,
+                    color = Color.Red,
+                    fontSize = 11.sp
+                )
+                step.errorMessage?.let { message ->
+                    Text(
+                        text = message,
+                        color = TextSecondary,
+                        fontSize = 10.sp
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
