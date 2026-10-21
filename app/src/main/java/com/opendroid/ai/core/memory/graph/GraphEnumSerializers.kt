@@ -10,11 +10,12 @@ import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Reads the raw enum name from [decoder]. A plain `decodeString()` on the
- * streaming JSON decoder mis-reads a class-property value (it trips over
- * the key/value lexer state and throws JsonDecodingException), so for JSON
- * the value is pulled through the element tree instead — the documented
- * route for custom serializers. Non-JSON decoders keep the plain call.
+ * Reads the raw enum name from [decoder]. The value must be read exactly
+ * once per [deserialize] call: the streaming JSON decoder advances past
+ * the string token on read, so a second read lands on the following comma
+ * and throws JsonDecodingException. For JSON the value is pulled through
+ * the element tree (the documented route for custom serializers);
+ * non-JSON decoders keep the plain call.
  */
 private fun decodeEnumName(decoder: Decoder): String =
     if (decoder is JsonDecoder) {
@@ -53,9 +54,14 @@ object KnowledgeCategorySerializer : KSerializer<KnowledgeCategory> {
     override fun serialize(encoder: Encoder, value: KnowledgeCategory) =
         encoder.encodeString(value.name)
 
-    override fun deserialize(decoder: Decoder): KnowledgeCategory =
-        KnowledgeCategory.values().firstOrNull { it.name == decodeEnumName(decoder) }
+    override fun deserialize(decoder: Decoder): KnowledgeCategory {
+        // Read the token ONCE: the predicate below must not re-read the
+        // decoder per constant — the second read would hit the comma after
+        // the value and throw JsonDecodingException.
+        val name = decodeEnumName(decoder)
+        return KnowledgeCategory.values().firstOrNull { it.name == name }
             ?: KnowledgeCategory.NOTE_FACT
+    }
 }
 
 object MemoryTierSerializer : KSerializer<MemoryTier> {
@@ -65,9 +71,14 @@ object MemoryTierSerializer : KSerializer<MemoryTier> {
     override fun serialize(encoder: Encoder, value: MemoryTier) =
         encoder.encodeString(value.name)
 
-    override fun deserialize(decoder: Decoder): MemoryTier =
-        MemoryTier.values().firstOrNull { it.name == decodeEnumName(decoder) }
+    override fun deserialize(decoder: Decoder): MemoryTier {
+        // Read the token ONCE: the predicate below must not re-read the
+        // decoder per constant — the second read would hit the comma after
+        // the value and throw JsonDecodingException.
+        val name = decodeEnumName(decoder)
+        return MemoryTier.values().firstOrNull { it.name == name }
             ?: MemoryTier.LONG_TERM
+    }
 }
 
 object OriginKindSerializer : KSerializer<OriginKind> {
@@ -77,7 +88,12 @@ object OriginKindSerializer : KSerializer<OriginKind> {
     override fun serialize(encoder: Encoder, value: OriginKind) =
         encoder.encodeString(value.name)
 
-    override fun deserialize(decoder: Decoder): OriginKind =
-        OriginKind.values().firstOrNull { it.name == decodeEnumName(decoder) }
+    override fun deserialize(decoder: Decoder): OriginKind {
+        // Read the token ONCE: the predicate below must not re-read the
+        // decoder per constant — the second read would hit the comma after
+        // the value and throw JsonDecodingException.
+        val name = decodeEnumName(decoder)
+        return OriginKind.values().firstOrNull { it.name == name }
             ?: OriginKind.UNKNOWN
+    }
 }
