@@ -78,12 +78,16 @@ val LightPalette = OpenDroidColors(
     textPrimary = Color(0xFF09090B),     // Deep obsidian black
     textSecondary = Color(0xFF71717A),   // Zinc 500 slate
     accentNeonGreen = Color(0xFF0B7A44), // Signal Green marks (default preset)
-    accentGreenButton = Color(0xFF0E8A4C), // Signal Green fill
+    // #0B7A44 (not the lighter #0E8A4C) so white onAccent text on the fill
+    // meets WCAG AA: 5.41:1 instead of 4.41:1 (D8 contrast pass).
+    accentGreenButton = Color(0xFF0B7A44), // Signal Green fill
     onAccent = Color(0xFFFFFFFF),
     accentPurple = Color(0xFF0B7A44),    // Legacy alias of the accent
     accentCyan = Color(0xFF0B7A44),      // Legacy alias of the accent
     accentRed = Color(0xFFDC2626),       // Clean alert red
-    accentOrange = Color(0xFFD97706),
+    // Darkened from #D97706 (3.19:1 on white — below WCAG AA for text) to
+    // #B45309 (5.02:1): same amber hue, lower lightness (D8 contrast pass).
+    accentOrange = Color(0xFFB45309),
     isDark = false
 )
 

@@ -43,9 +43,11 @@ enum class AccentTheme(val displayName: String) {
                 onFill = Color(0xFF052418)
             )
             // The de-facto accent the UI shipped with (marks = old accentCyan).
+            // Fill deepened #0284C7 → #0369A1: white onFill on the old fill
+            // was 4.10:1 (below WCAG AA for button text); now 5.93:1 (D8).
             CYAN -> Values(
                 marks = Color(0xFF38BDF8),
-                fill = Color(0xFF0284C7),
+                fill = Color(0xFF0369A1),
                 onFill = Color(0xFFFFFFFF)
             )
             // Marks = the old accentPurple.
@@ -72,11 +74,15 @@ enum class AccentTheme(val displayName: String) {
         get() = when (this) {
             SIGNAL_GREEN -> Values(
                 marks = Color(0xFF0B7A44),
-                fill = Color(0xFF0E8A4C),
+                // Fill = marks colour (was #0E8A4C): white onFill reaches
+                // WCAG AA at 5.41:1 instead of 4.41:1 (D8 contrast pass).
+                fill = Color(0xFF0B7A44),
                 onFill = Color(0xFFFFFFFF)
             )
             CYAN -> Values(
-                marks = Color(0xFF0284C7),
+                // Marks darkened #0284C7 → #0369A1: accent text/links on
+                // white were 4.10:1; now 5.93:1 (D8 contrast pass).
+                marks = Color(0xFF0369A1),
                 fill = Color(0xFF0369A1),
                 onFill = Color(0xFFFFFFFF)
             )

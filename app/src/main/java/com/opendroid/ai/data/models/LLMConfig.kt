@@ -64,6 +64,13 @@ data class LLMConfig(
      * the platform supports it.
      */
     val useDynamicColor: Boolean = false,
+    /**
+     * Reduce motion (D8 accessibility): when true, the app's continuous
+     * animations (voice orb pulse, thinking dots, voice waveform, splash
+     * pulse) render static frames instead of looping. The system animator
+     * scale is honoured on top of this in OpenDroidTheme.
+     */
+    val reduceMotion: Boolean = false,
     val lastModelFetch: Map<String, Long> = emptyMap(), // Provider -> last fetch timestamp
     val modelCache: Map<String, List<AIModel>> = emptyMap() // Provider -> cached AIModels list
 )

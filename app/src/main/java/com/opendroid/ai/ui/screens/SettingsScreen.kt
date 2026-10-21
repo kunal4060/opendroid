@@ -66,7 +66,9 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import android.content.Context
 import android.os.Build
@@ -303,15 +305,22 @@ fun SettingsScreen(
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         
-                        // Dropdown menu trigger
+                        // Dropdown menu trigger. heightIn (not a fixed
+                        // height) so the provider name can never be clipped
+                        // at large font scales (D8).
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(56.dp)
+                                .heightIn(min = 56.dp)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(DarkBackground)
                                 .border(1.dp, BorderColor, RoundedCornerShape(8.dp))
                                 .clickable { providerDropdownExpanded = true }
+                                .semantics {
+                                    role = Role.Button
+                                    contentDescription =
+                                        "Active brain provider: ${config.activeProvider}. Tap to change"
+                                }
                                 .padding(horizontal = 16.dp),
                             contentAlignment = Alignment.CenterStart
                         ) {
@@ -2593,6 +2602,11 @@ fun SettingsScreen(
             // External automation (C7): Tasker/ADB intent API toggle + token
             item {
                 ExternalAutomationSettingsSection()
+            }
+
+            // Accessibility (D8): reduce motion toggle
+            item {
+                AccessibilitySettingsSection(viewModel = viewModel)
             }
 
             // Privacy Policy link card
