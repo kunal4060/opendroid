@@ -18,13 +18,15 @@ interface TaskHistoryDao {
      * as DENIED when it failed with an error message starting with the denial
      * marker (AuditLog.DENIED_PREFIX — the literal below must stay in sync);
      * every other failed row is FAILED. [searchPattern] is a pre-wrapped
-     * LIKE pattern (e.g. "%call%") or null for no text search.
+     * LIKE pattern (e.g. "%call%") or null for no text search; the user text
+     * inside it must be passed through [LikeEscaping.escape] first — the
+     * query matches it literally via `ESCAPE '\'` (audit-4 #6).
      */
     @Query(
         """
         SELECT * FROM task_history
         WHERE (:actionType IS NULL OR actionType = :actionType)
-          AND (:searchPattern IS NULL OR description LIKE :searchPattern OR actionType LIKE :searchPattern)
+          AND (:searchPattern IS NULL OR description LIKE :searchPattern ESCAPE '\' OR actionType LIKE :searchPattern ESCAPE '\')
           AND (
             :outcome = 'ALL'
             OR (:outcome = 'SUCCESS' AND success = 1)

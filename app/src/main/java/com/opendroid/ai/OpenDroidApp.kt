@@ -2,6 +2,7 @@ package com.opendroid.ai
 
 import android.app.Application
 import android.util.Log
+import com.opendroid.ai.core.backup.BackupManager
 import com.opendroid.ai.core.crash.CrashLogRecorder
 import com.opendroid.ai.core.crash.DeviceMetadata
 import com.opendroid.ai.core.crash.OpenDroidCrashHandler
@@ -82,6 +83,19 @@ class OpenDroidApp : Application() {
         appScope.launch {
             try {
                 memoryManager.cleanPoisonedMemories()
+            } catch (e: Exception) {
+                // Silently ignore cleanup errors to not block app startup
+            }
+        }
+
+        // Audit-4 #3: a restore inspection leaves the decrypted payload as
+        // a plaintext temp file in cacheDir, tracked only in memory — if
+        // the previous process died before it was applied or discarded,
+        // the file (credentials included, when opted in) is orphaned. No
+        // restore can be pending at startup, so sweep any leftovers.
+        appScope.launch {
+            try {
+                BackupManager.sweepOrphanedTempFiles(cacheDir)
             } catch (e: Exception) {
                 // Silently ignore cleanup errors to not block app startup
             }

@@ -207,7 +207,11 @@ class ConversationRepository @Inject constructor(
     private fun ConversationEntity.toChatMessage() = ChatMessage(
         id = id,
         text = text,
-        sender = ChatMessage.Sender.valueOf(sender),
+        // Tolerate sender strings written by other builds (e.g. restored
+        // from a hand-edited backup): an unknown value degrades to AGENT
+        // instead of throwing on every conversations emission (audit-4 #1).
+        sender = runCatching { ChatMessage.Sender.valueOf(sender) }
+            .getOrDefault(ChatMessage.Sender.AGENT),
         timestamp = timestamp,
         modelBadge = modelBadge,
         contactPickerData = contactPickerData,

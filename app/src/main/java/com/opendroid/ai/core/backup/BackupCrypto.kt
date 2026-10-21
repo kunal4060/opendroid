@@ -90,6 +90,15 @@ object BackupCrypto {
     /** OWASP's current PBKDF2-HmacSHA256 work factor for password-based keys. */
     const val DEFAULT_ITERATIONS = 600_000
 
+    /**
+     * Highest header-supplied iteration count [decrypt] will honour. The
+     * header is attacker-controlled (backups are opened from untrusted
+     * sources), so an unbounded value would send PBKDF2 into an hours-long
+     * derivation on open — a hang/DoS (audit-4 #4). Well above any work
+     * factor this app writes ([DEFAULT_ITERATIONS]) or plausibly will.
+     */
+    private const val MAX_KDF_ITERATIONS = 2_000_000
+
     /** Shortest passphrase the backup flow accepts (enforced again in the UI). */
     const val MIN_PASSPHRASE_LENGTH = 10
 
@@ -124,6 +133,7 @@ object BackupCrypto {
             "Backup password must be at least $MIN_PASSPHRASE_LENGTH characters."
         }
         require(iterations > 0) { "KDF iterations must be positive." }
+        require(iterations <= MAX_KDF_ITERATIONS) { "KDF iterations exceed the supported maximum." }
         val random = SecureRandom()
         val salt = ByteArray(SALT_BYTES).also { random.nextBytes(it) }
         val iv = ByteArray(IV_BYTES).also { random.nextBytes(it) }
@@ -211,10 +221,14 @@ object BackupCrypto {
         val header = readHeader(input)
         val salt = decodeBase64(header.saltBase64, "salt")
         val iv = decodeBase64(header.ivBase64, "IV")
-        if (salt.isEmpty() || iv.isEmpty()) {
-            throw BackupCryptoException.InvalidFormat("Backup header is missing its salt or IV.")
+        // The header is untrusted input: enforce the exact salt/IV sizes
+        // encrypt() writes, and cap the KDF work factor before deriving —
+        // otherwise a crafted file hangs the open for hours or fails with
+        // a raw provider exception outside the typed taxonomy (audit-4 #4).
+        if (salt.size != SALT_BYTES || iv.size != IV_BYTES) {
+            throw BackupCryptoException.InvalidFormat("Backup header has a damaged salt or IV.")
         }
-        if (header.kdfIterations <= 0) {
+        if (header.kdfIterations <= 0 || header.kdfIterations > MAX_KDF_ITERATIONS) {
             throw BackupCryptoException.InvalidFormat("Backup header has invalid KDF parameters.")
         }
         val key = deriveKey(passphrase, salt, header.kdfIterations)

@@ -1,5 +1,6 @@
 package com.opendroid.ai.data.repository
 
+import com.opendroid.ai.data.db.dao.LikeEscaping
 import com.opendroid.ai.data.db.dao.MemoryDao
 import com.opendroid.ai.data.db.dao.TaskHistoryDao
 import com.opendroid.ai.data.db.dao.MacroDao
@@ -26,13 +27,25 @@ class MemoryRepository @Inject constructor(
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
+    /**
+     * Parses a stored memory type, tolerating values written by other builds
+     * (e.g. restored from a hand-edited backup): an unknown type degrades to
+     * [MemoryType.SEMANTIC] instead of throwing on every emission of the
+     * memory flows (audit-4 #1). The same safe-parse pattern SocialRepository
+     * already uses for its enums; BackupManager.validatePayload also rejects
+     * such backups up front — this is the defence in depth for rows already
+     * in the DB.
+     */
+    private fun parseMemoryType(raw: String): MemoryType =
+        runCatching { MemoryType.valueOf(raw) }.getOrDefault(MemoryType.SEMANTIC)
+
     // Memory operations
     val allMemories: Flow<List<Memory>> = memoryDao.getAllMemoriesFlow().map { entities ->
         entities.map { entity ->
             Memory(
                 key = entity.key,
                 value = entity.value,
-                type = MemoryType.valueOf(entity.type),
+                type = parseMemoryType(entity.type),
                 timestamp = entity.timestamp
             )
         }
@@ -43,7 +56,7 @@ class MemoryRepository @Inject constructor(
             Memory(
                 key = entity.key,
                 value = entity.value,
-                type = MemoryType.valueOf(entity.type),
+                type = parseMemoryType(entity.type),
                 timestamp = entity.timestamp
             )
         }
@@ -54,7 +67,7 @@ class MemoryRepository @Inject constructor(
             Memory(
                 key = entity.key,
                 value = entity.value,
-                type = MemoryType.valueOf(entity.type),
+                type = parseMemoryType(entity.type),
                 timestamp = entity.timestamp
             )
         }
@@ -80,11 +93,14 @@ class MemoryRepository @Inject constructor(
     }
 
     suspend fun getMemoriesByKeyPrefix(prefix: String): List<Memory> {
-        return memoryDao.getMemoriesByKeyPrefix(prefix).map { entity ->
+        // Literal prefix match: escape LIKE metacharacters (every real
+        // prefix contains underscores) — the DAO declares ESCAPE '\'
+        // (audit-4 #5).
+        return memoryDao.getMemoriesByKeyPrefix(LikeEscaping.escape(prefix)).map { entity ->
             Memory(
                 key = entity.key,
                 value = entity.value,
-                type = MemoryType.valueOf(entity.type),
+                type = parseMemoryType(entity.type),
                 timestamp = entity.timestamp
             )
         }

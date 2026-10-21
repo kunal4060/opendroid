@@ -71,9 +71,19 @@ class ModelRepository @Inject constructor(
     private suspend fun initModelsInDatabase() {
         initMutex.withLock {
             if (isInitialized) return@withLock
+            // The whole seeding body runs under the lock and the flag is
+            // set only after it completes (audit-4 #7). Previously the flag
+            // was set up front and the body ran outside the lock, so the
+            // init{} and allModelsFlow.onStart callers raced the
+            // verify/repair + insert loop against itself — and, the guard
+            // being a separate withLock, its return@withLock exited only
+            // that lambda, so the body in fact re-ran on every call.
+            seedModelCatalog()
             isInitialized = true
         }
+    }
 
+    private suspend fun seedModelCatalog() {
         val registeredModels = OnDeviceModelRegistry.liteRTOnly
         registeredModels.forEach { spec ->
             val existing = modelDao.getModelById(spec.id)
