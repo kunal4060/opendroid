@@ -173,7 +173,9 @@ class ModelFetcher @Inject constructor(
                             "Set the endpoint URL to load models from your OpenAI-compatible server."
                         )
                     }
-                    val baseUrl = UrlUtils.formatBaseUrl(customUrl, "")
+                    // The API key is sent to this endpoint; scheme-less
+                    // input must not downgrade it to plaintext http.
+                    val baseUrl = UrlUtils.formatBaseUrl(customUrl, "", defaultScheme = "https")
                     ModelFetchOutcome.Success(openAiStyle(modelsUrl(baseUrl), apiKey, provider))
                 }
 

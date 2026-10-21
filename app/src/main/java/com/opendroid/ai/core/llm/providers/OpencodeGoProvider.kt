@@ -55,7 +55,8 @@ class OpencodeGoProvider @Inject constructor(
 
         val configuredEndpoint = request.providerConfig?.endpoint?.takeIf(String::isNotBlank)
             ?: config.customEndpoints[name]?.takeIf(String::isNotBlank)
-        val baseUrl = UrlUtils.formatBaseUrl(configuredEndpoint, OpencodeGoProtocol.DEFAULT_BASE_URL)
+        // Credentialed gateway endpoint: scheme-less input defaults to https.
+        val baseUrl = UrlUtils.formatBaseUrl(configuredEndpoint, OpencodeGoProtocol.DEFAULT_BASE_URL, defaultScheme = "https")
         val selectedModel = request.model?.takeIf(String::isNotBlank)
             ?: OpencodeGoProtocol.DEFAULT_MODEL
         val startTime = System.currentTimeMillis()

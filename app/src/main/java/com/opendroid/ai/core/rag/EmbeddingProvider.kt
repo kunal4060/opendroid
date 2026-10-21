@@ -98,7 +98,9 @@ object EmbeddingCatalog {
                 if (raw.isNullOrBlank()) {
                     null
                 } else {
-                    val base = UrlUtils.formatBaseUrl(raw, "")
+                    // May carry the provider's API key; scheme-less input
+                    // defaults to https, never plaintext http.
+                    val base = UrlUtils.formatBaseUrl(raw, "", defaultScheme = "https")
                     if (base.isEmpty()) null else Endpoint(
                         providerName, "$base/embeddings",
                         "text-embedding-3-small", key(providerName), keyRequired = false

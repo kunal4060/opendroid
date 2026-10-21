@@ -38,9 +38,11 @@ class CustomOpenAIProvider @Inject constructor(
     override suspend fun complete(request: LLMRequest): LLMResponse {
         val config = settingsRepository.llmConfig.first()
         val apiKey = request.providerConfig?.apiKey?.takeIf { it.isNotBlank() } ?: config.apiKeys[name] ?: ""
+        // Credentialed cloud endpoint: a scheme-less entry must default to
+        // https, never plaintext http (the Bearer key rides on this URL).
         val baseUrl = request.providerConfig?.endpoint?.takeIf { it.isNotBlank() }
-            ?.let { UrlUtils.formatBaseUrl(it, "https://api.openai.com/v1") }
-            ?: UrlUtils.formatBaseUrl(config.customEndpoints[name] ?: "", "https://api.openai.com/v1")
+            ?.let { UrlUtils.formatBaseUrl(it, "https://api.openai.com/v1", defaultScheme = "https") }
+            ?: UrlUtils.formatBaseUrl(config.customEndpoints[name] ?: "", "https://api.openai.com/v1", defaultScheme = "https")
 
         val startTime = System.currentTimeMillis()
         val selectedModel = request.model?.takeIf { it.isNotBlank() } ?: "gpt-4o"
