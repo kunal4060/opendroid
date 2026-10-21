@@ -53,10 +53,22 @@ open class SocialRepository @Inject constructor(
         // Cascade (audit-4 #9): the account's own content rows go with the
         // account — previously only the account row was deleted, leaving
         // its posts, interactions and analytics snapshots behind forever.
-        // (Comments carry no accountId — they are keyed by platform post
-        // id — so they cannot be attributed to an account in this schema.)
+        // Comments carry no accountId, so they are cascaded through the
+        // account's posts (audit2-4 #2): a comment is keyed by the
+        // platform post id it was fetched under, so the comments of every
+        // post this account owns are deleted before the posts themselves.
+        // RESIDUAL: comments whose postId is null — the sync path fetches
+        // comments with a null post id — cannot be attributed to any post
+        // or account and survive; attributing them needs a schema
+        // migration that adds an account column to social_comments.
         // The account's OAuth credentials are removed by the caller,
         // SocialManager.revokeAccess, before this runs.
+        val postKeys = postDao.getPostsByAccountId(id)
+            .flatMap { post -> listOfNotNull(post.platformPostId, post.id) }
+            .distinct()
+        if (postKeys.isNotEmpty()) {
+            commentDao.deleteByPostIds(postKeys)
+        }
         postDao.deleteByAccountId(id)
         interactionDao.deleteByAccountId(id)
         analyticsDao.deleteByAccountId(id)
@@ -111,6 +123,15 @@ open class SocialRepository @Inject constructor(
     }
 
     suspend fun deletePost(id: String) {
+        // The post's comments go with it (audit2-4 #2): comments are
+        // keyed by platform post id, so match on the post's platform id
+        // and its local id. (Comments with a null postId cannot be
+        // attributed to this post — same residual as deleteAccount.)
+        val post = postDao.getPostById(id)
+        val postKeys = listOfNotNull(post?.platformPostId, post?.id).distinct()
+        if (postKeys.isNotEmpty()) {
+            commentDao.deleteByPostIds(postKeys)
+        }
         postDao.deleteById(id)
     }
 

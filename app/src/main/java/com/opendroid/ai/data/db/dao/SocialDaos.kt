@@ -60,6 +60,9 @@ interface SocialPostDao {
     @Query("SELECT * FROM social_posts WHERE id = :id")
     suspend fun getPostById(id: String): SocialPostEntity?
 
+    @Query("SELECT * FROM social_posts WHERE accountId = :accountId")
+    suspend fun getPostsByAccountId(accountId: String): List<SocialPostEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdate(post: SocialPostEntity)
 
@@ -119,6 +122,9 @@ interface SocialCommentDao {
 
     @Query("DELETE FROM social_comments WHERE id = :id")
     suspend fun deleteById(id: String)
+
+    @Query("DELETE FROM social_comments WHERE postId IN (:postIds)")
+    suspend fun deleteByPostIds(postIds: List<String>)
 }
 
 @Dao
