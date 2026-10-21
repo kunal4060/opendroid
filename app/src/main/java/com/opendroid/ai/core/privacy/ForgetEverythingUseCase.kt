@@ -175,7 +175,7 @@ class ForgetEverythingUseCase @Inject constructor(
             return
         }
         val cancelState = workManager.cancelAllWork().result.get(CANCEL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        check(cancelState == Operation.State.SUCCESS) { "Cancelling background work did not complete" }
+        check(cancelState is Operation.State.SUCCESS) { "Cancelling background work did not complete" }
         workManager.pruneWork()
     }
 
