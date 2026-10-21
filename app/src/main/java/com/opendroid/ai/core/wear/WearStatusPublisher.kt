@@ -106,16 +106,20 @@ class WearStatusPublisher @Inject constructor(
                         publishedApprovalPlanId = null
                     }
                 } else if (publishedApprovalPlanId != proposed.plan.planId) {
-                    val payload = pendingApprovalPayload(proposed.plan)
-                    val payloadJson = json.encodeToString(payload)
                     // Latch the plan id ONLY on a confirmed publish: a
                     // transient DataClient failure must not silently cost
                     // the user the wrist-approval card for this plan
                     // (finding #5). agentState will not re-emit for an
                     // unchanged plan, so retry here while this plan stays
                     // proposed — collectLatest cancels the wait as soon as
-                    // the gate state changes.
+                    // the gate state changes. The payload is rebuilt on
+                    // EVERY attempt: pendingApprovalPayload stamps the
+                    // approval expiry at construction, so reusing one
+                    // pre-built payload across a multi-minute outage
+                    // would publish a card whose TTL the outage already
+                    // consumed (finding #8).
                     while (publishedApprovalPlanId != proposed.plan.planId) {
+                        val payloadJson = json.encodeToString(pendingApprovalPayload(proposed.plan))
                         if (putDataItem(WearProtocol.PATH_PENDING_APPROVAL, payloadJson, urgent = true)) {
                             publishedApprovalPlanId = proposed.plan.planId
                         } else {
