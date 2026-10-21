@@ -38,7 +38,8 @@ import com.opendroid.ai.core.assistant.AssistantRoleAction
 import com.opendroid.ai.core.assistant.AssistantRoleManager
 import com.opendroid.ai.core.assistant.AssistantRolePolicy
 import com.opendroid.ai.core.assistant.AssistantRoleStatus
-import com.opendroid.ai.ui.theme.AccentCyan
+import com.opendroid.ai.ui.theme.AccentGreenButton
+import com.opendroid.ai.ui.theme.AccentNeonGreen
 import com.opendroid.ai.ui.theme.BorderColor
 import com.opendroid.ai.ui.theme.CardBackground
 import com.opendroid.ai.ui.theme.TextPrimary
@@ -96,7 +97,7 @@ fun AssistantSettingsSection() {
                 Icon(
                     imageVector = Icons.Default.Assistant,
                     contentDescription = "Default assistant",
-                    tint = AccentCyan
+                    tint = AccentNeonGreen
                 )
                 Column(modifier = Modifier.padding(start = 12.dp)) {
                     Text(
@@ -138,7 +139,7 @@ fun AssistantSettingsSection() {
                                 context.startActivity(roleManager.createFallbackSettingsIntent())
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton)
                     ) {
                         Text("Make OpenDroid my assistant")
                     }
@@ -150,7 +151,7 @@ fun AssistantSettingsSection() {
                             context.startActivity(roleManager.createFallbackSettingsIntent())
                         }
                     ) {
-                        Text("Open system assistant settings", color = AccentCyan)
+                        Text("Open system assistant settings", color = AccentNeonGreen)
                     }
                 }
                 AssistantRoleAction.NONE -> {
@@ -160,7 +161,7 @@ fun AssistantSettingsSection() {
                             context.startActivity(roleManager.createFallbackSettingsIntent())
                         }
                     ) {
-                        Text("Change in system settings", color = AccentCyan)
+                        Text("Change in system settings", color = AccentNeonGreen)
                     }
                 }
             }

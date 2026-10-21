@@ -47,7 +47,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.opendroid.ai.core.mcp.McpServerState
 import com.opendroid.ai.core.mcp.McpTransportKind
-import com.opendroid.ai.ui.theme.AccentCyan
+import com.opendroid.ai.ui.theme.AppTheme
 import com.opendroid.ai.ui.theme.AccentRed
 import com.opendroid.ai.ui.theme.BorderColor
 import com.opendroid.ai.ui.theme.CardBackground
@@ -256,7 +256,7 @@ private fun McpServerRow(
                 McpServerState.Connecting -> "Connecting…" to TextPrimary
                 is McpServerState.Connected ->
                     "Connected · ${state.toolCount} tool(s)" +
-                        (state.serverInfo?.let { " · $it" } ?: "") to AccentCyan
+                        (state.serverInfo?.let { " · $it" } ?: "") to AppTheme.colors.success
                 is McpServerState.Error -> "Error: ${state.message}" to AccentRed
             }
             if (server.state == McpServerState.Connecting) {

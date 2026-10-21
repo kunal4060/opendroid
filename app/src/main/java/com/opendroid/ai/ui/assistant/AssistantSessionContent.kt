@@ -29,7 +29,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.opendroid.ai.core.agent.AgentState
 import com.opendroid.ai.core.assistant.AssistantSessionController
-import com.opendroid.ai.ui.theme.AccentCyan
+import com.opendroid.ai.ui.theme.AccentGreenButton
+import com.opendroid.ai.ui.theme.AccentNeonGreen
 import com.opendroid.ai.ui.theme.AccentRed
 import com.opendroid.ai.ui.theme.BorderColor
 import com.opendroid.ai.ui.theme.CardBackground
@@ -87,7 +88,7 @@ fun AssistantSessionContent(
             Text(
                 text = statusText,
                 fontSize = 14.sp,
-                color = AccentCyan
+                color = AccentNeonGreen
             )
 
             if (partialTranscript.isNotBlank()) {
@@ -133,7 +134,7 @@ fun AssistantSessionContent(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
                             onClick = { controller.approvePlan() },
-                            colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton)
                         ) {
                             Text("Approve")
                         }
@@ -186,7 +187,7 @@ fun AssistantSessionContent(
                             typedCommand = ""
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton)
                 ) {
                     Text("Send")
                 }

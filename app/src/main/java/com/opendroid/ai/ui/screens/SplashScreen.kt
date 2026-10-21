@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -30,14 +29,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.opendroid.ai.R
+import com.opendroid.ai.ui.theme.AccentNeonGreen
+import com.opendroid.ai.ui.theme.BorderColor
 import com.opendroid.ai.ui.theme.DarkBackground
 import com.opendroid.ai.ui.theme.DarkSurface
 import com.opendroid.ai.ui.theme.LocalReduceMotion
@@ -104,14 +101,7 @@ fun SplashScreen(onNavigateNext: () -> Unit) {
                 modifier = Modifier
                     .size(150.dp)
                     .clip(CircleShape)
-                    .background(
-                        Brush.radialGradient(
-                            colors = listOf(
-                                TextPrimary.copy(alpha = 0.08f),
-                                Color.Transparent
-                            )
-                        )
-                    ),
+                    .background(AccentNeonGreen.copy(alpha = 0.08f)),
                 contentAlignment = Alignment.Center
             ) {
                 Image(
@@ -125,9 +115,7 @@ fun SplashScreen(onNavigateNext: () -> Unit) {
 
             Text(
                 text = "OPENDROID",
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.SansSerif,
+                style = androidx.compose.material3.MaterialTheme.typography.headlineLarge,
                 color = TextPrimary,
                 letterSpacing = 6.sp
             )
@@ -136,9 +124,7 @@ fun SplashScreen(onNavigateNext: () -> Unit) {
 
             Text(
                 text = "Autonomous On-Device Intelligence",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Normal,
-                fontFamily = FontFamily.SansSerif,
+                style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
                 color = TextSecondary,
                 letterSpacing = 1.sp
             )
@@ -148,9 +134,9 @@ fun SplashScreen(onNavigateNext: () -> Unit) {
             // Premium Status Pill
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
+                    .clip(CircleShape)
                     .background(DarkSurface)
-                    .border(1.dp, TextPrimary.copy(alpha = 0.12f), RoundedCornerShape(20.dp))
+                    .border(1.dp, BorderColor, CircleShape)
                     .padding(horizontal = 16.dp, vertical = 7.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -158,14 +144,12 @@ fun SplashScreen(onNavigateNext: () -> Unit) {
                         modifier = Modifier
                             .size(7.dp)
                             .clip(CircleShape)
-                            .background(TextPrimary.copy(alpha = dotPulse.value))
+                            .background(AccentNeonGreen.copy(alpha = dotPulse.value))
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "SYSTEM ONLINE",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        fontFamily = FontFamily.Monospace,
+                        style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
                         color = TextPrimary,
                         letterSpacing = 2.sp
                     )

@@ -14,7 +14,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,11 +44,8 @@ fun BenchmarkScreen(
                 title = {
                     Text(
                         text = "BRAIN BENCHMARK",
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary,
-                        fontSize = 18.sp,
-                        letterSpacing = 2.sp
+                        style = MaterialTheme.typography.titleLarge,
+                        color = TextPrimary
                     )
                 },
                 navigationIcon = {
@@ -66,10 +62,10 @@ fun BenchmarkScreen(
                         Button(
                             onClick = { showConfirm = true },
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = TextPrimary,
-                                contentColor = DarkBackground
+                                containerColor = AccentGreenButton,
+                                contentColor = OnAccent
                             ),
-                            shape = RoundedCornerShape(8.dp),
+                            shape = androidx.compose.foundation.shape.CircleShape,
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                         ) {
                             Icon(
@@ -125,16 +121,14 @@ fun BenchmarkScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
+                        .border(1.dp, BorderColor, RoundedCornerShape(18.dp)),
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "DIAGNOSTIC REPORT SUMMARY",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            color = AccentCyan
+                            style = MaterialTheme.typography.titleSmall,
+                            color = AccentNeonGreen
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
@@ -182,16 +176,16 @@ fun ProviderConnectionRow(
             ?: "Not tested"
     }
     val barColor = when (state) {
-        is ConnectionTestState.Connected -> AccentCyan
+        is ConnectionTestState.Connected -> AppTheme.colors.success
         is ConnectionTestState.Failed, is ConnectionTestState.ConfigMissing -> AccentRed
-        is ConnectionTestState.Testing -> AccentCyan
+        is ConnectionTestState.Testing -> AccentNeonGreen
         else -> BorderColor
     }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
+            .border(1.dp, BorderColor, RoundedCornerShape(18.dp)),
         colors = CardDefaults.cardColors(containerColor = CardBackground)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -202,8 +196,7 @@ fun ProviderConnectionRow(
             ) {
                 Text(
                     text = providerName,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleSmall,
                     color = TextPrimary
                 )
                 TextButton(onClick = onTest) {
@@ -213,9 +206,9 @@ fun ProviderConnectionRow(
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = statusText,
-                fontSize = 10.sp,
+                fontSize = 12.sp,
                 color = TextSecondary,
-                fontFamily = FontFamily.Monospace
+                fontFamily = JetBrainsMonoFamily
             )
             Spacer(modifier = Modifier.height(10.dp))
             Box(

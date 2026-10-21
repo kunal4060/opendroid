@@ -36,7 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.opendroid.ai.core.research.ResearchProviderKind
-import com.opendroid.ai.ui.theme.AccentCyan
+import com.opendroid.ai.ui.theme.AppTheme
 import com.opendroid.ai.ui.theme.AccentRed
 import com.opendroid.ai.ui.theme.BorderColor
 import com.opendroid.ai.ui.theme.CardBackground
@@ -215,7 +215,7 @@ fun ResearchSettingsSection(
                 Text(
                     text = "Ready — turn on Research in a chat, or ask the agent to research something.",
                     fontSize = 12.sp,
-                    color = AccentCyan
+                    color = AppTheme.colors.success
                 )
             }
         }

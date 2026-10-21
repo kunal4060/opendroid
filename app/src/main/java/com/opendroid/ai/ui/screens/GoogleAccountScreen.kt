@@ -76,7 +76,8 @@ import com.opendroid.ai.core.google.CalendarEventSource
 import com.opendroid.ai.core.google.GoogleCalendarEvent
 import com.opendroid.ai.core.google.GoogleScopes
 import com.opendroid.ai.core.google.NewCalendarEvent
-import com.opendroid.ai.ui.theme.AccentCyan
+import com.opendroid.ai.ui.theme.AccentGreenButton
+import com.opendroid.ai.ui.theme.AccentNeonGreen
 import com.opendroid.ai.ui.theme.AccentOrange
 import com.opendroid.ai.ui.theme.AccentRed
 import com.opendroid.ai.ui.theme.BorderColor
@@ -233,7 +234,7 @@ fun GoogleAccountScreen(
             if (state.loading) {
                 item {
                     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = AccentCyan, modifier = Modifier.size(28.dp))
+                        CircularProgressIndicator(color = AccentNeonGreen, modifier = Modifier.size(28.dp))
                     }
                 }
             }
@@ -262,7 +263,7 @@ fun GoogleAccountScreen(
                         onClick = {
                             calendarPermissionLauncher.launch(android.Manifest.permission.READ_CALENDAR)
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton)
                     ) {
                         Text("Grant calendar permission", color = DarkBackground)
                     }
@@ -291,9 +292,9 @@ fun GoogleAccountScreen(
                         onClick = { showCreateEvent = true },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(imageVector = Icons.Default.Add, contentDescription = null, tint = AccentCyan)
+                        Icon(imageVector = Icons.Default.Add, contentDescription = null, tint = AccentNeonGreen)
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("New Google Calendar event", color = AccentCyan)
+                        Text("New Google Calendar event", color = AccentNeonGreen)
                     }
                 }
             }
@@ -341,7 +342,7 @@ fun GoogleAccountSettingsCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .border(1.dp, AccentCyan.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+            .border(1.dp, AccentNeonGreen.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
             .clickable { onClick() },
         colors = CardDefaults.cardColors(containerColor = CardBackground)
     ) {
@@ -354,7 +355,7 @@ fun GoogleAccountSettingsCard(
             Icon(
                 imageVector = Icons.Default.AccountCircle,
                 contentDescription = "Google account",
-                tint = AccentCyan,
+                tint = AccentNeonGreen,
                 modifier = Modifier.size(24.dp)
             )
             Spacer(modifier = Modifier.width(12.dp))
@@ -363,7 +364,7 @@ fun GoogleAccountSettingsCard(
                     text = "GOOGLE ACCOUNT",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    color = AccentCyan,
+                    color = AccentNeonGreen,
                     fontFamily = FontFamily.Monospace,
                     letterSpacing = 1.sp
                 )
@@ -460,7 +461,7 @@ private fun GoogleConnectCard(loading: Boolean, onConnect: () -> Unit) {
             Button(
                 onClick = onConnect,
                 enabled = !loading,
-                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+                colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Connect Google account", color = DarkBackground, fontWeight = FontWeight.Bold)
@@ -474,7 +475,7 @@ private fun GoogleAccountCard(state: GoogleUiState, onDisconnect: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, AccentCyan.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
+            .border(1.dp, AccentNeonGreen.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
         colors = CardDefaults.cardColors(containerColor = CardBackground)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -482,7 +483,7 @@ private fun GoogleAccountCard(state: GoogleUiState, onDisconnect: () -> Unit) {
                 Icon(
                     imageVector = Icons.Default.AccountCircle,
                     contentDescription = null,
-                    tint = AccentCyan,
+                    tint = AccentNeonGreen,
                     modifier = Modifier.size(28.dp)
                 )
                 Spacer(modifier = Modifier.width(10.dp))
@@ -586,7 +587,7 @@ private fun GoogleSectionHeader(
     sourceLabel: String?
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(imageVector = icon, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(20.dp))
+        Icon(imageVector = icon, contentDescription = null, tint = AccentNeonGreen, modifier = Modifier.size(20.dp))
         Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = title,
@@ -602,11 +603,11 @@ private fun GoogleSectionHeader(
                 text = sourceLabel,
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
-                color = AccentCyan,
+                color = AccentNeonGreen,
                 fontFamily = FontFamily.Monospace,
                 modifier = Modifier
                     .clip(RoundedCornerShape(4.dp))
-                    .background(AccentCyan.copy(alpha = 0.12f))
+                    .background(AccentNeonGreen.copy(alpha = 0.12f))
                     .padding(horizontal = 6.dp, vertical = 2.dp)
             )
         }
@@ -659,7 +660,7 @@ private fun GoogleEventCard(event: GoogleCalendarEvent) {
                     timeFormat.format(Date(event.startMillis)) + " – " +
                     timeFormat.format(Date(event.endMillis))
             }
-            Text(text = whenText, fontSize = 12.sp, color = AccentCyan, fontFamily = FontFamily.Monospace)
+            Text(text = whenText, fontSize = 12.sp, color = AccentNeonGreen, fontFamily = FontFamily.Monospace)
             event.location?.takeIf { it.isNotBlank() }?.let {
                 Text(text = it, fontSize = 12.sp, color = TextSecondary, modifier = Modifier.padding(top = 2.dp))
             }
@@ -703,7 +704,7 @@ private fun GoogleMailSection(
                 Button(
                     onClick = onEnableMail,
                     enabled = !state.loading,
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Enable Gmail access (read-only)", color = DarkBackground, fontWeight = FontWeight.Bold)
@@ -761,7 +762,7 @@ private fun GoogleMailSection(
                         Button(
                             onClick = { onSearch(query) },
                             enabled = !state.loading,
-                            colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Search,
@@ -881,13 +882,13 @@ private fun CreateGoogleEventDialog(
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 TextButton(onClick = { picker = "date" }) {
-                    Text("Date: $dateLabel", color = AccentCyan)
+                    Text("Date: $dateLabel", color = AccentNeonGreen)
                 }
                 TextButton(onClick = { picker = "start" }) {
-                    Text("Starts: %02d:%02d".format(startHour, startMinute), color = AccentCyan)
+                    Text("Starts: %02d:%02d".format(startHour, startMinute), color = AccentNeonGreen)
                 }
                 TextButton(onClick = { picker = "end" }) {
-                    Text("Ends: %02d:%02d".format(endHour, endMinute), color = AccentCyan)
+                    Text("Ends: %02d:%02d".format(endHour, endMinute), color = AccentNeonGreen)
                 }
             }
         },
@@ -910,7 +911,7 @@ private fun CreateGoogleEventDialog(
                     )
                 },
                 enabled = title.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton)
             ) {
                 Text("Create", color = DarkBackground)
             }
@@ -929,7 +930,7 @@ private fun CreateGoogleEventDialog(
                     TextButton(onClick = {
                         datePickerState.selectedDateMillis?.let { dateMillis = it }
                         picker = null
-                    }) { Text("OK", color = AccentCyan) }
+                    }) { Text("OK", color = AccentNeonGreen) }
                 },
                 dismissButton = {
                     TextButton(onClick = { picker = null }) { Text("Cancel", color = TextSecondary) }
@@ -960,7 +961,7 @@ private fun CreateGoogleEventDialog(
                             endMinute = timePickerState.minute
                         }
                         picker = null
-                    }) { Text("OK", color = AccentCyan) }
+                    }) { Text("OK", color = AccentNeonGreen) }
                 },
                 dismissButton = {
                     TextButton(onClick = { picker = null }) { Text("Cancel", color = TextSecondary) }

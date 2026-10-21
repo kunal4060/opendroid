@@ -18,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Share
@@ -26,13 +27,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.opendroid.ai.core.crash.CrashLogRecord
 import com.opendroid.ai.ui.theme.AppTheme
+import com.opendroid.ai.ui.theme.JetBrainsMonoFamily
 import com.opendroid.ai.ui.theme.OpenDroidColors
 import com.opendroid.ai.ui.viewmodel.CrashLogViewModel
 import java.text.SimpleDateFormat
@@ -149,7 +150,19 @@ fun CrashLogScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("✅", fontSize = 48.sp)
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .background(themeColors.accentContainer, RoundedCornerShape(32.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = themeColors.success,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
                         "No crashes recorded",
@@ -202,9 +215,9 @@ private fun CrashCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, themeColors.accentRed.copy(alpha = 0.3f), RoundedCornerShape(14.dp))
+            .border(1.dp, themeColors.accentRed.copy(alpha = 0.3f), RoundedCornerShape(18.dp))
             .clickable { onToggle() },
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = themeColors.cardBackground)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -217,7 +230,7 @@ private fun CrashCard(
                     text = crash.exceptionClass.substringAfterLast('.'),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = JetBrainsMonoFamily,
                     color = themeColors.accentRed,
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
@@ -256,7 +269,7 @@ private fun CrashCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(
-                                themeColors.background.copy(alpha = 0.6f),
+                                themeColors.surfaceSunken,
                                 RoundedCornerShape(8.dp)
                             )
                             .horizontalScroll(rememberScrollState())
@@ -265,7 +278,7 @@ private fun CrashCard(
                         Text(
                             text = crash.stackTrace,
                             fontSize = 10.sp,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = JetBrainsMonoFamily,
                             color = themeColors.textSecondary
                         )
                     }
@@ -276,20 +289,20 @@ private fun CrashCard(
                                 Icons.Default.Share,
                                 contentDescription = null,
                                 modifier = Modifier.size(16.dp),
-                                tint = themeColors.accentCyan
+                                tint = themeColors.accentNeonGreen
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Share", fontSize = 13.sp, color = themeColors.accentCyan)
+                            Text("Share", fontSize = 13.sp, color = themeColors.accentNeonGreen)
                         }
                         TextButton(onClick = onCopy) {
                             Icon(
                                 Icons.Default.ContentCopy,
                                 contentDescription = null,
                                 modifier = Modifier.size(16.dp),
-                                tint = themeColors.accentCyan
+                                tint = themeColors.accentNeonGreen
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Copy", fontSize = 13.sp, color = themeColors.accentCyan)
+                            Text("Copy", fontSize = 13.sp, color = themeColors.accentNeonGreen)
                         }
                     }
                 }

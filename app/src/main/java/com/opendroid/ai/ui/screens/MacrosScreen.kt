@@ -28,7 +28,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -149,11 +148,8 @@ fun MacrosScreen(
                 title = {
                     Text(
                         text = "MACRO ENGINE",
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary,
-                        fontSize = 20.sp,
-                        letterSpacing = 2.sp
+                        style = MaterialTheme.typography.titleLarge,
+                        color = TextPrimary
                     )
                 },
                 actions = {
@@ -195,7 +191,7 @@ fun MacrosScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, AccentCyan.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                        .border(1.dp, AccentNeonGreen.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
                         .clickable { onNavigateToRoutines() },
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
@@ -205,15 +201,26 @@ fun MacrosScreen(
                             .padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("⚡", fontSize = 24.sp)
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(androidx.compose.foundation.shape.CircleShape)
+                                .background(AppTheme.colors.accentContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Bolt,
+                                contentDescription = null,
+                                tint = AppTheme.colors.onAccentContainer,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "HABIT & ROUTINE DETECTION",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace,
-                                color = AccentCyan
+                                style = MaterialTheme.typography.titleSmall,
+                                color = AccentNeonGreen
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
@@ -226,7 +233,7 @@ fun MacrosScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                             contentDescription = "View Routines",
-                            tint = AccentCyan
+                            tint = AccentNeonGreen
                         )
                     }
                 }
@@ -237,7 +244,7 @@ fun MacrosScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, AccentCyan.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                        .border(1.dp, AccentNeonGreen.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
                         .clickable { onNavigateToSchedules() },
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
@@ -247,15 +254,26 @@ fun MacrosScreen(
                             .padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("⏰", fontSize = 24.sp)
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(androidx.compose.foundation.shape.CircleShape)
+                                .background(AppTheme.colors.accentContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Schedule,
+                                contentDescription = null,
+                                tint = AppTheme.colors.onAccentContainer,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "SCHEDULED TASKS",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace,
-                                color = AccentCyan
+                                style = MaterialTheme.typography.titleSmall,
+                                color = AccentNeonGreen
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
@@ -268,7 +286,7 @@ fun MacrosScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                             contentDescription = "View Scheduled Tasks",
-                            tint = AccentCyan
+                            tint = AccentNeonGreen
                         )
                     }
                 }
@@ -280,16 +298,14 @@ fun MacrosScreen(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
+                            .border(1.dp, BorderColor, RoundedCornerShape(18.dp)),
                         colors = CardDefaults.cardColors(containerColor = CardBackground)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(
                                 text = "DEFINE CUSTOM WORKFLOW MACRO",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace,
-                                color = AccentCyan
+                                style = MaterialTheme.typography.titleSmall,
+                                color = AccentNeonGreen
                             )
                             Spacer(modifier = Modifier.height(12.dp))
                             
@@ -299,7 +315,7 @@ fun MacrosScreen(
                                 label = { Text("Macro Name", fontSize = 12.sp) },
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = AccentCyan,
+                                    focusedBorderColor = AccentNeonGreen,
                                     unfocusedBorderColor = BorderColor,
                                     focusedTextColor = TextPrimary,
                                     unfocusedTextColor = TextPrimary
@@ -313,7 +329,7 @@ fun MacrosScreen(
                                 label = { Text("Voice TriggerPhrase", fontSize = 12.sp) },
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = AccentCyan,
+                                    focusedBorderColor = AccentNeonGreen,
                                     unfocusedBorderColor = BorderColor,
                                     focusedTextColor = TextPrimary,
                                     unfocusedTextColor = TextPrimary
@@ -336,7 +352,7 @@ fun MacrosScreen(
                                     },
                                     fontSize = 11.sp,
                                     color = TextPrimary,
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = JetBrainsMonoFamily,
                                     modifier = Modifier.padding(bottom = 4.dp)
                                 )
                             }
@@ -350,7 +366,7 @@ fun MacrosScreen(
                                 onValueChange = { stepDesc = it },
                                 label = { Text("Step Description", fontSize = 11.sp) },
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = AccentCyan,
+                                    focusedBorderColor = AccentNeonGreen,
                                     unfocusedBorderColor = BorderColor,
                                     focusedTextColor = TextPrimary,
                                     unfocusedTextColor = TextPrimary
@@ -363,7 +379,7 @@ fun MacrosScreen(
                                 onValueChange = { stepAction = it },
                                 label = { Text("Action Type (e.g. system/brightness)", fontSize = 11.sp) },
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = AccentCyan,
+                                    focusedBorderColor = AccentNeonGreen,
                                     unfocusedBorderColor = BorderColor,
                                     focusedTextColor = TextPrimary,
                                     unfocusedTextColor = TextPrimary
@@ -377,7 +393,7 @@ fun MacrosScreen(
                                     onValueChange = { stepParamKey = it },
                                     label = { Text("Param Key", fontSize = 11.sp) },
                                     colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = AccentCyan,
+                                        focusedBorderColor = AccentNeonGreen,
                                         unfocusedBorderColor = BorderColor,
                                         focusedTextColor = TextPrimary,
                                         unfocusedTextColor = TextPrimary
@@ -390,7 +406,7 @@ fun MacrosScreen(
                                     onValueChange = { stepParamVal = it },
                                     label = { Text("Param Value", fontSize = 11.sp) },
                                     colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = AccentCyan,
+                                        focusedBorderColor = AccentNeonGreen,
                                         unfocusedBorderColor = BorderColor,
                                         focusedTextColor = TextPrimary,
                                         unfocusedTextColor = TextPrimary
@@ -407,7 +423,7 @@ fun MacrosScreen(
                                     Text("Runs once if the primary action fails.", fontSize = 10.sp)
                                 },
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = AccentCyan,
+                                    focusedBorderColor = AccentNeonGreen,
                                     unfocusedBorderColor = BorderColor,
                                     focusedTextColor = TextPrimary,
                                     unfocusedTextColor = TextPrimary
@@ -437,7 +453,7 @@ fun MacrosScreen(
                                         stepFallback = ""
                                     }
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = AccentPurple, contentColor = TextPrimary),
+                                colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton, contentColor = OnAccent),
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.align(Alignment.End)
                             ) {
@@ -508,8 +524,7 @@ fun MacrosScreen(
                         Text(
                             text = "No custom macros declared.",
                             color = TextSecondary,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 13.sp
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
                 }
@@ -537,7 +552,7 @@ fun MacrosScreen(
             text = { Text(message, fontSize = 13.sp) },
             confirmButton = {
                 TextButton(onClick = { templateViewModel.clearMessage() }) {
-                    Text("OK", color = AccentCyan, fontWeight = FontWeight.Bold)
+                    Text("OK", color = AccentNeonGreen, fontWeight = FontWeight.Bold)
                 }
             }
         )
@@ -557,7 +572,7 @@ fun MacroCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
+            .border(1.dp, BorderColor, RoundedCornerShape(18.dp)),
         colors = CardDefaults.cardColors(containerColor = CardBackground)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -578,15 +593,15 @@ fun MacroCard(
                         text = "Trigger: \"${macro.trigger}\"",
                         fontSize = 12.sp,
                         color = TextPrimary,
-                        fontFamily = FontFamily.Monospace
+                        fontFamily = JetBrainsMonoFamily
                     )
                 }
                 Switch(
                     checked = macro.isEnabled,
                     onCheckedChange = onToggle,
                     colors = SwitchDefaults.colors(
-                        checkedThumbColor = TextPrimary,
-                        checkedTrackColor = TextPrimary.copy(alpha = 0.5f)
+                        checkedThumbColor = OnAccent,
+                        checkedTrackColor = AccentGreenButton
                     )
                 )
             }
@@ -622,14 +637,14 @@ fun MacroCard(
                                 modifier = Modifier
                                     .size(6.dp)
                                     .clip(RoundedCornerShape(3.dp))
-                                    .background(AccentCyan)
+                                    .background(AccentNeonGreen)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "${step.description} [${step.action}]",
                                 fontSize = 11.sp,
                                 color = TextPrimary,
-                                fontFamily = FontFamily.Monospace
+                                fontFamily = JetBrainsMonoFamily
                             )
                         }
                     }
@@ -640,14 +655,14 @@ fun MacroCard(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         TextButton(onClick = onExport) {
-                            Icon(imageVector = Icons.Default.FileUpload, contentDescription = "Export Template", modifier = Modifier.size(16.dp), tint = AccentCyan)
+                            Icon(imageVector = Icons.Default.FileUpload, contentDescription = "Export Template", modifier = Modifier.size(16.dp), tint = AccentNeonGreen)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Export", fontSize = 11.sp, color = AccentCyan, fontWeight = FontWeight.Bold)
+                            Text("Export", fontSize = 11.sp, color = AccentNeonGreen, fontWeight = FontWeight.Bold)
                         }
                         TextButton(onClick = onShare) {
-                            Icon(imageVector = Icons.Default.Share, contentDescription = "Share Template", modifier = Modifier.size(16.dp), tint = AccentCyan)
+                            Icon(imageVector = Icons.Default.Share, contentDescription = "Share Template", modifier = Modifier.size(16.dp), tint = AccentNeonGreen)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Share", fontSize = 11.sp, color = AccentCyan, fontWeight = FontWeight.Bold)
+                            Text("Share", fontSize = 11.sp, color = AccentNeonGreen, fontWeight = FontWeight.Bold)
                         }
                         if (!macro.isSystem) {
                             Spacer(modifier = Modifier.width(8.dp))

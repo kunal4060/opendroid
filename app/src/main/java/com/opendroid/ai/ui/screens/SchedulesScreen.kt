@@ -52,7 +52,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
@@ -67,12 +66,13 @@ import com.opendroid.ai.core.schedule.ScheduledTask
 import com.opendroid.ai.core.schedule.ScheduledTaskKind
 import com.opendroid.ai.core.schedule.ScheduledTaskStatus
 import com.opendroid.ai.data.db.entities.MacroEntity
-import com.opendroid.ai.ui.theme.AccentCyan
+import com.opendroid.ai.ui.theme.AccentNeonGreen
 import com.opendroid.ai.ui.theme.AccentOrange
 import com.opendroid.ai.ui.theme.AccentRed
 import com.opendroid.ai.ui.theme.BorderColor
 import com.opendroid.ai.ui.theme.CardBackground
 import com.opendroid.ai.ui.theme.DarkBackground
+import com.opendroid.ai.ui.theme.OnAccent
 import com.opendroid.ai.ui.theme.TextPrimary
 import com.opendroid.ai.ui.theme.TextSecondary
 import com.opendroid.ai.ui.viewmodel.SchedulesViewModel
@@ -174,7 +174,7 @@ fun SchedulesScreen(
                                 onClick = { context.startActivity(viewModel.exactAlarmSettingsIntent()) },
                                 colors = ButtonDefaults.buttonColors(containerColor = AccentOrange)
                             ) {
-                                Text("Enable exact alarms", color = Color.Black)
+                                Text("Enable exact alarms", color = OnAccent)
                             }
                         }
                     }
@@ -248,7 +248,7 @@ private fun CreateScheduleCard(
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
-                color = AccentCyan
+                color = AccentNeonGreen
             )
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -385,7 +385,7 @@ private fun CreateScheduleCard(
             }
             confirmation?.let {
                 Spacer(modifier = Modifier.height(8.dp))
-                Text(it, fontSize = 11.sp, color = AccentCyan, lineHeight = 16.sp)
+                Text(it, fontSize = 11.sp, color = AccentNeonGreen, lineHeight = 16.sp)
             }
         }
     }
@@ -453,7 +453,7 @@ private fun ScheduledTaskCard(
         null
     }
     val statusColor = when (task.status) {
-        ScheduledTaskStatus.ARMED -> AccentCyan
+        ScheduledTaskStatus.ARMED -> AccentNeonGreen
         ScheduledTaskStatus.RUNNING -> AccentOrange
         ScheduledTaskStatus.AWAITING_APPROVAL -> AccentOrange
         ScheduledTaskStatus.FAILED -> AccentRed
@@ -527,7 +527,7 @@ private fun ScheduledTaskCard(
             Row {
                 Spacer(modifier = Modifier.weight(1f))
                 IconButton(onClick = onRunNow) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = "Run now", tint = AccentCyan)
+                    Icon(Icons.Default.PlayArrow, contentDescription = "Run now", tint = AccentNeonGreen)
                 }
                 IconButton(onClick = onDelete) {
                     Icon(Icons.Default.Delete, contentDescription = "Delete schedule", tint = AccentRed)

@@ -21,8 +21,8 @@ fun SimpleLineChart(
     dataPoints: List<Float>,
     labels: List<String> = emptyList(),
     modifier: Modifier = Modifier.fillMaxWidth().height(160.dp),
-    lineColor: Color = AppTheme.colors.accentCyan,
-    gridColor: Color = AppTheme.colors.borderColor
+    lineColor: Color = AppTheme.colors.accentNeonGreen,
+    gridColor: Color = AppTheme.colors.textTertiary
 ) {
     if (dataPoints.isEmpty()) {
         Box(modifier = modifier, contentAlignment = Alignment.Center) {
@@ -159,7 +159,7 @@ fun DonutChart(
 
         proportions.forEachIndexed { index, prop ->
             val sweepAngle = (prop / total) * 360f
-            val color = colors.getOrElse(index) { Color.Gray }
+            val color = colors.getOrElse(index) { AppTheme.colors.textTertiary }
             drawArc(
                 color = color,
                 startAngle = startAngle,

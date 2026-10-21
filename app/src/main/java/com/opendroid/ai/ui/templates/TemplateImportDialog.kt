@@ -1,6 +1,12 @@
 package com.opendroid.ai.ui.templates
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -18,10 +24,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.opendroid.ai.core.templates.TemplateFormat
 import com.opendroid.ai.core.templates.TemplateImportPreview
+import androidx.compose.ui.Alignment
+import com.opendroid.ai.ui.theme.AccentGreenButton
 import com.opendroid.ai.ui.theme.AccentOrange
+import com.opendroid.ai.ui.theme.OnAccent
 import com.opendroid.ai.ui.theme.AccentRed
 import com.opendroid.ai.ui.theme.CardBackground
-import com.opendroid.ai.ui.theme.DarkBackground
 import com.opendroid.ai.ui.theme.TextPrimary
 import com.opendroid.ai.ui.theme.TextSecondary
 
@@ -92,7 +100,16 @@ fun TemplateImportDialog(
                         preview.warnings.forEach { warning ->
                             // Theme AccentOrange (D8): the old hard-coded
                             // #FFB300 amber was 1.79:1 as text on light.
-                            Text("⚠ $warning", fontSize = 11.sp, color = AccentOrange)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Warning,
+                                    contentDescription = null,
+                                    tint = AccentOrange,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(warning, fontSize = 11.sp, color = AccentOrange)
+                            }
                             Spacer(modifier = Modifier.height(4.dp))
                         }
                     }
@@ -125,8 +142,8 @@ fun TemplateImportDialog(
                 Button(
                     onClick = onConfirm,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = TextPrimary,
-                        contentColor = DarkBackground
+                        containerColor = AccentGreenButton,
+                        contentColor = OnAccent
                     )
                 ) {
                     Text("Import", fontWeight = FontWeight.Bold)
