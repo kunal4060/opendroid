@@ -193,7 +193,8 @@ class SocialActions @Inject constructor(
                     appendLine("• Followers Growth: ${report.totalFollowersDelta}")
                     appendLine("• Total Reach: ${report.totalReach}")
                     appendLine("• Avg Engagement: ${String.format("%.1f", report.averageEngagementRate)}%")
-                    appendLine("• Top Platform: ${report.topPlatform.displayName}")
+                    appendLine("• Top Platform: ${report.topPlatform?.displayName ?: "Not enough data — no posts published this week"}")
+                    appendLine("• Top Post: ${report.topPostSummary ?: "Not enough data — no posts published this week"}")
                     appendLine("\n**AI Summary:** ${report.aiSummary}")
                     appendLine("\n**Key Recommendations:**")
                     report.recommendations.forEachIndexed { i, rec ->

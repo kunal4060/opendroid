@@ -165,8 +165,11 @@ data class SocialReport(
     val totalPostsPublished: Int,
     val totalCommentsReceived: Int,
     val totalRepliesSent: Int,
-    val topPlatform: SocialPlatform,
-    val topPostSummary: String,
+    // Null when no post was published in the period: there is no honest
+    // "top" anything to report, and consumers must say so instead of
+    // falling back to an invented platform/post.
+    val topPlatform: SocialPlatform?,
+    val topPostSummary: String?,
     val aiSummary: String,
     val recommendations: List<String>,
     val generatedAt: Long = System.currentTimeMillis()
