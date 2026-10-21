@@ -206,15 +206,10 @@ class AttachmentProcessor @Inject constructor(
     }
 
     private fun prepareImage(pending: PendingAttachment): PreparedAttachment {
-        val source = ImageDecoder.createSource(pending.localFile)
         val bitmap = try {
-            ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
-                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-                val (w, h) = scaledDimensions(info.size.width, info.size.height, MAX_IMAGE_EDGE)
-                if (w != info.size.width || h != info.size.height) {
-                    decoder.setTargetSize(w, h)
-                }
-            }
+            decodeDownscaled(pending.localFile)
+        } catch (e: AttachmentException) {
+            throw e
         } catch (e: Exception) {
             throw AttachmentException("Couldn't read that image: ${e.localizedMessage ?: "decode failed"}")
         }
@@ -231,6 +226,42 @@ class AttachmentProcessor @Inject constructor(
             attachmentMimeType = "image/jpeg",
             attachmentName = pending.displayName
         )
+    }
+
+    /**
+     * Decodes [file] downscaled to the [MAX_IMAGE_EDGE] cap. ImageDecoder is
+     * the primary path (it also handles HEIC sources), but it only exists on
+     * API 28+ while the app supports 26 - older devices fall back to a
+     * bounds-only decode plus power-of-two sampling, which never loads the
+     * full-resolution bitmap either.
+     */
+    private fun decodeDownscaled(file: File): Bitmap {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            val source = ImageDecoder.createSource(file)
+            return ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                val (w, h) = scaledDimensions(info.size.width, info.size.height, MAX_IMAGE_EDGE)
+                if (w != info.size.width || h != info.size.height) {
+                    decoder.setTargetSize(w, h)
+                }
+            }
+        }
+        val bounds = android.graphics.BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+        android.graphics.BitmapFactory.decodeFile(file.absolutePath, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+            throw AttachmentException("Couldn't read that image: it may be corrupt.")
+        }
+        var sampleSize = 1
+        while (maxOf(bounds.outWidth / sampleSize, bounds.outHeight / sampleSize) > MAX_IMAGE_EDGE) {
+            sampleSize *= 2
+        }
+        val options = android.graphics.BitmapFactory.Options().apply {
+            inSampleSize = sampleSize
+        }
+        return android.graphics.BitmapFactory.decodeFile(file.absolutePath, options)
+            ?: throw AttachmentException("Couldn't read that image: it may be corrupt.")
     }
 
     private fun extractPdfText(file: File): String {
