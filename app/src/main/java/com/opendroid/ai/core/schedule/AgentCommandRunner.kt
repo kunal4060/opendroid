@@ -7,7 +7,11 @@ import com.opendroid.ai.core.agent.AutoApprovalPolicy
 import com.opendroid.ai.data.models.Plan
 import com.opendroid.ai.data.models.approvalSettings
 import com.opendroid.ai.data.repository.SettingsRepository
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
@@ -84,6 +88,10 @@ class AgentCommandRunner @Inject constructor(
         // never seen; an identical replay is the previous turn's.
         val preRunState = agentLoop.agentState.value
         agentLoop.processQuery(instruction, context, explicitSessionId = sessionId)
+        // The job this call set in flight: a fresh task's own job, or the
+        // parked job the instruction is answering. Its completion is a
+        // run boundary the state VALUE cannot provide (see below).
+        val runJob = agentLoop.currentTaskJob()
 
         // A terminal state counts once THIS run has actually started
         // (Thinking/ExecutingPlan seen) or when it is not the pre-run
@@ -93,16 +101,42 @@ class AgentCommandRunner @Inject constructor(
         // from an earlier turn compares equal to the snapshot only if
         // this run re-parked the identical plan, which processQuery's
         // fresh plan never is.
+        //
+        // One hole remains in the value-based predicate: a near-instant
+        // run can pass Thinking -> terminal entirely between processQuery
+        // and the collector's first emission (StateFlow conflation), and
+        // if that terminal value EQUALS the pre-run snapshot — the steady
+        // state under a persistent misconfiguration, e.g. every turn
+        // ending in Error("No API key configured") — the predicate can
+        // never distinguish it from the previous turn's replay, and the
+        // run would be misreported as a 10-minute TimedOut. The job
+        // branch closes it: the loop sets its terminal state before its
+        // job completes, so once runJob is done, the terminal state
+        // visible then IS this run's outcome, identical value or not.
         var started = false
         val terminal = withTimeoutOrNull(timeoutMillis) {
-            agentLoop.agentState.first { state ->
-                if (state is AgentState.Thinking || state is AgentState.ExecutingPlan) {
-                    started = true
+            coroutineScope {
+                select<AgentState?> {
+                    async {
+                        agentLoop.agentState.first { state ->
+                            if (state is AgentState.Thinking || state is AgentState.ExecutingPlan) {
+                                started = true
+                            }
+                            state.isTerminalState() && (started || state != preRunState)
+                        }
+                    }.onAwait { it }
+                    if (runJob != null) {
+                        async {
+                            runJob.join()
+                            val state = agentLoop.agentState.value
+                            // Job ended without a terminal state (e.g.
+                            // cancelled and reset to Idle): no signal
+                            // from this branch — the state branch (or
+                            // the timeout) decides.
+                            if (state.isTerminalState()) state else awaitCancellation()
+                        }.onAwait { it }
+                    }
                 }
-                val isTerminal = state is AgentState.Speaking ||
-                    state is AgentState.Error ||
-                    state is AgentState.PlanProposed
-                isTerminal && (started || state != preRunState)
             }
         }
 
@@ -132,3 +166,7 @@ class AgentCommandRunner @Inject constructor(
         const val DEFAULT_TIMEOUT_MILLIS: Long = 10L * 60L * 1000L
     }
 }
+
+/** The states a run can end in (a parked plan counts as an ending for the runner). */
+private fun AgentState.isTerminalState(): Boolean =
+    this is AgentState.Speaking || this is AgentState.Error || this is AgentState.PlanProposed
