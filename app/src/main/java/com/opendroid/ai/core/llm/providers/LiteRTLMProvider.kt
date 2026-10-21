@@ -134,10 +134,16 @@ class LiteRTLMProvider @Inject constructor(
 
                 LLMResponse(
                     content = outputText,
-                    tokensUsed = outputText.length / 4,
+                    // On-device inference reports no usage; both sides are
+                    // local estimates (B3 flags them as such, never as
+                    // provider-measured figures).
+                    tokensUsed = PromptBudget.estimateTokens(prompt) + outputText.length / 4,
+                    promptTokens = PromptBudget.estimateTokens(prompt),
+                    completionTokens = outputText.length / 4,
                     model = spec.id,
                     provider = name,
-                    latencyMs = System.currentTimeMillis() - startTime
+                    latencyMs = System.currentTimeMillis() - startTime,
+                    usageEstimated = true
                 )
             } catch (e: Throwable) {
                 throw handleThrowable(e, spec)

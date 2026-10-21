@@ -85,12 +85,16 @@ class OllamaProvider @Inject constructor(
             val messageObj = jsonResponse.getAsJsonObject("message")
             val content = messageObj.get("content").asString
 
-            val promptEvalCount = jsonResponse.get("prompt_eval_count")?.asInt ?: 0
-            val evalCount = jsonResponse.get("eval_count")?.asInt ?: 0
+            // Ollama reports prompt/eval counts natively; keep the split
+            // for B3 metering. Absent fields stay null (unknown).
+            val promptEvalCount = jsonResponse.get("prompt_eval_count")?.takeIf { it.isJsonPrimitive }?.asInt
+            val evalCount = jsonResponse.get("eval_count")?.takeIf { it.isJsonPrimitive }?.asInt
 
             LLMResponse(
                 content = content,
-                tokensUsed = promptEvalCount + evalCount,
+                tokensUsed = (promptEvalCount ?: 0) + (evalCount ?: 0),
+                promptTokens = promptEvalCount,
+                completionTokens = evalCount,
                 model = selectedModel,
                 provider = name,
                 latencyMs = System.currentTimeMillis() - startTime

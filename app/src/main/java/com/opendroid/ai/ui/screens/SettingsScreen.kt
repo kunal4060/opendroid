@@ -78,6 +78,7 @@ import java.util.Locale
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onNavigateToBenchmark: () -> Unit,
+    onNavigateToUsage: () -> Unit = {},
     onNavigateToPrivacyPolicy: () -> Unit = {},
     onNavigateToTermsOfUse: () -> Unit = {},
     onNavigateToHelpCenter: () -> Unit = {},
@@ -637,6 +638,47 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "View live charts comparing speeds & latency.",
+                                fontSize = 12.sp,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+            }
+
+            // B3: token / cost usage dashboard card link
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, AccentCyan.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        .clickable { onNavigateToUsage() },
+                    colors = CardDefaults.cardColors(containerColor = CardBackground)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = "Usage",
+                            tint = AccentCyan,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "TOKEN & COST USAGE",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                color = AccentCyan
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Tokens used per provider & model, with estimated spend.",
                                 fontSize = 12.sp,
                                 color = TextSecondary
                             )

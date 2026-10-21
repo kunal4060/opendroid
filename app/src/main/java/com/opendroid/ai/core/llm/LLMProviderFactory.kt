@@ -13,6 +13,8 @@ import com.opendroid.ai.core.llm.error.SecretRegistry
 import com.opendroid.ai.core.llm.providers.*
 import com.opendroid.ai.core.llm.providers.HybridOnDeviceProvider
 import com.opendroid.ai.core.llm.providers.LiteRTLMProvider
+import com.opendroid.ai.core.usage.UsageRecorder
+import com.opendroid.ai.core.usage.UsageSink
 import com.opendroid.ai.data.models.LLMConfig
 import com.opendroid.ai.data.models.selectedModelFor
 import com.opendroid.ai.data.repository.SettingsRepository
@@ -47,6 +49,7 @@ class LLMProviderFactory @Inject constructor(
     private val hybridOnDeviceProvider: Provider<HybridOnDeviceProvider>,
     private val settingsRepository: SettingsRepository,
     private val lastServedProviderTracker: LastServedProviderTracker,
+    private val usageRecorder: UsageRecorder,
     private val onDeviceLatencyTracker: OnDeviceLatencyTracker,
     private val actionDispatcher: dagger.Lazy<ActionDispatcher>,
     private val intentClassifier: dagger.Lazy<IntentClassifier>,
@@ -97,7 +100,8 @@ class LLMProviderFactory @Inject constructor(
                 { settingsRepository.llmConfig.first() }
             },
             requestRewriter = ::rewriteRequestIfNeeded,
-            onServed = { servedName -> lastServedProviderTracker.record(servedName) }
+            onServed = { servedName -> lastServedProviderTracker.record(servedName) },
+            usageSink = usageRecorder
         )
     }
 
@@ -238,7 +242,8 @@ class WrappedLLMProvider(
     private val configProvider: suspend () -> LLMConfig,
     private val requestRewriter: (LLMRequest) -> LLMRequest = { it },
     private val retryRuntime: RetryRuntime = RetryRuntime(),
-    private val onServed: ((String) -> Unit)? = null
+    private val onServed: ((String) -> Unit)? = null,
+    private val usageSink: UsageSink? = null
 ) : LLMProvider {
     override val name: String get() = delegate.name
     override val availableModels: List<String> get() = delegate.availableModels
@@ -252,6 +257,10 @@ class WrappedLLMProvider(
             // provider in a fallback chain produced it — record who served
             // so routing state (A8) can report the actual answerer.
             onServed?.invoke(name)
+            // B3 metering: exactly one record per logical call, taken after
+            // retries resolve and attributed to the provider/model named on
+            // the final response. Fire-and-forget; it cannot fail the call.
+            usageSink?.let { sink -> runCatching { sink.recordResponse(response) } }
             response
         } finally {
             registrations.asReversed().forEach(AutoCloseable::close)
@@ -263,13 +272,20 @@ class WrappedLLMProvider(
         val registrations = registerSecrets(resolved)
         var attempt = 1
         var emitted = false
+        // B3: streamed chunks are accumulated purely so the completed call
+        // can be metered by counting (streams carry no usage object). The
+        // buffer resets per attempt; only the successful attempt's text is
+        // counted, once, after the loop breaks.
+        val streamedOutput = StringBuilder()
         val startedAt = retryRuntime.nowMillis()
         try {
             while (true) {
                 try {
+                    streamedOutput.setLength(0)
                     delegate.streamComplete(resolved).collect { chunk ->
                         if (chunk.isNotEmpty()) {
                             emitted = true
+                            streamedOutput.append(chunk)
                             emit(chunk)
                         }
                     }
@@ -290,6 +306,24 @@ class WrappedLLMProvider(
             // Reached only via the success break above (failures throw out):
             // the stream completed with content, so this provider served.
             onServed?.invoke(name)
+            // B3 metering for streams: count the exchanged text with the
+            // same estimator the on-device providers use and flag the
+            // record as estimated — a streamed call never invents
+            // provider-reported figures it did not receive.
+            usageSink?.let { sink ->
+                runCatching {
+                    val promptText = buildString {
+                        append(resolved.systemPrompt)
+                        resolved.messages.forEach { append('\n').append(it.text) }
+                    }
+                    sink.recordStreamEstimate(
+                        provider = name,
+                        model = resolved.model.orEmpty(),
+                        promptTokens = PromptBudget.estimateTokens(promptText),
+                        completionTokens = PromptBudget.estimateTokens(streamedOutput.toString())
+                    )
+                }
+            }
         } finally {
             registrations.asReversed().forEach(AutoCloseable::close)
         }

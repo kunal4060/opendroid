@@ -117,12 +117,17 @@ class ClaudeProvider @Inject constructor(
             val content = contentArray[0].asJsonObject.get("text").asString
 
             val usage = jsonResponse.getAsJsonObject("usage")
-            val inputTokens = usage?.get("input_tokens")?.asInt ?: 0
-            val outputTokens = usage?.get("output_tokens")?.asInt ?: 0
+            // Anthropic reports the split natively; keep it split for B3
+            // metering instead of collapsing it. Absent fields stay null
+            // (unknown), never reconstructed.
+            val inputTokens = usage?.get("input_tokens")?.takeIf { it.isJsonPrimitive }?.asInt
+            val outputTokens = usage?.get("output_tokens")?.takeIf { it.isJsonPrimitive }?.asInt
 
             LLMResponse(
                 content = content,
-                tokensUsed = inputTokens + outputTokens,
+                tokensUsed = (inputTokens ?: 0) + (outputTokens ?: 0),
+                promptTokens = inputTokens,
+                completionTokens = outputTokens,
                 model = selectedModel,
                 provider = name,
                 latencyMs = System.currentTimeMillis() - startTime
