@@ -14,6 +14,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -45,33 +46,92 @@ internal fun ComponentActivity.enableOpenDroidEdgeToEdge(isDarkTheme: Boolean) {
  * Builds the M3 scheme from the RESOLVED palette, so stock Material
  * components (dialogs, menus, switches) follow the same accent the screens
  * read through [AppTheme.colors] instead of a fixed palette.
+ *
+ * EVERY M3 role is filled per research-3-design-system.md §3.3, so no
+ * violet M3 baseline value can leak into an unset role:
+ * primary = accent fill · containers = accentContainer pair · secondary =
+ * textSecondary-toned neutral with surfaceRaised containers (never a
+ * second hue) · tertiary = accentInfo · surface containers = the six
+ * neutral tiers · outline = borderStrong · outlineVariant = borderSubtle.
  */
 private fun colorSchemeFor(palette: OpenDroidColors): ColorScheme =
     if (palette.isDark) {
         darkColorScheme(
             primary = palette.accentGreenButton,
-            secondary = palette.accentPurple,
-            tertiary = palette.accentCyan,
-            background = palette.background,
-            surface = palette.surface,
             onPrimary = palette.onAccent,
-            onSecondary = palette.textPrimary,
+            primaryContainer = palette.accentContainer,
+            onPrimaryContainer = palette.onAccentContainer,
+            secondary = palette.textSecondary,
+            onSecondary = palette.background,
+            secondaryContainer = palette.surfaceRaised,
+            onSecondaryContainer = palette.textPrimary,
+            tertiary = palette.accentInfo,
+            onTertiary = ComposeColor(0xFF0D1B2A),
+            tertiaryContainer = ComposeColor(0xFF25374D),
+            onTertiaryContainer = ComposeColor(0xFFC7D8EC),
+            background = palette.background,
             onBackground = palette.textPrimary,
+            surface = palette.surface,
             onSurface = palette.textPrimary,
-            error = palette.accentRed
+            surfaceVariant = palette.surfaceRaised,
+            onSurfaceVariant = palette.textSecondary,
+            surfaceTint = palette.accentGreenButton,
+            inverseSurface = ComposeColor(0xFFE8E8E4),
+            inverseOnSurface = ComposeColor(0xFF1B1B1D),
+            inversePrimary = palette.accentNeonGreen,
+            error = palette.accentRed,
+            onError = ComposeColor(0xFF3A0A0A),
+            errorContainer = ComposeColor(0xFF3A1D1D),
+            onErrorContainer = ComposeColor(0xFFFFDAD6),
+            outline = palette.borderStrong,
+            outlineVariant = palette.borderSubtle,
+            scrim = ComposeColor(0x99000000),
+            surfaceBright = palette.surfaceOverlay,
+            surfaceDim = palette.surfaceSunken,
+            surfaceContainerLowest = palette.surfaceSunken,
+            surfaceContainerLow = palette.surface,
+            surfaceContainer = palette.cardBackground,
+            surfaceContainerHigh = palette.surfaceRaised,
+            surfaceContainerHighest = palette.surfaceOverlay
         )
     } else {
         lightColorScheme(
             primary = palette.accentGreenButton,
-            secondary = palette.accentPurple,
-            tertiary = palette.accentCyan,
-            background = palette.background,
-            surface = palette.surface,
             onPrimary = palette.onAccent,
-            onSecondary = palette.textPrimary,
+            primaryContainer = palette.accentContainer,
+            onPrimaryContainer = palette.onAccentContainer,
+            secondary = palette.textSecondary,
+            onSecondary = ComposeColor.White,
+            secondaryContainer = palette.surfaceRaised,
+            onSecondaryContainer = palette.textPrimary,
+            tertiary = palette.accentInfo,
+            onTertiary = ComposeColor.White,
+            tertiaryContainer = ComposeColor(0xFFD6E4F0),
+            onTertiaryContainer = ComposeColor(0xFF0F2F4D),
+            background = palette.background,
             onBackground = palette.textPrimary,
+            surface = palette.surface,
             onSurface = palette.textPrimary,
-            error = palette.accentRed
+            surfaceVariant = palette.surfaceRaised,
+            onSurfaceVariant = palette.textSecondary,
+            surfaceTint = palette.accentGreenButton,
+            inverseSurface = ComposeColor(0xFF1B1B1D),
+            inverseOnSurface = ComposeColor(0xFFF4F4F2),
+            inversePrimary = ComposeColor(0xFF3ECF8E),
+            error = palette.accentRed,
+            onError = ComposeColor.White,
+            errorContainer = ComposeColor(0xFFF9DEDC),
+            onErrorContainer = ComposeColor(0xFF410E0B),
+            outline = palette.borderStrong,
+            outlineVariant = palette.borderSubtle,
+            scrim = ComposeColor(0x66000000),
+            surfaceBright = palette.cardBackground,
+            surfaceDim = palette.surfaceSunken,
+            surfaceContainerLowest = palette.surfaceSunken,
+            surfaceContainerLow = palette.surface,
+            surfaceContainer = palette.cardBackground,
+            surfaceContainerHigh = palette.surfaceRaised,
+            surfaceContainerHighest = palette.surfaceOverlay
         )
     }
 
@@ -130,6 +190,7 @@ fun OpenDroidTheme(
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,
+            shapes = OpenDroidShapes,
             content = content
         )
     }
