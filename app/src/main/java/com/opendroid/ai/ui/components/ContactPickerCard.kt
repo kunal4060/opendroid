@@ -23,12 +23,17 @@ import com.opendroid.ai.ui.theme.*
 /**
  * Contact picker card shown when multiple contacts match a query.
  * Displays up to 5 options with numbered badges and masked phone numbers.
+ *
+ * [enabled] is true only while this card is the LIVE picker (audit-2 #10):
+ * historical cards render inert — no clickable rows — so a stale tap can
+ * never be sent as a bare index answer to an unrelated later prompt.
  */
 @Composable
 fun ContactPickerCard(
     query: String,
     matches: List<Map<String, String>>,
-    onContactSelected: (Map<String, String>) -> Unit
+    onContactSelected: (Map<String, String>) -> Unit,
+    enabled: Boolean = true
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -66,7 +71,8 @@ fun ContactPickerCard(
                     name = contact["name"] ?: "",
                     phone = maskPhone(contact["phone"] ?: ""),
                     type = contact["type"] ?: "Mobile",
-                    onClick = { onContactSelected(contact) }
+                    onClick = { onContactSelected(contact) },
+                    enabled = enabled
                 )
                 if (index < matches.size - 1) {
                     HorizontalDivider(
@@ -80,7 +86,11 @@ fun ContactPickerCard(
 
             // Hint
             Text(
-                text = "Tap to select, or type the number (1, 2, 3...)",
+                text = if (enabled) {
+                    "Tap to select, or type the number (1, 2, 3...)"
+                } else {
+                    "This selection is no longer active."
+                },
                 color = AppTheme.colors.textTertiary,
                 fontSize = 11.sp
             )
@@ -94,13 +104,14 @@ fun ContactOptionRow(
     name: String,
     phone: String,
     type: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    enabled: Boolean = true
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
-            .clickable { onClick() }
+            .clickable(enabled = enabled) { onClick() }
             .padding(vertical = 10.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

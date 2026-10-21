@@ -172,6 +172,15 @@ class AgentLoop @Inject constructor(
 
     @Volatile private var pendingUserInput: PendingUserInput? = null
 
+    // Audit-2 #10: requestId of the prompt currently parked in
+    // awaitUserResponse(), exposed so the chat UI can tell the ONE live
+    // prompt (e.g. a contact picker) apart from historical ones — only the
+    // card tagged with this id may accept taps; every older card renders
+    // inert, so a stale tap can never be delivered as a bare "1"/"2" answer
+    // to whatever unrelated prompt happens to be pending later.
+    private val _pendingPromptRequestId = MutableStateFlow<String?>(null)
+    val pendingPromptRequestId: StateFlow<String?> = _pendingPromptRequestId.asStateFlow()
+
     // Session id of whichever task is currently parked inside awaitUserResponse(), or null
     // when nothing is waiting. Session-affiliated (not a bare boolean) so processQuery can
     // tell a genuine reply to THIS prompt (arriving from the same session) apart from an
@@ -189,10 +198,14 @@ class AgentLoop @Inject constructor(
      * happens from within that task's own execution. Pass a session explicitly only if
      * that assumption doesn't hold.
      */
-    suspend fun awaitUserResponse(sessionId: String = activeTaskSessionId): String {
-        val request = PendingUserInput(sessionId, UUID.randomUUID().toString(), CompletableDeferred())
+    suspend fun awaitUserResponse(
+        sessionId: String = activeTaskSessionId,
+        requestId: String = UUID.randomUUID().toString()
+    ): String {
+        val request = PendingUserInput(sessionId, requestId, CompletableDeferred())
         waitingSessionId = sessionId
         pendingUserInput = request
+        _pendingPromptRequestId.value = requestId
         try {
             return request.deferred.await()
         } finally {
@@ -201,6 +214,9 @@ class AgentLoop @Inject constructor(
             // replaced or cleared it, and clobbering that would be wrong.
             if (pendingUserInput === request) {
                 pendingUserInput = null
+            }
+            if (_pendingPromptRequestId.value == requestId) {
+                _pendingPromptRequestId.value = null
             }
             if (waitingSessionId == sessionId) {
                 waitingSessionId = null
@@ -1588,6 +1604,17 @@ class AgentLoop @Inject constructor(
 
         if (matches.isEmpty()) return NeedsInputRetry(pickerResult, originalParams)
 
+        // Audit-2 #10: tag the persisted picker payload with this prompt's
+        // requestId (one extra key per match map — the card parser ignores
+        // unknown keys). ChatScreen only enables the card whose tag equals
+        // the currently pending prompt's id, so historical pickers render
+        // inert and their taps can never be misdelivered to a later prompt.
+        val promptRequestId = UUID.randomUUID().toString()
+        val taggedPickerJson = json.encodeToString(
+            kotlinx.serialization.serializer<List<Map<String, String>>>(),
+            matches.map { it + ("requestId" to promptRequestId) }
+        )
+
         // Show picker question to user via chat
         val optionsText = pickerResult.options.joinToString("\n")
         val pickerMsg = ChatMessage(
@@ -1595,13 +1622,13 @@ class AgentLoop @Inject constructor(
             text = "${pickerResult.question}\n\n$optionsText",
             sender = ChatMessage.Sender.AGENT,
             modelBadge = "System",
-            contactPickerData = matchesJson
+            contactPickerData = taggedPickerJson
         )
         conversationRepository.insertMessage(sessionId, pickerMsg)
         onSpeakCallback?.invoke(pickerResult.question)
 
         // Wait for user response
-        val userSelection = awaitUserResponse(sessionId)
+        val userSelection = awaitUserResponse(sessionId, promptRequestId)
 
         // Audit-2 #9: do NOT persist the selection again here — the delivery
         // path in processQuery already stored this reply as a user message

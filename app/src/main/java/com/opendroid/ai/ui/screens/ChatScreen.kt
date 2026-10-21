@@ -185,6 +185,9 @@ fun ChatScreen(
     }
     val currentSessionId = sessions.firstOrNull { it.isCurrent }?.id
     val runningElsewhere = runningSessionId != null && runningSessionId != currentSessionId
+    // Audit-2 #10: only the picker card tagged with the currently pending
+    // prompt's requestId is live; all historical pickers render inert.
+    val pendingPromptRequestId by viewModel.pendingPromptRequestId.collectAsState()
 
     val listState = rememberLazyListState()
     var inputQuery by remember { mutableStateOf("") }
@@ -776,7 +779,8 @@ fun ChatScreen(
                                 context = context,
                                 speakingMessageId = speakingMessageId,
                                 onEditRequested = { startEditingMessage(it) },
-                                researchSources = researchSourcesByMessage[msg.id] ?: emptyList()
+                                researchSources = researchSourcesByMessage[msg.id] ?: emptyList(),
+                                pendingPromptRequestId = pendingPromptRequestId
                             )
                         }
                     }
@@ -1634,7 +1638,8 @@ fun ChatBubble(
     context: android.content.Context? = null,
     speakingMessageId: String? = null,
     onEditRequested: ((ChatMessage) -> Unit)? = null,
-    researchSources: List<com.opendroid.ai.data.db.entities.ResearchSourceEntity> = emptyList()
+    researchSources: List<com.opendroid.ai.data.db.entities.ResearchSourceEntity> = emptyList(),
+    pendingPromptRequestId: String? = null
 ) {
     val isAgent = message.sender == ChatMessage.Sender.AGENT
     val alignment = if (isAgent) Alignment.Start else Alignment.End
@@ -1665,12 +1670,23 @@ fun ChatBubble(
             // Extract query from text ("Which 'dad' do you mean?" ? "dad")
             val query = Regex("Which '(.*?)'").find(message.text)?.groupValues?.getOrNull(1) ?: "contact"
 
+            // Audit-2 #10: this card is live only while it is the prompt the
+            // agent is currently parked on — its payload is tagged with that
+            // prompt's requestId (older payloads, written before tagging,
+            // have no tag and are therefore inert, which is the safe
+            // default). A tap on a live card answers THAT prompt; the
+            // delivery path in AgentLoop re-validates the requestId, so the
+            // index can never be handed to a different prompt.
+            val pickerRequestId = matches.firstOrNull()?.get("requestId")
+            val isLivePicker = pickerRequestId != null && pickerRequestId == pendingPromptRequestId
+
             ContactPickerCard(
                 query = query,
                 matches = matches,
+                enabled = isLivePicker,
                 onContactSelected = { selected ->
                     val index = matches.indexOf(selected) + 1
-                    if (viewModel != null && context != null) {
+                    if (isLivePicker && viewModel != null && context != null) {
                         viewModel.sendMessage(index.toString(), context)
                     }
                 }

@@ -543,6 +543,13 @@ class ChatViewModel @Inject constructor(
     val agentState: StateFlow<AgentState> = agentLoop.agentState
 
     /**
+     * Audit-2 #10: requestId of the prompt the agent is currently parked
+     * on, if any. ChatScreen enables only the contact-picker card tagged
+     * with this id; every historical picker renders inert.
+     */
+    val pendingPromptRequestId: StateFlow<String?> = agentLoop.pendingPromptRequestId
+
+    /**
      * Live chat routing state (A8): which provider/on-device backend will
      * answer, or that no route exists while offline. Rendered as the header
      * badge and consulted by the send paths below — one shared state, so
