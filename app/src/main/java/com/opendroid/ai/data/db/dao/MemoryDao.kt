@@ -46,7 +46,13 @@ interface MemoryDao {
               AND (timestamp + (ttlHours * 3600000)) <= :now""")
     suspend fun deleteExpiredMemories(now: Long = System.currentTimeMillis())
 
-    @Query("SELECT * FROM memories WHERE `key` LIKE :prefix || '%'")
+    /**
+     * Prefix match over memory keys. The caller must pass the prefix through
+     * [LikeEscaping.escape] — every real prefix contains underscores
+     * (`pkg_node_`, `notif_pattern_`, …), which LIKE would otherwise treat
+     * as single-character wildcards (audit-4 #5).
+     */
+    @Query("SELECT * FROM memories WHERE `key` LIKE :prefix || '%' ESCAPE '\\'")
     suspend fun getMemoriesByKeyPrefix(prefix: String): List<MemoryEntity>
 
     @Delete

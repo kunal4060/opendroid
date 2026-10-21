@@ -2,6 +2,7 @@ package com.opendroid.ai.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.opendroid.ai.data.db.dao.LikeEscaping
 import com.opendroid.ai.data.db.dao.TaskHistoryDao
 import com.opendroid.ai.data.db.entities.TaskHistoryEntity
 import com.opendroid.ai.data.db.dao.UnknownActionDao
@@ -64,7 +65,14 @@ class HistoryViewModel @Inject constructor(
             taskHistoryDao.getFilteredHistoryFlow(
                 outcome = filter.outcome?.name ?: "ALL",
                 actionType = filter.actionType,
-                searchPattern = if (trimmedQuery.isEmpty()) null else "%$trimmedQuery%"
+                // Escape LIKE metacharacters so the text matches literally
+                // (searching "%" must not return the whole history) — the
+                // DAO declares ESCAPE '\' (audit-4 #6).
+                searchPattern = if (trimmedQuery.isEmpty()) {
+                    null
+                } else {
+                    "%${LikeEscaping.escape(trimmedQuery)}%"
+                }
             )
         }
         .stateIn(

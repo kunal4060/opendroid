@@ -1,5 +1,6 @@
 package com.opendroid.ai.data.repository
 
+import com.opendroid.ai.data.db.dao.LikeEscaping
 import com.opendroid.ai.data.db.dao.MemoryDao
 import com.opendroid.ai.data.db.dao.TaskHistoryDao
 import com.opendroid.ai.data.db.dao.MacroDao
@@ -92,7 +93,10 @@ class MemoryRepository @Inject constructor(
     }
 
     suspend fun getMemoriesByKeyPrefix(prefix: String): List<Memory> {
-        return memoryDao.getMemoriesByKeyPrefix(prefix).map { entity ->
+        // Literal prefix match: escape LIKE metacharacters (every real
+        // prefix contains underscores) — the DAO declares ESCAPE '\'
+        // (audit-4 #5).
+        return memoryDao.getMemoriesByKeyPrefix(LikeEscaping.escape(prefix)).map { entity ->
             Memory(
                 key = entity.key,
                 value = entity.value,
