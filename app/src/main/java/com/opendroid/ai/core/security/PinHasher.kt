@@ -23,6 +23,16 @@ object PinHasher {
     /** OWASP's current PBKDF2-HmacSHA256 work factor for password storage. */
     const val ITERATIONS = 600_000
 
+    /**
+     * Highest record-supplied iteration count [verify] will honour. The
+     * record is data (it round-trips through storage), and an unbounded
+     * value would send PBKDF2 into an effectively endless derivation on
+     * the unlock path. Mirrors BackupCrypto's cap on header-supplied
+     * counts; well above [ITERATIONS] and any plausible future work
+     * factor this app writes.
+     */
+    const val MAX_ITERATIONS = 2_000_000
+
     private const val RECORD_VERSION = "v1"
     private const val SALT_BYTES = 16
     private const val KEY_BITS = 256
@@ -57,7 +67,7 @@ object PinHasher {
         val parts = record.split('$')
         if (parts.size != 4 || parts[0] != RECORD_VERSION) return false
         val iterations = parts[1].toIntOrNull() ?: return false
-        if (iterations <= 0) return false
+        if (iterations <= 0 || iterations > MAX_ITERATIONS) return false
         val decoder = Base64.getDecoder()
         val salt = try {
             decoder.decode(parts[2])
