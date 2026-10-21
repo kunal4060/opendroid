@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Wear OS companion (D7): the capability the phone advertises to paired
+    watches. The watch app looks this capability up through CapabilityClient
+    (FILTER_REACHABLE) so it talks to a node that actually runs the OpenDroid
+    agent — never to "any reachable node". Keep the name in sync with
+    core.wear.WearProtocol.CAPABILITY_AGENT and the copy in the :wear module.
+-->
+<resources>
+    <string-array name="android_wear_capabilities">
+        <item>opendroid_agent_v1</item>
+    </string-array>
+</resources>

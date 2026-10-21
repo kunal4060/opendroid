@@ -267,6 +267,24 @@
             </intent-filter>
         </activity>
 
+        <!-- Wear OS companion (D7): the phone half of the Data Layer link.
+             WearableListenerService is started by Google Play services when a
+             paired watch sends on one of the /opendroid/ paths — no runtime
+             permission is involved and the service must be exported for Play
+             services to bind it. Every message is handled by
+             core.wear.WearCommandHandler, which enforces the A5 app lock
+             before anything reaches the agent, exactly like the C7 external
+             command gateway. Status/pending-approval publication is outbound
+             (DataClient) and lives in core.wear.WearStatusPublisher. -->
+        <service
+            android:name=".core.wear.WearListenerService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data android:scheme="wear" android:host="*" android:pathPrefix="/opendroid/" />
+            </intent-filter>
+        </service>
+
         <!-- Boot Completed Receiver to Auto Start on Device Boot -->
         <receiver
             android:name=".core.service.BootReceiver"

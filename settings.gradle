@@ -15,3 +15,6 @@ dependencyResolutionManagement {
 }
 rootProject.name = "OpenDroid"
 include ':app'
+// Wear OS companion (D7): separate application module with the SAME
+// applicationId + signing as :app, as the Wearable Data Layer requires.
+include ':wear'
