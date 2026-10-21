@@ -1097,7 +1097,16 @@ class SystemActions @Inject constructor(
             val question = params["question"] ?: "What do you see on this screen?"
             return try {
                 val analysis = visionEngine.get().analyzeCurrentScreen(question)
-                ActionResult(true, analysis, null)
+                // Loop-2 Area2 #8: VisionEngine returns its failures as
+                // ordinary strings; wrapping one in a success result made
+                // the step COMPLETE with the failure text as its result
+                // (spoken back as the plan's success summary and
+                // substituted into later steps' $refs).
+                if (com.opendroid.ai.core.agent.VisionEngine.isFailureResult(analysis)) {
+                    ActionResult(false, null, analysis)
+                } else {
+                    ActionResult(true, analysis, null)
+                }
             } catch (e: Exception) {
                 Log.e("ScreenshotAnalysis", "Analysis failed: ${e.localizedMessage}")
                 ActionResult(false, null, "Couldn't analyze the screen right now.")

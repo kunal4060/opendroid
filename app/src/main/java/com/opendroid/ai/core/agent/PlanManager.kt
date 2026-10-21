@@ -336,9 +336,39 @@ class PlanManager @Inject constructor(
         // Previously this required COMPLETED, which meant a step with dependsOn
         // would be stuck forever if the dependency succeeded but returned no data
         // (since the dependency check was too strict).
+        //
+        // Loop-2 Area2 #5: a FAILED dependency is the exception. The
+        // dependsOn entries that survive validation are data-flow edges —
+        // the dependent's params reference the dependency's result as
+        // $depId, and ActionSequenceExecutor.resolveParameters substitutes
+        // only COMPLETED steps' results. Counting a FAILED dependency as
+        // met therefore dispatched the dependent with the literal "$depId"
+        // placeholder as its parameter value (a real message whose body
+        // was "$s1", then recorded COMPLETED). A FAILED dependency whose
+        // result this step actually references is UNMET: getActiveStep
+        // skips the step, the post-failure re-evaluation gets its chance to
+        // rewrite it (MODIFY), and if nothing does, the stranded-step
+        // handling in executePlanLoop fails it honestly. Ordering-only
+        // dependencies (no $depId reference in params) keep the
+        // finished-is-met behaviour above.
         return step.dependsOn.all { depId ->
             val depStep = allSteps.find { it.stepId == depId }
-            depStep != null && (depStep.status == StepStatus.COMPLETED || depStep.status == StepStatus.FAILED)
+            when {
+                depStep == null -> false
+                depStep.status == StepStatus.COMPLETED -> true
+                depStep.status == StepStatus.FAILED -> !referencesStepResult(step.params, depId)
+                else -> false
+            }
         }
+    }
+
+    /**
+     * True when any param value references [stepId]'s result — the same
+     * literal "$stepId" form resolveParameters substitutes (the "$$stepId"
+     * form contains it as a substring, so one check covers both).
+     */
+    private fun referencesStepResult(params: Map<String, String>, stepId: String): Boolean {
+        val reference = "$" + stepId
+        return params.values.any { it.contains(reference) }
     }
 }

@@ -100,6 +100,17 @@ class OpenDroidNotificationListener : NotificationListenerService() {
                             entity.title.equals("You", ignoreCase = true)
 
                         if (isSelfMessage) {
+                            // Loop-2 Area2 #6: the user just replied manually —
+                            // cancel the auto-reply still counting down for
+                            // this contact, as AutoReplyEngine's pipeline
+                            // promises ("abort if user replies manually").
+                            // cancelPendingReply existed for exactly this but
+                            // had no call sites, so the scheduled LLM reply
+                            // fired anyway, minutes after the user's own.
+                            // The key must match scheduleAutoReply's
+                            // registration: package + (contactName ?: title) —
+                            // contactName here is exactly that expression.
+                            autoReplyEngine.cancelPendingReply(sbn.packageName, contactName)
                             Log.d(TAG, "Skipping auto-reply: self-message/outgoing detected for $contactName")
                         } else {
                             // Only check bounceback for incoming messages
@@ -288,6 +299,15 @@ class OpenDroidNotificationListener : NotificationListenerService() {
      */
     fun getActiveNotification(packageName: String, contactName: String?): StatusBarNotification? {
         return try {
+            // Loop-2 Area2 #12: a null contact name must NOT match. The old
+            // predicate (contactName == null || title == contactName)
+            // short-circuited the title check, so the first reply-capable
+            // notification of the package won — quietly re-admitting the
+            // package-only fallback this function deliberately does not
+            // have, and risking a reply into the wrong conversation.
+            // Callers fall back to the original SBN (which by construction
+            // belongs to the right conversation) when this returns null.
+            val name = contactName ?: return null
             val activeNotifications = getActiveNotifications() ?: return null
             // Find a matching notification by package and sender name. There
             // is deliberately NO package-only fallback: when the intended
@@ -299,7 +319,7 @@ class OpenDroidNotificationListener : NotificationListenerService() {
                 sbn.notification?.extras?.let { extras ->
                     val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: ""
                     val convTitle = extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)?.toString() ?: ""
-                    contactName == null || title == contactName || convTitle == contactName
+                    title == name || convTitle == name
                 } == true &&
                 sbn.notification?.actions?.any { it.remoteInputs?.isNotEmpty() == true } == true
             }

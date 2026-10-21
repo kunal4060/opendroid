@@ -113,10 +113,16 @@ class AutoReplyEngine @Inject constructor(
                 Log.d(TAG, "Scheduling auto-reply in ${config.replyDelayMinutes} min for ${notification.contactName}")
                 delay(delayMs)
 
-                // Re-check config (user might have disabled it during the wait)
+                // Re-check the FULL policy against fresh config (user might
+                // have changed it during the wait). Loop-2 Area2 #11: this
+                // used to re-check only globalEnabled, so a contact the user
+                // blacklisted, removed from the whitelist, or whose app they
+                // disabled during the (default 15-minute) delay still got
+                // the reply. shouldAutoReply covers all of it, globalEnabled
+                // included.
                 val freshConfig = settingsRepository.autoReplyConfig.first()
-                if (!freshConfig.globalEnabled) {
-                    Log.d(TAG, "Auto-reply disabled during wait period")
+                if (!shouldAutoReply(notification, freshConfig)) {
+                    Log.d(TAG, "Auto-reply policy no longer allows reply after wait period")
                     return@launch
                 }
 
@@ -334,7 +340,16 @@ class AutoReplyEngine @Inject constructor(
                     notification.packageName,
                     notification.contactName
                 ) ?: sbn
-                replyDispatcher.replyViaEmail(freshSbn, senderEmail, notification.title, replyText, context)
+                // Loop-2 Area2 #7: only an actually-dispatched inline reply
+                // counts as sent. A compose window left open for the user
+                // (COMPOSE_OPENED) must not mark the notification as
+                // auto-replied, consume rate-limit budget, or arm bounceback
+                // suppression for a text that never went out.
+                val outcome = replyDispatcher.replyViaEmail(freshSbn, senderEmail, notification.title, replyText, context)
+                if (outcome == ReplyDispatcher.EmailReplyOutcome.COMPOSE_OPENED) {
+                    Log.d(TAG, "Email auto-reply handed off to compose for ${notification.contactName}; not recorded as sent")
+                }
+                outcome == ReplyDispatcher.EmailReplyOutcome.SENT
             }
             else -> false
         }

@@ -22,6 +22,29 @@ class VisionEngine @Inject constructor(
 ) {
     companion object {
         private const val TAG = "VisionEngine"
+
+        /**
+         * Loop-2 Area2 #8: this engine's public API returns failure
+         * descriptions as ordinary result strings (it predates a typed
+         * result). Every failure string it can produce starts with one of
+         * these prefixes. Consumers MUST check [isFailureResult] before
+         * treating a return value as a successful analysis/extraction —
+         * recording one as a completed step's result speaks the failure
+         * back as the plan's success summary, and saving one into notes
+         * stores garbage that later recall treats as real extracted
+         * content.
+         */
+        private val FAILURE_PREFIXES = listOf(
+            "Could not capture or read the screen",
+            "I captured the screenshot but couldn't analyze it",
+            "I read the screen text but couldn't analyze it",
+            "I captured the screenshot but couldn't extract the details",
+            "I read the screen text but couldn't extract the details"
+        )
+
+        /** True when [result] is one of this engine's failure strings, not content. */
+        fun isFailureResult(result: String): Boolean =
+            FAILURE_PREFIXES.any { result.startsWith(it) }
     }
 
     /**

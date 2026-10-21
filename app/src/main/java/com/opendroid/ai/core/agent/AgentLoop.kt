@@ -203,8 +203,15 @@ class AgentLoop @Inject constructor(
         requestId: String = UUID.randomUUID().toString()
     ): String {
         val request = PendingUserInput(sessionId, requestId, CompletableDeferred())
-        waitingSessionId = sessionId
+        // Loop-2 Area2 #3: install the pending request BEFORE publishing
+        // the waiting session. processQuery reads waitingSessionId first and
+        // pendingUserInput second; with the old order a reply landing
+        // between the two writes saw a waiting session but a null/stale
+        // pending prompt, failed its delivery revalidation, and was
+        // silently dropped. Written in this order, any reply that can see
+        // the waiting session can also see its matching prompt.
         pendingUserInput = request
+        waitingSessionId = sessionId
         _pendingPromptRequestId.value = requestId
         try {
             return request.deferred.await()
@@ -352,14 +359,22 @@ class AgentLoop @Inject constructor(
                 if (isAnsweringPendingQuestion) {
                     // Re-validate at delivery time, not just at schedule time: only
                     // complete the EXACT prompt this reply was aimed at (matched by
-                    // requestId, not merely by session). If it's gone - already answered,
-                    // abandoned, or superseded by a newer prompt in the meantime - there
-                    // is nothing to buffer it for; just drop it.
+                    // requestId, not merely by session). complete()'s result is
+                    // checked, not ignored.
                     val pending = pendingUserInput
-                    if (pending != null && pending.requestId == pendingAtScheduleTime?.requestId) {
+                    val delivered = pending != null &&
+                        pending.requestId == pendingAtScheduleTime?.requestId &&
                         pending.deferred.complete(query)
-                    }
-                    return@launch
+                    if (delivered) return@launch
+                    // Loop-2 Area2 #3: the prompt this message was aimed at is
+                    // gone — already answered by an earlier message in the same
+                    // burst, abandoned, or superseded before the parked
+                    // coroutine's finally cleared the waiting state. The old
+                    // code returned here and the message, though persisted,
+                    // was never answered. Fall through instead and process it
+                    // as a genuinely new query in this same session (it is
+                    // already saved above, and processQueryLocked re-reads
+                    // history, so the transcript stays coherent).
                 }
 
                 // Serialize query handling so contextual follow-up state cannot race.
@@ -393,19 +408,29 @@ class AgentLoop @Inject constructor(
         configOverride: LLMConfig? = null
     ) {
         val waitingSession = waitingSessionId
+        // Loop-2 Area2 #9: whether this retry takes over the currentJob
+        // slot. When another session's task is running and deliberately
+        // NOT cancelled (audit-2 #17), the retry must not overwrite
+        // currentJob either — the old code assigned it unconditionally,
+        // orphaning the still-running job's only handle (cancelCurrentTask
+        // could no longer stop it) and misattributing its state.
+        val ownsJobSlot: Boolean
         if (waitingSession != null && waitingSession != sessionId) {
             abandonWaitingTask(waitingSession)
+            ownsJobSlot = true
         } else if (currentTaskSessionId() == null || currentTaskSessionId() == sessionId) {
             // Audit-2 #17: never cancel a task pinned to a DIFFERENT
             // session — AgentLoop is a singleton with one currentJob, and an
             // unscoped cancel here would silently kill another chat's
             // running task just because this session retried/regenerated.
             currentJob?.cancel()
+            ownsJobSlot = true
+        } else {
+            ownsJobSlot = false
         }
 
         val job = scope.launch {
             try {
-                activeTaskSessionId = sessionId
                 resolveStaleProposedPlan(sessionId)
 
                 val messages = conversationRepository.getMessages(sessionId).first()
@@ -414,6 +439,14 @@ class AgentLoop @Inject constructor(
                 } ?: messages.lastOrNull { it.sender == ChatMessage.Sender.USER } ?: return@launch
 
                 queryMutex.withLock {
+                    // Loop-2 Area2 #9: pin this task's session only once it
+                    // actually owns execution. The old code set
+                    // activeTaskSessionId before the lock, so while this
+                    // retry waited behind another session's running task,
+                    // that task's own session attribution (and the default
+                    // session for any prompt it opened) pointed at the
+                    // retry's chat.
+                    activeTaskSessionId = sessionId
                     processQueryLocked(userMsg, userMsg.text, context, sessionId, configOverride)
                 }
             } catch (e: CancellationException) {
@@ -422,7 +455,9 @@ class AgentLoop @Inject constructor(
                 _agentState.value = AgentState.Error(e.localizedMessage ?: "Unknown processing error")
             }
         }
-        currentJob = job
+        if (ownsJobSlot) {
+            currentJob = job
+        }
     }
 
     private suspend fun processQueryLocked(
@@ -552,11 +587,14 @@ class AgentLoop @Inject constructor(
             val plan = buildSingleStepPlan(originalQuery, alias.action, alias.baseParams)
 
             planManager.startNewPlan(plan, context, PlanStatus.PROPOSED)
+            // Loop-2 Area2 #2: gate on the validated plan PlanManager
+            // stored (the one that will execute), not the raw alias plan.
+            val effectivePlan = planManager.currentPlan.value ?: plan
             val approval = settingsRepository.llmConfig.first().approvalSettings()
-            if (AutoApprovalPolicy.shouldAutoApprove(approval.mode, approval.grantedActions, plan)) {
-                executePlanLoop(plan, context, sessionId, autoApproved = true)
+            if (AutoApprovalPolicy.shouldAutoApprove(approval.mode, approval.grantedActions, effectivePlan)) {
+                executePlanLoop(effectivePlan, context, sessionId, autoApproved = true)
             } else {
-                proposePlan(plan, sessionId)
+                proposePlan(effectivePlan, sessionId)
             }
         } catch (e: CancellationException) {
             throw e
@@ -818,15 +856,24 @@ class AgentLoop @Inject constructor(
             }
 
             planManager.startNewPlan(plan, context, PlanStatus.PROPOSED)
+            // Loop-2 Area2 #2: startNewPlan stores the VALIDATED plan
+            // (PlanValidator substitutes unregistered actions, replaces a
+            // contact name with the resolved number, can insert an ASK_USER
+            // step) — and the validated plan is what executePlanLoop runs.
+            // The approval gate (auto-approval check + the PlanProposed
+            // sheet the user reads) must therefore be computed from
+            // PlanManager's stored copy, never the raw pre-validation plan,
+            // or the user approves one step set and a different one executes.
+            val effectivePlan = planManager.currentPlan.value ?: plan
             // Re-read after LLM work: user may have flipped mode or revoked grants
             // while planning was in flight; stale pre-LLM config must not auto-run.
             val liveConfig = settingsRepository.llmConfig.first()
             val approval = liveConfig.approvalSettings()
-            if (AutoApprovalPolicy.shouldAutoApprove(approval.mode, approval.grantedActions, plan)) {
-                recordAutoApprovedTrace(plan, approval.mode, sessionId)
-                executePlanLoop(plan, context, sessionId, autoApproved = true)
+            if (AutoApprovalPolicy.shouldAutoApprove(approval.mode, approval.grantedActions, effectivePlan)) {
+                recordAutoApprovedTrace(effectivePlan, approval.mode, sessionId)
+                executePlanLoop(effectivePlan, context, sessionId, autoApproved = true)
             } else {
-                proposePlan(plan, sessionId)
+                proposePlan(effectivePlan, sessionId)
             }
         } catch (e: CancellationException) {
             throw e
@@ -903,29 +950,21 @@ class AgentLoop @Inject constructor(
         // "yes", a double-tap, a surface still rendering an old proposal).
         val proposedState = _agentState.value as? AgentState.PlanProposed ?: return
         val proposedPlan = proposedState.plan
-        // Note: the state carries the pre-storage plan object (its own status
-        // field is the PENDING default) — the authoritative PROPOSED-status
-        // check happens under the lock below, against PlanManager's stored
-        // copy of this same planId.
+        // Note: since Loop-2 Area2 #2 the state carries PlanManager's
+        // stored, validated copy of the plan (status PROPOSED) — the same
+        // object that will execute. The under-lock revalidation below stays
+        // as the authoritative guard: it re-reads PlanManager's copy and
+        // checks planId + PROPOSED at execution time.
         // Consume the proposal synchronously, before launching: a second
         // approve arriving while this one is still starting finds no proposal
         // at the gate and is a no-op.
         _agentState.value = AgentState.Idle
         currentJob?.cancel()
         val job = scope.launch {
-            // "Always allow" checkboxes from the approval modal: persist BEFORE
-            // executing so a crash mid-plan can't lose an explicit user grant.
-            // Filter through isGrantable - neverAutoApprove actions can never
+            // "Always allow" checkboxes from the approval modal. Filter
+            // through isGrantable - neverAutoApprove actions can never
             // enter the allowlist no matter what the UI sends.
             val toGrant = grantActions.filter { AutoApprovalPolicy.isGrantable(it) }
-            if (toGrant.isNotEmpty()) {
-                val grantedAt = System.currentTimeMillis()
-                settingsRepository.updateConfig { current ->
-                    current.copy(
-                        grantedActions = current.effectiveGrantedActions() + toGrant.associateWith { grantedAt }
-                    )
-                }
-            }
             // Approving a proposed plan starts a new task in its own right (the plan may
             // have been proposed in an earlier, now-idle turn), so pin its session here too -
             // same rationale as processQuery, see activeTaskSessionId. Executes in the
@@ -938,11 +977,27 @@ class AgentLoop @Inject constructor(
             queryMutex.withLock {
                 // Re-validate under the lock: execute ONLY the plan that was
                 // approved, and only while it is still PROPOSED — PlanManager
-                // may have been overwritten (or the plan cancelled) while the
-                // grants above were being persisted.
+                // may have been overwritten (or the plan cancelled) since
+                // the approval signal arrived.
                 val plan = planManager.currentPlan.value ?: return@withLock
                 if (plan.planId != proposedPlan.planId || plan.status != PlanStatus.PROPOSED) {
                     return@withLock
+                }
+                // Loop-2 Area2 #10: persist the "Always allow" grants only
+                // AFTER the approval has validated, inside the same lock.
+                // The old order wrote them first, so a stale/refused
+                // approval (double-delivered voice "yes", a modal rendered
+                // from a superseded proposal) left permanent allowlist
+                // entries behind even though no plan was approved or
+                // executed. A crash between validation and execution can
+                // now lose a grant — the safe direction to lose it in.
+                if (toGrant.isNotEmpty()) {
+                    val grantedAt = System.currentTimeMillis()
+                    settingsRepository.updateConfig { current ->
+                        current.copy(
+                            grantedActions = current.effectiveGrantedActions() + toGrant.associateWith { grantedAt }
+                        )
+                    }
                 }
                 executePlanLoop(plan, context, sessionId)
             }
@@ -1165,11 +1220,20 @@ class AgentLoop @Inject constructor(
      * work must not silently vanish just because the LLM's rewrite omitted
      * it; genuinely new stepIds from [updatedPlan] are appended.
      *
+     * Loop-2 Area2 #1: an [updatedPlan] step whose stepId belongs to a
+     * FINISHED step of the current plan is never merged back in. The
+     * re-evaluation prompt's example carries no status field, so an echoed
+     * completed step deserialises as PENDING — without this exclusion the
+     * merge resurrected it as fresh pending work (renamed s1 -> s1_2 by
+     * ensureUniqueStepIds) and it executed a second time: duplicate sends,
+     * calls and reminders, unattended in AUTO/YOLO.
+     *
      * Approval gate: any merged PENDING step that differs from what was
      * approved (a new stepId, or a same-id replacement whose action/params/
-     * fallback changed, or an approved step the update retired) may only run
-     * unattended when the plan was auto-approved AND the whole merged
-     * remainder still passes [AutoApprovalPolicy] under the LIVE config —
+     * fallback/dependsOn/order changed, or an approved step the update
+     * retired) may only run unattended when the plan was auto-approved AND
+     * the whole merged remainder still passes [AutoApprovalPolicy] under
+     * the LIVE config —
      * the same all-or-nothing re-check the UnknownAction branch has always
      * applied to AUTO plans, extended to manually approved plans: the user
      * approved a specific step set, and LLM-invented steps must never run
@@ -1183,6 +1247,7 @@ class AgentLoop @Inject constructor(
         autoApproved: Boolean
     ): Boolean {
         val finished = currentPlanState.steps.filter { it.status != StepStatus.PENDING }
+        val finishedIds = finished.map { it.stepId }.toSet()
         val originalPending = currentPlanState.steps.filter { it.status == StepStatus.PENDING }
         val originalPendingIds = originalPending.map { it.stepId }.toSet()
         val updatedById = updatedPlan.steps.associateBy { it.stepId }
@@ -1195,9 +1260,16 @@ class AgentLoop @Inject constructor(
                 replacement == null -> mergedPending += original
                 replacement.status == StepStatus.PENDING -> {
                     mergedPending += replacement
+                    // Loop-2 Area2 #13: dependsOn/order are part of what was
+                    // approved — a dependency-only rewire (dropping the dep
+                    // that produces this step's $ref input, or adding one on
+                    // a FAILED step) is a change and must re-gate like any
+                    // other edit, not slip through as "unchanged".
                     if (replacement.action != original.action ||
                         replacement.params != original.params ||
-                        replacement.fallback != original.fallback
+                        replacement.fallback != original.fallback ||
+                        replacement.dependsOn != original.dependsOn ||
+                        replacement.order != original.order
                     ) {
                         changedPending += replacement
                     }
@@ -1209,6 +1281,10 @@ class AgentLoop @Inject constructor(
             }
         }
         for (step in updatedPlan.steps) {
+            // Loop-2 Area2 #1: never resurrect finished work. An echoed
+            // finished step (status lost in the LLM round-trip, so it reads
+            // PENDING) is not a "genuinely new" step — it already ran.
+            if (step.stepId in finishedIds) continue
             if (step.stepId !in originalPendingIds && step.status == StepStatus.PENDING) {
                 mergedPending += step
                 changedPending += step

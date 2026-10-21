@@ -90,8 +90,29 @@ class ReplyDispatcher @Inject constructor(
     }
 
     /**
-     * Open email compose with pre-filled reply.
-     * For Gmail, we attempt to use the notification's reply action first.
+     * Outcome of an email auto-reply attempt. Loop-2 Area2 #7: these must
+     * never be conflated — opening a compose window is NOT a send. The
+     * user still has to press Send and may discard the draft, so only
+     * [SENT] (the notification inline reply actually dispatched) may be
+     * recorded as an auto-reply: marked in the DB, counted against the
+     * hourly rate limit, and armed for bounceback suppression.
+     */
+    enum class EmailReplyOutcome {
+        /** The reply was actually dispatched via the notification inline reply. */
+        SENT,
+
+        /** A pre-filled compose window was opened; nothing has been sent. */
+        COMPOSE_OPENED,
+
+        /** No reply was dispatched and no compose could be opened. */
+        FAILED
+    }
+
+    /**
+     * Reply to an email: try the notification's inline reply first (works
+     * for Gmail); if that is unavailable, open a pre-filled compose window
+     * as a user hand-off and report [EmailReplyOutcome.COMPOSE_OPENED] —
+     * never success.
      */
     fun replyViaEmail(
         sbn: StatusBarNotification?,
@@ -99,14 +120,22 @@ class ReplyDispatcher @Inject constructor(
         subject: String,
         replyText: String,
         context: Context
-    ): Boolean {
+    ): EmailReplyOutcome {
         // First try notification inline reply (works for Gmail)
         if (sbn != null) {
             val replied = replyViaNotificationAction(sbn, replyText)
-            if (replied) return true
+            if (replied) return EmailReplyOutcome.SENT
         }
 
-        // Fallback: open email compose intent
+        // No recipient, no compose: a recipient-less draft the user would
+        // have to address by hand is not a reply hand-off worth opening,
+        // and it must never be reported as one.
+        if (to.isBlank()) {
+            Log.w(TAG, "Email reply skipped: no sender address available for compose fallback")
+            return EmailReplyOutcome.FAILED
+        }
+
+        // Fallback: open email compose intent (a hand-off, not a send)
         return try {
             val intent = Intent(Intent.ACTION_SENDTO).apply {
                 data = "mailto:".toUri()
@@ -117,10 +146,10 @@ class ReplyDispatcher @Inject constructor(
             }
             context.startActivity(intent)
             Log.d(TAG, "Email reply compose opened for $to")
-            true
+            EmailReplyOutcome.COMPOSE_OPENED
         } catch (e: Exception) {
             Log.e(TAG, "Failed to open email reply: ${e.message}")
-            false
+            EmailReplyOutcome.FAILED
         }
     }
 }

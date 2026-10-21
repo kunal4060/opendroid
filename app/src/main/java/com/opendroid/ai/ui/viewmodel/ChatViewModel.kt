@@ -1066,8 +1066,8 @@ class ChatViewModel @Inject constructor(
     }
 
     /**
-     * Edits a previously sent user message and resends it, DeepSeek-style: cancels any
-     * in-flight agent task first (so a running/awaiting-input task can never race with
+     * Edits a previously sent user message and resends it, DeepSeek-style: cancels this
+     * chat's in-flight agent task first (so a running/awaiting-input task can never race with
      * or swallow the resend), deletes that message and every message after it in the
      * current session so the conversation visibly rewinds, then sends the edited text
      * as a fresh query.
@@ -1082,9 +1082,16 @@ class ChatViewModel @Inject constructor(
         // Same no-route guard as sendMessage: never rewind the conversation
         // for a resend that cannot be answered right now.
         if (routingStatus.value is RoutingStatus.OfflineNoRoute) return false
-        agentLoop.cancelCurrentTask()
         viewModelScope.launch {
             val sessionId = conversationRepository.ensureCurrentSessionId()
+            // Loop-2 Area2 #4: session-scoped cancel, mirroring regenerate
+            // (audit-2 #17). AgentLoop is a singleton whose one job/plan may
+            // belong to ANOTHER chat; the old unconditional
+            // cancelCurrentTask() here killed that chat's running task
+            // mid-plan and persisted its plan as CANCELLED.
+            if (agentLoop.currentTaskSessionId() == sessionId) {
+                agentLoop.cancelCurrentTask()
+            }
             conversationRepository.deleteMessageAndAfter(sessionId, messageId)
             _taskSessionId.value = sessionId
             val session = conversationRepository.sessions.first()
@@ -1194,8 +1201,14 @@ class ChatViewModel @Inject constructor(
 
     /** Clears the messages of the CURRENT chat only - other chats are untouched. */
     fun clearChat() {
-        agentLoop.cancelCurrentTask()
         viewModelScope.launch {
+            val sessionId = conversationRepository.ensureCurrentSessionId()
+            // Loop-2 Area2 #4: same session-scoping as editAndResend /
+            // regenerate — clearing THIS chat must not kill another chat's
+            // running task or cancel its plan.
+            if (agentLoop.currentTaskSessionId() == sessionId) {
+                agentLoop.cancelCurrentTask()
+            }
             conversationRepository.clearCurrentSession()
         }
     }

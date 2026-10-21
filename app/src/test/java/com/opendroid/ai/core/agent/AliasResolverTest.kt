@@ -31,6 +31,29 @@ class AliasResolverTest {
     }
 
     @Test
+    fun `light on and off variants carry the right state`() {
+        // Loop-2 Area2 #14: "light" previously existed only as a toggle, so
+        // "turn the light off" toggled — turning the torch ON when it was off.
+        assertEquals("off", AliasResolver.resolve("turn the light off")?.baseParams?.get("state"))
+        assertEquals("off", AliasResolver.resolve("light off")?.baseParams?.get("state"))
+        assertEquals("on", AliasResolver.resolve("turn the light on")?.baseParams?.get("state"))
+        assertEquals("on", AliasResolver.resolve("light on")?.baseParams?.get("state"))
+        // The bare word stays a toggle.
+        assertEquals("toggle", AliasResolver.resolve("light")?.baseParams?.get("state"))
+    }
+
+    @Test
+    fun `negated commands do not resolve on the fast path`() {
+        // Loop-2 Area2 #14: the negated action must never be what executes.
+        assertNull(AliasResolver.resolve("don't turn on the flashlight"))
+        assertNull(AliasResolver.resolve("do not turn on wifi"))
+        assertNull(AliasResolver.resolve("never turn it off"))
+        // The one alias legitimately containing a negation-shaped phrase
+        // still resolves, via the exact match that runs before the guard.
+        assertEquals("TOGGLE_DND", AliasResolver.resolve("do not disturb")?.action)
+    }
+
+    @Test
     fun `mute maps to ring volume zero`() {
         val hint = AliasResolver.resolve("mute")
         assertNotNull(hint)
@@ -153,6 +176,21 @@ class AliasResolverTest {
     @Test
     fun `contextual resolver returns null without prior action`() {
         assertNull(AliasResolver.resolveContextual("turn it off", null, null))
+    }
+
+    @Test
+    fun `contextual resolver ignores negated follow-ups`() {
+        // Loop-2 Area2 #14: substring matching used to resolve these as OFF
+        // commands against the last executed toggle.
+        assertNull(
+            AliasResolver.resolveContextual("don't turn it off", "TOGGLE_FLASHLIGHT", mapOf("state" to "on"))
+        )
+        assertNull(
+            AliasResolver.resolveContextual("no, don't turn it off", "TOGGLE_FLASHLIGHT", mapOf("state" to "on"))
+        )
+        assertNull(
+            AliasResolver.resolveContextual("do not turn it off", "TOGGLE_FLASHLIGHT", mapOf("state" to "on"))
+        )
     }
 
     // ── Read & Remember / Screen Understanding ─────────────────────────
