@@ -289,6 +289,11 @@ dependencies {
     // LiteRT-LM: On-device LLM inference fallback (no AI Core dependency)
     implementation 'com.google.ai.edge.litertlm:litertlm-android:0.14.0'
 
+    // PdfBox-Android (B1): extracts text from PDF attachments for providers
+    // without native PDF support. Android's PdfRenderer only rasterises
+    // pages - it cannot extract text. Apache-2.0.
+    implementation 'com.tom-roush:pdfbox-android:1.8.10.0'
+
     // Testing
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'androidx.room:room-testing:2.8.4'
