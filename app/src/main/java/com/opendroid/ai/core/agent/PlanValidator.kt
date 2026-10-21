@@ -130,8 +130,26 @@ class PlanValidator @Inject constructor(
             }
         }
 
-        val cleanedSteps = removeBadDependencies(finalSteps)
+        val cleanedSteps = ensureUniqueStepIds(removeBadDependencies(finalSteps))
         return plan.copy(steps = cleanedSteps, estimatedSteps = cleanedSteps.size)
+    }
+
+    /**
+     * Audit-2 #7: stepIds are the join key for status updates, `$stepId`
+     * parameter references and dependency lookups, so duplicates corrupt
+     * execution (a status update hits every step sharing the id while
+     * readers only ever find the first). Suffix later occurrences
+     * deterministically; references to the original id bind to the first
+     * occurrence. (AgentLoop.normalizePlan applies the same rule to freshly
+     * parsed plans; this covers plans reaching startNewPlan by other paths.)
+     */
+    private fun ensureUniqueStepIds(steps: List<PlanStep>): List<PlanStep> {
+        val seen = mutableMapOf<String, Int>()
+        return steps.map { step ->
+            val count = (seen[step.stepId] ?: 0) + 1
+            seen[step.stepId] = count
+            if (count == 1) step else step.copy(stepId = "${step.stepId}_$count")
+        }
     }
 
     private fun removeBadDependencies(steps: List<PlanStep>): List<PlanStep> {
@@ -167,26 +185,40 @@ class PlanValidator @Inject constructor(
             val contentResolver = context.contentResolver
             val uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI
             val projection = arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER)
+
+            // Audit-2 #3: collect EVERY matching number and auto-resolve
+            // only when exactly one DISTINCT number matches. The previous
+            // moveToFirst() silently bound the plan to whichever row the
+            // cursor returned first, so "message Alex" could be rewritten
+            // to the wrong Alex's number before the approval sheet ever
+            // showed — the sheet displays the step description, not the
+            // substituted number, so the user approved blind. Ambiguity now
+            // returns null, leaving the name in place for the caller's
+            // ASK_USER / contact-picker flow to disambiguate.
+            fun queryNumbers(selection: String, arg: String): Set<String> {
+                val numbers = linkedSetOf<String>()
+                contentResolver.query(uri, projection, selection, arrayOf(arg), null)?.use { cursor ->
+                    val idx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                    if (idx >= 0) {
+                        while (cursor.moveToNext()) {
+                            val number = cursor.getString(idx)
+                            if (!number.isNullOrBlank()) {
+                                numbers += number.replace(" ", "").replace("-", "")
+                            }
+                        }
+                    }
+                }
+                return numbers
+            }
+
             val selectionExact = "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} = ?"
-            contentResolver.query(uri, projection, selectionExact, arrayOf(contact.trim()), null)?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val idx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
-                    if (idx >= 0) {
-                        val number = cursor.getString(idx)
-                        if (!number.isNullOrBlank()) return number.replace(" ", "").replace("-", "")
-                    }
-                }
-            }
+            val exactNumbers = queryNumbers(selectionExact, contact.trim())
+            if (exactNumbers.size == 1) return exactNumbers.first()
+            if (exactNumbers.size > 1) return null
+
             val selectionLike = "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?"
-            contentResolver.query(uri, projection, selectionLike, arrayOf("%${contact.trim()}%"), null)?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val idx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
-                    if (idx >= 0) {
-                        val number = cursor.getString(idx)
-                        if (!number.isNullOrBlank()) return number.replace(" ", "").replace("-", "")
-                    }
-                }
-            }
+            val likeNumbers = queryNumbers(selectionLike, "%${contact.trim()}%")
+            if (likeNumbers.size == 1) return likeNumbers.first()
         } catch (e: Exception) { }
         return null
     }
