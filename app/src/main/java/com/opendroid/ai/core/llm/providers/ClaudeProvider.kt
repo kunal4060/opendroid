@@ -129,8 +129,15 @@ class ClaudeProvider @Inject constructor(
             val responseBody = response.body.string()
             if (responseBody.isBlank()) throw IOException("Empty response body from Claude")
             val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
-            val contentArray = jsonResponse.getAsJsonArray("content")
-            val content = contentArray[0].asJsonObject.get("text").asString
+            // Take the first block that actually carries text: the array can
+            // be empty, and a non-text block (thinking/tool_use on models
+            // that return them) has no "text" member to read.
+            val contentArray = jsonResponse.get("content")
+                ?.takeIf { it.isJsonArray }?.asJsonArray
+            val content = contentArray?.firstNotNullOfOrNull { block ->
+                block.takeIf { it.isJsonObject }?.asJsonObject
+                    ?.get("text")?.takeIf { it.isJsonPrimitive }?.asString
+            } ?: ""
 
             val usage = jsonResponse.getAsJsonObject("usage")
             // Anthropic reports the split natively; keep it split for B3
