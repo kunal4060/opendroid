@@ -49,9 +49,6 @@ class TextToSpeechEngine(
      */
     var onUtteranceCompletionListener: ((String?) -> Unit)? = null
 
-    @Volatile
-    private var currentUtteranceId: String? = null
-
     // Additional completion observers, for callers that must not clobber the
     // single [onCompletionListener] slot owned by OpenDroidService (chat
     // read-aloud queues its chunks off these). Notified on the main thread,
@@ -113,7 +110,6 @@ class TextToSpeechEngine(
      * receive this id when the speech finishes.
      */
     fun speak(text: String, utteranceId: String) {
-        currentUtteranceId = utteranceId
         scope.launch {
             if (destroyed) return@launch
             val config = settingsRepository.llmConfig.first()
@@ -122,7 +118,7 @@ class TextToSpeechEngine(
 
             if (apiKey.isNotEmpty()) {
                 try {
-                    val success = playElevenLabsTts(text, apiKey, voiceId)
+                    val success = playElevenLabsTts(text, apiKey, voiceId, utteranceId)
                     if (success) return@launch
                 } catch (e: Exception) {
                     // Fallback to local TTS if ElevenLabs fails
@@ -151,7 +147,7 @@ class TextToSpeechEngine(
         }
     }
 
-    private fun playElevenLabsTts(text: String, apiKey: String, voiceId: String): Boolean {
+    private fun playElevenLabsTts(text: String, apiKey: String, voiceId: String, utteranceId: String): Boolean {
         val url = "https://api.elevenlabs.io/v1/text-to-speech/$voiceId"
         val escapedText = text
             .replace("\\", "\\\\")
@@ -196,9 +192,15 @@ class TextToSpeechEngine(
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(tempFile.absolutePath)
                 prepare()
+                // Capture THIS utterance's id in the closure: the speech
+                // that actually played is what completed. Reading a
+                // shared field at completion time mis-attributes the
+                // event to any interleaved speak() — with an approval
+                // prompt in flight that either never arms approval
+                // listening or arms it for unrelated speech (finding #3).
                 setOnCompletionListener {
                     mainHandler.post {
-                        notifyCompletion(currentUtteranceId)
+                        notifyCompletion(utteranceId)
                     }
                 }
                 start()
