@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import com.opendroid.ai.core.memory.graph.PersonalGrowthEngine
+import com.opendroid.ai.core.agent.PlanManager
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -30,6 +31,7 @@ class MemoryManager @Inject constructor(
     private val memoryRepository: MemoryRepository,
     private val notificationIntelligence: NotificationIntelligence,
     private val userProfileStore: UserProfileStore,
+    private val planManager: PlanManager,
     @ApplicationContext private val context: Context
 ) {
     private val json = Json { prettyPrint = true }
@@ -39,9 +41,12 @@ class MemoryManager @Inject constructor(
         workingMemory.addMessage(message)
         episodicMemory.storeMessage(message)
 
-        // Automatically extract facts from the latest conversation turn
-        val recent = conversationRepository.getLastMessages(5)
-        extractFacts(recent)
+        // Extract facts from the message just stored ONLY. This used to
+        // re-run extraction over the last 5 stored messages on every call,
+        // and each replay re-incremented the fact node's accessCount and
+        // refreshed lastUpdated — one "my name is …" was counted 5+ times
+        // and a stale fact kept looking freshly learned.
+        extractFacts(listOf(message))
     }
 
     /**
@@ -54,11 +59,11 @@ class MemoryManager @Inject constructor(
         workingMemory.addMessage(message)
         episodicMemory.storeMessage(message, sessionId)
 
-        // Automatically extract facts from the latest conversation turn.
+        // Extract facts from the message just stored ONLY (see the other
+        // overload — replaying the last 5 messages inflated fact counts).
         // The session id travels with the extraction so facts learned here
         // carry real provenance (see MemoryExtractor).
-        val recent = conversationRepository.getLastMessages(sessionId, 5)
-        extractFacts(recent, sessionId)
+        extractFacts(listOf(message), sessionId)
     }
 
     suspend fun extractFacts(conversation: List<ChatMessage>) {
@@ -77,6 +82,16 @@ class MemoryManager @Inject constructor(
         // Collect facts from semantic database — only valid (non-expired, non-poisoned) entries
         val facts = memoryRepository.getValidMemoriesByType(MemoryType.SEMANTIC)
         val dbFacts = facts
+            // Knowledge-graph internals live in SEMANTIC rows too: node rows
+            // hold whole KnowledgeNode JSON blobs and the relations index is
+            // a JSON list. Dumping them here filled "[Facts about User]"
+            // with raw JSON (duplicated in parsed form by the graph section
+            // below); notification patterns likewise have their own section.
+            .filter {
+                !it.key.startsWith("pkg_node_") &&
+                    it.key != "pkg_relations_index" &&
+                    !it.key.startsWith("notif_pattern_")
+            }
             .filter { memoryExtractor.shouldStoreInSemanticMemory(it.key) && memoryExtractor.shouldStoreInSemanticMemory(it.value) }
             .joinToString("; ") { "${it.key}: ${it.value}" }
 
@@ -182,9 +197,22 @@ class MemoryManager @Inject constructor(
     }
 
     suspend fun clearMemory(type: MemoryType) {
+        if (type == MemoryType.SEMANTIC) {
+            // Every knowledge-graph node row is typed SEMANTIC. Route the
+            // sensitive nodes through the engine FIRST so their Keystore
+            // secrets (and relations) are deleted with them — a bare
+            // type-wipe orphaned the secrets with no node left to reveal or
+            // delete them through.
+            personalGrowthEngine.deleteAllSensitiveNodes()
+        }
         memoryRepository.clearMemoryByType(type)
         if (type == MemoryType.WORKING) {
             workingMemory.clear()
+            // The active plan lives in PlanManager (a separate store that
+            // re-mirrors into workingMemory.activePlan on its next update),
+            // so clear it there too — otherwise the wipe left the plan
+            // visibly in place and it resurrected in working memory.
+            planManager.clearPlan()
         }
         if (type == MemoryType.EPISODIC) {
             // The Memory tab's episodic clear is labeled as wiping history outright, so it
