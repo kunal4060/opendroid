@@ -150,6 +150,8 @@ class WearCommandHandler @Inject constructor(
                 Log.i(TAG, "Watch approval decision dropped: no plan at the gate (already resolved?)")
             WearApprovalGuard.Verdict.STALE_PLAN ->
                 Log.i(TAG, "Watch approval decision dropped: plan ${decision.planId} is no longer proposed")
+            WearApprovalGuard.Verdict.EXPIRED ->
+                Log.i(TAG, "Watch approval decision dropped: the watch card for plan ${decision.planId} had expired")
         }
         // No reply message: resolution is state, published by
         // WearStatusPublisher — the pending-approval DataItem disappears and

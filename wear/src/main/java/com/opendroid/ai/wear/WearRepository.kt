@@ -31,7 +31,7 @@ sealed interface WearCommandState {
     data class Result(val outcome: String, val message: String) : WearCommandState
 
     /** No result within the wait window — shown honestly, never as success. */
-    data class TimedOut(val text: String) : WearCommandState
+    data class TimedOut(val text: String, val correlationId: String) : WearCommandState
 }
 
 /**
@@ -178,8 +178,11 @@ class WearRepository(context: Context) :
         val current = _commandState.value
         if (current is WearCommandState.Sending && current.correlationId == result.correlationId) {
             _commandState.value = WearCommandState.Result(result.outcome, result.message)
-        } else if (current is WearCommandState.TimedOut) {
-            // Late answer after the wait window: show it as what it is.
+        } else if (current is WearCommandState.TimedOut && current.correlationId == result.correlationId) {
+            // Late answer after the wait window: show it as what it is —
+            // but ONLY for the command this state belongs to. Accepting
+            // any result here would display an older command's outcome
+            // (possibly a success) as the verdict on a newer one (#6).
             _commandState.value = WearCommandState.Result(result.outcome, result.message)
         }
     }
@@ -232,13 +235,22 @@ class WearRepository(context: Context) :
             delay(RESULT_WAIT_MS)
             val afterWait = _commandState.value
             if (afterWait is WearCommandState.Sending && afterWait.correlationId == correlationId) {
-                _commandState.value = WearCommandState.TimedOut(text)
+                _commandState.value = WearCommandState.TimedOut(text, correlationId)
             }
         }
     }
 
     /** Send an approve/deny decision for the pending plan card. */
-    fun sendApprovalDecision(planId: String, approved: Boolean) {
+    fun sendApprovalDecision(approval: WearPendingApproval, approved: Boolean) {
+        // Re-validate the TTL at tap time, not only when the card was
+        // composed: a card left on screen past its expiry must not still
+        // be actionable (finding #7). The phone re-checks the stamped
+        // expiry as well (WearApprovalGuard), this just fails fast.
+        if (approval.expiresAtMs <= System.currentTimeMillis()) {
+            Log.i(TAG, "Approval decision not sent: card for plan ${approval.planId} has expired")
+            return
+        }
+        val planId = approval.planId
         val nodeId = _phoneNodeId.value ?: run {
             refreshConnection()
             return
@@ -248,7 +260,8 @@ class WearRepository(context: Context) :
         val decision = WearApprovalDecision(
             planId = planId,
             approved = approved,
-            decidedAtMs = System.currentTimeMillis()
+            decidedAtMs = System.currentTimeMillis(),
+            expiresAtMs = approval.expiresAtMs
         )
         scope.launch {
             try {
