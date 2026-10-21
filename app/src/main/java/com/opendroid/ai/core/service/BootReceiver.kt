@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import com.opendroid.ai.core.schedule.ScheduledTaskScheduler
 import com.opendroid.ai.core.schedule.ScheduledTaskSweepWorker
+import com.opendroid.ai.social.core.worker.SocialScheduleWorker
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -55,6 +56,11 @@ class BootReceiver : BroadcastReceiver() {
      */
     private fun rearmSchedules(context: Context) {
         ScheduledTaskSweepWorker.enqueuePeriodicWork(context)
+        // Same re-arm for the social post scheduler: WorkManager work
+        // survives reboot, but re-ensuring it here (unique name + KEEP)
+        // keeps due scheduled posts publishing after boot/update even
+        // if the periodic work was ever cancelled.
+        SocialScheduleWorker.enqueuePeriodicWork(context)
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
             try {

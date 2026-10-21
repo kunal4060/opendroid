@@ -65,20 +65,31 @@ class CronExpression private constructor(
      * Feb-29 gap (8 years across a non-leap century year).
      */
     fun nextFireAfter(afterMillis: Long, zone: ZoneId): Long? {
-        val after = LocalDateTime.ofInstant(Instant.ofEpochMilli(afterMillis), zone)
-        val afterMinute = after.withSecond(0).withNano(0)
         val sortedHours = hours.sorted()
         val sortedMinutes = minutes.sorted()
-        val startDate = after.toLocalDate()
+        val startDate = LocalDateTime.ofInstant(Instant.ofEpochMilli(afterMillis), zone).toLocalDate()
         for (dayOffset in 0..SEARCH_HORIZON_DAYS) {
             val date = startDate.plusDays(dayOffset.toLong())
             if (!dayMatches(date.atStartOfDay(zone))) continue
             for (hour in sortedHours) {
                 for (minute in sortedMinutes) {
                     val candidate = date.atTime(hour, minute)
-                    if (!candidate.isAfter(afterMinute)) continue
-                    val zoned = candidate.atZone(zone)
-                    if (matches(zoned)) return zoned.toInstant().toEpochMilli()
+                    // Expand the local candidate into every instant it
+                    // denotes in this zone. A normal local time has one
+                    // valid offset; an ambiguous one (autumn fall-back)
+                    // has two — both passes through the repeated hour
+                    // are real occurrences, and atZone() alone would
+                    // silently keep only the earlier one. A gap time
+                    // (spring forward) has none and is skipped, matching
+                    // mainstream cron. Comparing instants (not local
+                    // times) is what lets the second pass be "after" a
+                    // moment inside the repeated hour.
+                    val instants = zone.rules.getValidOffsets(candidate)
+                        .map { offset -> ZonedDateTime.ofLocal(candidate, zone, offset) }
+                        .filter { zoned -> matches(zoned) }
+                        .map { zoned -> zoned.toInstant().toEpochMilli() }
+                        .filter { it > afterMillis }
+                    if (instants.isNotEmpty()) return instants.min()
                 }
             }
         }

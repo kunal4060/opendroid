@@ -6,13 +6,15 @@ import com.opendroid.ai.core.security.SocialCredentialStore
 import com.opendroid.ai.data.repository.MemoryRepository
 import com.opendroid.ai.data.repository.SocialRepository
 import com.opendroid.ai.social.core.adapter.*
+import com.opendroid.ai.social.core.ai.RuleEvaluationResult
+import com.opendroid.ai.social.core.ai.SocialRuleEngine
 import com.opendroid.ai.social.core.audit.SocialAuditLogger
 import com.opendroid.ai.social.domain.model.*
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.util.UUID
 import javax.inject.Inject
@@ -25,6 +27,7 @@ class SocialManager @Inject constructor(
     private val credentialStore: SocialCredentialStore,
     private val auditLogger: SocialAuditLogger,
     private val memoryRepository: MemoryRepository,
+    private val ruleEngine: SocialRuleEngine,
     telegramAdapter: TelegramAdapter,
     discordAdapter: DiscordAdapter,
     xAdapter: XAdapter,
@@ -345,6 +348,12 @@ class SocialManager @Inject constructor(
             val comments = commentsResult.getOrThrow()
             if (comments.isNotEmpty()) {
                 socialRepository.saveComments(comments)
+                // Freshly synced comments are the rule engine's only
+                // production input: evaluate the user's automation
+                // rules against them now (auto-reply where a rule's
+                // actionType and the approval gates allow it, a stored
+                // draft + audit entry everywhere else).
+                evaluateRulesForSyncedComments(comments)
             }
         }
 
@@ -359,17 +368,70 @@ class SocialManager @Inject constructor(
         Result.success(Unit)
     }
 
-    suspend fun syncAllAccounts(): Result<Unit> = withContext(Dispatchers.IO) {
-        val accounts = socialRepository.getAllAccountsFlow()
-        // Run sync for each connected account
-        val connected = socialRepository.getConnectedAccountsFlow()
-        // We'll trigger sync for each account
+    /**
+     * Runs the automation rules over comments that just arrived via
+     * [syncAccount]. Only comments whose STORED row is still untouched
+     * (unanswered, no draft yet) are evaluated — adapters may re-fetch
+     * the same comment on later syncs, and it must not be re-answered
+     * or re-drafted every time. A rule failure never fails the sync
+     * itself; the comments are already saved.
+     */
+    private suspend fun evaluateRulesForSyncedComments(fetched: List<SocialComment>) {
         try {
-            val accountsList = socialRepository.getAccountByPlatform(SocialPlatform.TELEGRAM)?.let { listOf(it) } ?: emptyList()
-            Result.success(Unit)
+            val storedById = socialRepository.getAllCommentsFlow().first()
+                .associateBy { it.id }
+            for (candidate in fetched) {
+                val stored = storedById[candidate.id] ?: continue
+                if (stored.isAnswered ||
+                    stored.replyStatus != CommentReplyStatus.NONE ||
+                    stored.suggestedReply != null
+                ) {
+                    continue
+                }
+                val postContext = stored.postId?.let { socialRepository.getPostById(it)?.content }
+                when (val result = ruleEngine.evaluateComment(stored, _automationLevel.value, postContext)) {
+                    is RuleEvaluationResult.AutoReply -> {
+                        // The engine returns AutoReply only for
+                        // actionType AUTO_REPLY rules whose approval
+                        // gates all pass (see SocialRuleEngine).
+                        replyToComment(stored.id, result.replyText, actor = "AUTO_RULE")
+                    }
+                    is RuleEvaluationResult.NeedsHumanApproval -> {
+                        socialRepository.updateSuggestedReply(stored.id, result.suggestedReply)
+                        auditLogger.log(
+                            actor = "AUTO_RULE",
+                            action = "SUGGESTED_REPLY",
+                            platform = stored.platform,
+                            targetId = stored.id,
+                            details = result.reason,
+                            status = "NEEDS_APPROVAL"
+                        )
+                    }
+                    RuleEvaluationResult.NoMatch -> Unit
+                }
+            }
         } catch (e: Exception) {
-            Result.failure(e)
+            Log.e(TAG, "Rule evaluation failed for synced comments", e)
         }
+    }
+
+    suspend fun syncAllAccounts(): Result<Unit> = withContext(Dispatchers.IO) {
+        // Actually sync: run the per-account sync for every CONNECTED
+        // account (the previous body obtained two flows it never
+        // collected, looked up only the Telegram account into an unused
+        // local, and returned success without syncing anything).
+        val connectedAccounts = socialRepository.getConnectedAccountsFlow().first()
+        var firstFailure: Exception? = null
+        for (account in connectedAccounts) {
+            val result = syncAccount(account.id)
+            if (result.isFailure && firstFailure == null) {
+                val error = result.exceptionOrNull()
+                firstFailure = error as? Exception
+                    ?: Exception("Sync failed for ${account.platform.displayName}: $error")
+            }
+        }
+        val failure = firstFailure
+        if (failure != null) Result.failure(failure) else Result.success(Unit)
     }
 
     suspend fun replyToComment(

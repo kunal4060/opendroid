@@ -1111,6 +1111,18 @@ class AgentLoop @Inject constructor(
      * even starts unwinding. [planManager.currentPlan] is a plain StateFlow
      * read, not suspending, so this capture is safe to do here.
      */
+    /**
+     * The job running the current task end-to-end (the one [processQuery]
+     * most recently started, or the parked job a reply is being delivered
+     * to), or null when nothing is in flight. Headless observers such as
+     * AgentCommandRunner use its completion as a run boundary: agentState
+     * is a conflated StateFlow whose terminal value can be identical to
+     * the previous turn's, so VALUE alone cannot always distinguish "the
+     * previous turn's replay" from "this run just finished with the same
+     * result" — job completion can.
+     */
+    fun currentTaskJob(): Job? = currentJob
+
     fun cancelCurrentTask() {
         val jobToCancel = currentJob
         currentJob = null

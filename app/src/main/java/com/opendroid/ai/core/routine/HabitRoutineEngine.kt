@@ -321,6 +321,16 @@ class HabitRoutineEngine @Inject constructor(
         for (routine in discoveredRoutines) {
             habitDao.insertRoutine(routine)
 
+            // Feed the pattern into the PKG only the FIRST time this
+            // routine is seen. checkAndSynthesizeRoutine re-discovers a
+            // still-SUGGESTED routine on every pass (detection runs every
+            // 10 recorded events), and recordExplicitMemory mints a fresh
+            // node id per call — without this guard the graph accumulates
+            // unbounded duplicate "Detected routine" nodes for one
+            // suggestion. The routine row itself is upserted by id either
+            // way, so re-detection still refreshes it.
+            if (routine.id in existingRoutines) continue
+
             // Feed pattern into PKG
             try {
                 personalGrowthEngine.get().recordExplicitMemory(
@@ -537,6 +547,18 @@ class HabitRoutineEngine @Inject constructor(
             )
         } catch (e: Exception) {
             Log.w(TAG, "Failed to record approved routine in PKG: ${e.message}")
+        }
+
+        // Mirror the new macro into a real scheduled task right away,
+        // exactly like activateTemplate does. Without this the mirrored
+        // task only appears at the next 15-minute sweep (or when the
+        // Schedules screen opens); if Doze defers that sweep past the
+        // first occurrence's freshness window, the routine's first run
+        // is silently skipped.
+        try {
+            macroScheduleSync.get().sync()
+        } catch (e: Exception) {
+            Log.w(TAG, "Routine approved but schedule sync deferred to sweep: ${e.message}")
         }
 
         return try {

@@ -63,14 +63,21 @@ class SocialInsightsEngine @Inject constructor(
 
         // 3. Platform Growth Insight
         if (recentSnapshots.isNotEmpty()) {
+            // Snapshots are point-in-time (one row per sync): rank
+            // platforms by each platform's LATEST snapshot reach, never
+            // by the sum over every sync in the window — summing would
+            // reward whichever account merely synced most often.
             val byPlatform = recentSnapshots.groupBy { it.platform }
-            val bestPlatform = byPlatform.maxByOrNull { entry -> entry.value.sumOf { it.reach ?: 0 } }
+            val latestReach = byPlatform.mapValues { (_, list) ->
+                list.maxByOrNull { it.timestamp }?.reach ?: 0
+            }
+            val bestPlatform = latestReach.maxByOrNull { it.value }
             if (bestPlatform != null) {
-                val totalReach = bestPlatform.value.sumOf { it.reach ?: 0 }
+                val totalReach = bestPlatform.value
                 insights.add(
                     SocialInsight(
                         id = UUID.randomUUID().toString(),
-                        observedData = "${bestPlatform.key.displayName} generated $totalReach reach in the last 7 days.",
+                        observedData = "${bestPlatform.key.displayName} has the highest reach, at $totalReach in its latest analytics snapshot from the last 7 days.",
                         calculatedInsight = "${bestPlatform.key.displayName} is your highest-reach distribution channel this week.",
                         aiRecommendation = "Allocate higher posting frequency to ${bestPlatform.key.displayName} to maximize audience acquisition.",
                         category = "PLATFORM_AUDIENCE",

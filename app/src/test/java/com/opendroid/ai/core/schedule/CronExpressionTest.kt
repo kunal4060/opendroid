@@ -6,6 +6,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
 
@@ -93,5 +94,20 @@ class CronExpressionTest {
             at(2026, 10, 22, 6, 30).toInstant().toEpochMilli(),
             cron.nextFireAfter(atFire, zone)
         )
+    }
+
+    @Test
+    fun `fall-back day generates both passes through the repeated hour`() {
+        val berlin = ZoneId.of("Europe/Berlin")
+        val cron = CronExpression.parse("30 2 * * *")!!
+        // Sun 25 Oct 2026: Berlin falls back 03:00 CEST -> 02:00 CET, so
+        // local 02:30 occurs twice — 00:30Z (CEST) and 01:30Z (CET).
+        val beforeFirst = Instant.parse("2026-10-25T00:00:00Z").toEpochMilli()
+        val first = Instant.parse("2026-10-25T00:30:00Z").toEpochMilli()
+        val second = Instant.parse("2026-10-25T01:30:00Z").toEpochMilli()
+        assertEquals(first, cron.nextFireAfter(beforeFirst, berlin))
+        // Asked again once the first pass has fired, the next fire is the
+        // second pass through 02:30 — not tomorrow's.
+        assertEquals(second, cron.nextFireAfter(first, berlin))
     }
 }

@@ -112,6 +112,13 @@ object NextFireCalculator {
         if (!task.enabled) return null
         if (task.status == ScheduledTaskStatus.DONE || task.status == ScheduledTaskStatus.MISSED) return null
         val occurrence = occurrenceAtOrBefore(task, nowMillis, zone) ?: return null
+        // An occurrence earlier than the task's own creation can never be
+        // due: the freshness windows exist for the phone-was-off case, but
+        // applied to a task created minutes ago (a DAILY 09:00 task created
+        // at 09:30) they would fire it the same morning at a time the user
+        // never asked for. Legacy rows carry createdAtMillis = 0, which
+        // keeps this a no-op for them.
+        if (occurrence < task.createdAtMillis) return null
         if (occurrence == task.lastFiredOccurrenceMillis) return null
         val age = nowMillis - occurrence
         return when (task.recurrence) {

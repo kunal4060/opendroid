@@ -3,6 +3,7 @@ package com.opendroid.ai.social.core.analytics
 import com.opendroid.ai.data.repository.SocialRepository
 import com.opendroid.ai.social.domain.model.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
@@ -43,9 +44,20 @@ class SocialAnalyticsEngine @Inject constructor(
             .values.mapNotNull { list -> list.maxByOrNull { it.timestamp }?.followersCount }
             .sum()
 
-        val totalReach = currentSnapshots.sumOf { it.reach ?: 0 }
-        val prevReach = prevSnapshots.sumOf { it.reach ?: 0 }
-        val totalImpressions = currentSnapshots.sumOf { it.impressions ?: 0 }
+        // Reach/impressions are point-in-time account metrics, exactly
+        // like followers above: one snapshot row is stored per sync, so
+        // summing every snapshot in the window would multiply the true
+        // figure by the number of syncs. Take the LATEST snapshot per
+        // platform, as the followers computation already does.
+        val totalReach = currentSnapshots.groupBy { it.platform }
+            .values.mapNotNull { list -> list.maxByOrNull { it.timestamp }?.reach }
+            .sum()
+        val prevReach = prevSnapshots.groupBy { it.platform }
+            .values.mapNotNull { list -> list.maxByOrNull { it.timestamp }?.reach }
+            .sum()
+        val totalImpressions = currentSnapshots.groupBy { it.platform }
+            .values.mapNotNull { list -> list.maxByOrNull { it.timestamp }?.impressions }
+            .sum()
 
         val nonZeroEngagements = currentSnapshots.mapNotNull { it.engagementRate }.filter { it > 0f }
         val avgEngagement = if (nonZeroEngagements.isNotEmpty()) nonZeroEngagements.average().toFloat() else 0f
@@ -67,23 +79,38 @@ class SocialAnalyticsEngine @Inject constructor(
         val sevenDaysAgo = now - 7 * 86400_000L
 
         val summary = getSummary(7)
-        val published = socialRepository.getPostsByStatus(PostStatus.PUBLISHED)
-        val topPosts = socialRepository.getTopPerformingPosts(1)
-        val topPost = topPosts.firstOrNull()
+        // Every figure below is derived from THIS week's data only.
+        val weekPosts = socialRepository.getPostsByStatus(PostStatus.PUBLISHED)
+            .filter { (it.publishedTime ?: it.createdAt) >= sevenDaysAgo }
+        val allComments = socialRepository.getAllCommentsFlow().first()
 
-        val allComments = socialRepository.getUnansweredComments() // or all comments
-        val repliesSent = published.sumOf { it.commentsCount }
+        // Comments RECEIVED this week (stored comments timestamped in
+        // the window) and replies actually SENT this week (comments
+        // whose reply was sent in the window, whenever the comment
+        // itself arrived) are two different numbers from two different
+        // sources — the previous implementation reported one all-time
+        // comments-received sum as both.
+        val commentsReceived = allComments.count { it.timestamp >= sevenDaysAgo }
+        val repliesSent = allComments.count { comment ->
+            val repliedAt = comment.replyTimestamp
+            repliedAt != null && repliedAt >= sevenDaysAgo
+        }
+
+        // This week's top post, scored with the same formula the DAO's
+        // getTopPerformingPosts uses. With no posts this week there is
+        // no top post: both fields stay null and consumers report
+        // insufficient data instead of an invented platform/post.
+        val topPost = weekPosts.maxByOrNull { it.likesCount + it.commentsCount * 2 + it.sharesCount * 3 }
+        val topPlatform = topPost?.platform
+        val topPostSummary = topPost?.content?.take(80)
 
         val dateFormat = SimpleDateFormat("MMM d", Locale.getDefault())
         val periodTitle = "${dateFormat.format(Date(sevenDaysAgo))} – ${dateFormat.format(Date(now))}"
 
-        val topPlatform = topPost?.platform ?: SocialPlatform.X
-        val topPostSummary = topPost?.content?.take(80) ?: "OpenDroid v1.1 milestone announcement"
-
         val aiSummary = if (summary.totalPosts > 0) {
             "Your product and developer updates generated the strongest engagement this week with ${summary.totalReach} total reach and an average engagement rate of ${String.format("%.1f", summary.averageEngagementRate)}%."
         } else {
-            "Your social channels remained steady this week. Publishing regular updates and release announcements will increase reach."
+            "Not enough data for a weekly summary: no posts were published in this period. Publishing regular updates and release announcements will increase reach."
         }
 
         val recommendations = listOf(
@@ -102,7 +129,7 @@ class SocialAnalyticsEngine @Inject constructor(
             totalImpressions = summary.totalImpressions,
             averageEngagementRate = summary.averageEngagementRate,
             totalPostsPublished = summary.totalPosts,
-            totalCommentsReceived = published.sumOf { it.commentsCount },
+            totalCommentsReceived = commentsReceived,
             totalRepliesSent = repliesSent,
             topPlatform = topPlatform,
             topPostSummary = topPostSummary,
