@@ -202,6 +202,12 @@ dependencies {
     implementation 'androidx.documentfile:documentfile:1.0.1'
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.7'
     implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7'
+    // ProcessLifecycleOwner drives the app-lock gate (A5): the whole process
+    // backgrounding past the lock timeout is what re-locks the UI.
+    implementation 'androidx.lifecycle:lifecycle-process:2.8.7'
+    // BiometricPrompt for the app lock (A5). 1.1.0 is the current stable line;
+    // it merges USE_BIOMETRIC/USE_FINGERPRINT into the manifest itself.
+    implementation 'androidx.biometric:biometric:1.1.0'
     implementation 'androidx.activity:activity-compose:1.13.0'
 
     // Jetpack Compose

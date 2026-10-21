@@ -6,6 +6,7 @@ import com.opendroid.ai.core.crash.CrashLogRecorder
 import com.opendroid.ai.core.crash.DeviceMetadata
 import com.opendroid.ai.core.crash.OpenDroidCrashHandler
 import com.opendroid.ai.core.memory.MemoryManager
+import com.opendroid.ai.core.security.AppLockManager
 import com.opendroid.ai.core.security.LegacyPreferenceMigration
 import com.opendroid.ai.data.crash.CrashLogRepository
 import dagger.hilt.android.HiltAndroidApp
@@ -27,6 +28,9 @@ class OpenDroidApp : Application() {
     @Inject
     lateinit var legacyPreferenceMigration: LegacyPreferenceMigration
 
+    @Inject
+    lateinit var appLockManager: AppLockManager
+
     private val appScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     override fun onCreate() {
@@ -34,6 +38,11 @@ class OpenDroidApp : Application() {
 
         // Installed first so that a crash in any later startup step is captured.
         installCrashHandler()
+
+        // Arm the app-lock gate (A5): registers the process-lifecycle observer
+        // that re-locks the UI after the background timeout. The manager's
+        // initial state already reflects a cold start (locked when enabled).
+        appLockManager.start()
 
         // Retire the legacy preference files into the direct-Keystore stores. This opens the
         // Keystore and the legacy keyset, so it runs off the main thread; splash routing and
