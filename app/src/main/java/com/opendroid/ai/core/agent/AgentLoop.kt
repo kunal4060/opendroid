@@ -408,19 +408,29 @@ class AgentLoop @Inject constructor(
         configOverride: LLMConfig? = null
     ) {
         val waitingSession = waitingSessionId
+        // Loop-2 Area2 #9: whether this retry takes over the currentJob
+        // slot. When another session's task is running and deliberately
+        // NOT cancelled (audit-2 #17), the retry must not overwrite
+        // currentJob either — the old code assigned it unconditionally,
+        // orphaning the still-running job's only handle (cancelCurrentTask
+        // could no longer stop it) and misattributing its state.
+        val ownsJobSlot: Boolean
         if (waitingSession != null && waitingSession != sessionId) {
             abandonWaitingTask(waitingSession)
+            ownsJobSlot = true
         } else if (currentTaskSessionId() == null || currentTaskSessionId() == sessionId) {
             // Audit-2 #17: never cancel a task pinned to a DIFFERENT
             // session — AgentLoop is a singleton with one currentJob, and an
             // unscoped cancel here would silently kill another chat's
             // running task just because this session retried/regenerated.
             currentJob?.cancel()
+            ownsJobSlot = true
+        } else {
+            ownsJobSlot = false
         }
 
         val job = scope.launch {
             try {
-                activeTaskSessionId = sessionId
                 resolveStaleProposedPlan(sessionId)
 
                 val messages = conversationRepository.getMessages(sessionId).first()
@@ -429,6 +439,14 @@ class AgentLoop @Inject constructor(
                 } ?: messages.lastOrNull { it.sender == ChatMessage.Sender.USER } ?: return@launch
 
                 queryMutex.withLock {
+                    // Loop-2 Area2 #9: pin this task's session only once it
+                    // actually owns execution. The old code set
+                    // activeTaskSessionId before the lock, so while this
+                    // retry waited behind another session's running task,
+                    // that task's own session attribution (and the default
+                    // session for any prompt it opened) pointed at the
+                    // retry's chat.
+                    activeTaskSessionId = sessionId
                     processQueryLocked(userMsg, userMsg.text, context, sessionId, configOverride)
                 }
             } catch (e: CancellationException) {
@@ -437,7 +455,9 @@ class AgentLoop @Inject constructor(
                 _agentState.value = AgentState.Error(e.localizedMessage ?: "Unknown processing error")
             }
         }
-        currentJob = job
+        if (ownsJobSlot) {
+            currentJob = job
+        }
     }
 
     private suspend fun processQueryLocked(
