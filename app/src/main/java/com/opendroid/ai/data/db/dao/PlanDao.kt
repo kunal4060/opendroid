@@ -20,4 +20,8 @@ interface PlanDao {
 
     @Query("DELETE FROM plans WHERE planId = :planId")
     suspend fun deletePlan(planId: String)
+
+    /** Removes every plan (backup restore, B2). */
+    @Query("DELETE FROM plans")
+    suspend fun clearAllPlans()
 }

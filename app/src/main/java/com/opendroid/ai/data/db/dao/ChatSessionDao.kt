@@ -50,4 +50,8 @@ interface ChatSessionDao {
 
     @Query("DELETE FROM chat_sessions WHERE id = :sessionId")
     suspend fun delete(sessionId: String)
+
+    /** Removes every session (backup restore, B2 — conversations are cleared separately). */
+    @Query("DELETE FROM chat_sessions")
+    suspend fun clearAllSessions()
 }

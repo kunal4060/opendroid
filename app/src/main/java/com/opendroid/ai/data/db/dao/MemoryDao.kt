@@ -37,6 +37,10 @@ interface MemoryDao {
     @Query("DELETE FROM memories WHERE type = :type")
     suspend fun clearMemoryByType(type: String)
 
+    /** Removes every memory row, knowledge-graph rows included (backup restore, B2). */
+    @Query("DELETE FROM memories")
+    suspend fun clearAllMemories()
+
     @Query("""DELETE FROM memories 
               WHERE ttlHours != -1 
               AND (timestamp + (ttlHours * 3600000)) <= :now""")

@@ -2579,6 +2579,12 @@ fun SettingsScreen(
                 AppLockSettingsSection(viewModel = viewModel)
             }
 
+            // Backup & restore (B2): encrypted export / import of chats,
+            // memories & knowledge graph, macros, routines and settings
+            item {
+                BackupRestoreSection()
+            }
+
             // Privacy Policy link card
             item {
                 Card(
