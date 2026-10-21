@@ -9,7 +9,7 @@ import kotlinx.serialization.Serializable
  * - Level 3 LEARNED_PATTERN: Inferred behaviors (frequently contacted people, preferred apps, routines)
  * - Level 4 SENSITIVE: Encrypted at rest via AndroidKeyStore AES-256-GCM with strict access controls
  */
-@Serializable
+@Serializable(with = MemoryTierSerializer::class)
 enum class MemoryTier {
     TEMPORARY,
     LONG_TERM,

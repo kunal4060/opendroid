@@ -97,26 +97,59 @@ class MemoryExtractor @Inject constructor(
                     }
                 }
 
-                // Dynamic extraction helper — same bounded multi-word name
-                // capture (the old single-word class kept only the last
-                // word of e.g. "Priya Sharma is my wife").
-                val wifeMatch = Regex("$NAME_VALUE is my wife", RegexOption.IGNORE_CASE).find(msg.text)
-                if (wifeMatch != null) {
-                    val value = wifeMatch.groupValues[1].trim()
+                // Dynamic extraction — "<Name> is my wife/husband". The old
+                // unanchored "$NAME_VALUE is my wife" find() matched from
+                // the leftmost position, so "My friend Priya Sharma is my
+                // wife" stored "My friend Priya Sharma" as the name. The
+                // helper anchors on the token directly before the trigger
+                // and extends left only across plausible name tokens.
+                spouseNameBefore(msg.text, "wife")?.let { value ->
                     if (shouldStoreInSemanticMemory("wife_name") && shouldStoreInSemanticMemory(value)) {
                         storeExtractedFact("wife_name", value, msg, sessionId)
                     }
                 }
 
-                val husbandMatch = Regex("$NAME_VALUE is my husband", RegexOption.IGNORE_CASE).find(msg.text)
-                if (husbandMatch != null) {
-                    val value = husbandMatch.groupValues[1].trim()
+                spouseNameBefore(msg.text, "husband")?.let { value ->
                     if (shouldStoreInSemanticMemory("husband_name") && shouldStoreInSemanticMemory(value)) {
                         storeExtractedFact("husband_name", value, msg, sessionId)
                     }
                 }
             }
         }
+    }
+
+    /**
+     * Extracts the spouse name from "<Name> is my [relation]".
+     *
+     * Anchors on the single name token immediately before the trigger
+     * phrase, then extends leftwards one token at a time (four tokens max,
+     * the same bound as [NAME_VALUE]) only while the preceding token is a
+     * plausible continuation of the name: a capitalised token ("Priya"
+     * before "Sharma"), or a lowercase token when everything captured so
+     * far is lowercase too ("priya sharma" typed without capitals). A
+     * lowercase clause word in mixed-case text ("friend" in "My friend
+     * Priya Sharma…") stops the extension, so prefix words are no longer
+     * stored as part of the name.
+     */
+    private fun spouseNameBefore(text: String, relation: String): String? {
+        val trigger = Regex("($NAME_TOKEN) is my $relation", RegexOption.IGNORE_CASE)
+        val match = trigger.find(text) ?: return null
+        val lastTokenGroup = match.groups[1] ?: return null
+        val tokens = mutableListOf(match.groupValues[1])
+        var nameStart = lastTokenGroup.range.first
+        val precedingToken = Regex("($NAME_TOKEN)\\s*$", RegexOption.IGNORE_CASE)
+        while (tokens.size < 4) {
+            val prefix = text.substring(0, nameStart)
+            val prev = precedingToken.find(prefix) ?: break
+            val candidate = prev.groupValues[1]
+            val candidateGroup = prev.groups[1] ?: break
+            val continuesName = candidate.first().isUpperCase() ||
+                tokens.all { token -> token.none { it.isUpperCase() } }
+            if (!continuesName) break
+            tokens.add(0, candidate)
+            nameStart = candidateGroup.range.first
+        }
+        return tokens.joinToString(" ")
     }
 
     /**

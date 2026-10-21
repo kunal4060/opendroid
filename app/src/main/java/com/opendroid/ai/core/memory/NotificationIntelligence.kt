@@ -69,7 +69,13 @@ class NotificationIntelligence @Inject constructor(
 
             // 3. Communication time patterns
             val recentNotifs = notificationDao.getNotificationsSince(sevenDaysAgo, 500)
-            analyzeTimePatterns(recentNotifs)
+            val patternedContacts = analyzeTimePatterns(recentNotifs)
+            // Per-contact rows are only ever written for the current top-5;
+            // without pruning, a contact who drops out leaves a
+            // "usually messages in the evening (N this week)" row behind
+            // forever, and getLearnedPatterns keeps feeding it to the
+            // prompt as if it were current.
+            pruneStaleContactPatterns(patternedContacts)
 
             // 4. Message volume stats
             val totalCount = notificationDao.getTotalCount()
@@ -85,8 +91,9 @@ class NotificationIntelligence @Inject constructor(
         }
     }
 
-    private suspend fun analyzeTimePatterns(notifications: List<NotificationEntity>) {
-        if (notifications.isEmpty()) return
+    /** Returns the contacts a `contact_time_` pattern was written for. */
+    private suspend fun analyzeTimePatterns(notifications: List<NotificationEntity>): Set<String> {
+        if (notifications.isEmpty()) return emptySet()
 
         val hourCounts = IntArray(24)
         for (notif in notifications) {
@@ -126,6 +133,27 @@ class NotificationIntelligence @Inject constructor(
             }
             storePattern("contact_time_$contact",
                 "$contact usually messages in the $contactPeriod (${notifs.size} messages this week)")
+        }
+        return topGroups.keys
+    }
+
+    /**
+     * Deletes every stored `contact_time_` pattern whose contact is not in
+     * [currentContacts] (the set the latest analysis just wrote). The other
+     * pattern keys are fixed and overwritten on every run, so only the
+     * per-contact rows can accumulate or go stale.
+     */
+    private suspend fun pruneStaleContactPatterns(currentContacts: Set<String>) {
+        try {
+            val prefix = "${PATTERN_PREFIX}contact_time_"
+            val stored = memoryRepository.getMemoriesByKeyPrefix(prefix)
+            for (row in stored) {
+                if (row.key.removePrefix(prefix) !in currentContacts) {
+                    memoryRepository.deleteMemory(row.key)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to prune stale contact patterns: ${e.message}")
         }
     }
 

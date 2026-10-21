@@ -4,8 +4,11 @@ import kotlinx.serialization.Serializable
 
 /**
  * Knowledge categories organized in the Personal Knowledge Graph.
+ * Decoded tolerantly (see [KnowledgeCategorySerializer]): an unknown
+ * constant in stored node JSON degrades to NOTE_FACT instead of making
+ * the whole node unreadable.
  */
-@Serializable
+@Serializable(with = KnowledgeCategorySerializer::class)
 enum class KnowledgeCategory {
     CONTACT,          // Frequently contacted people, relationships, preferred channel
     TASK_ROUTINE,     // Recurring tasks, daily/weekly routines

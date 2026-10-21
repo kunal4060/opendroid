@@ -194,10 +194,61 @@ fun MemoryScreen(
 ) {
     var selectedTab by remember { mutableStateOf(MemoryScreenTab.GROWTH_GRAPH) }
     var searchQuery by remember { mutableStateOf("") }
+    var showWipeConfirmation by remember { mutableStateOf(false) }
     var isAddingFact by remember { mutableStateOf(false) }
     
     var newKey by remember { mutableStateOf("") }
     var newValue by remember { mutableStateOf("") }
+
+    if (showWipeConfirmation) {
+        // The wipe button used to fire with a single tap: one accidental
+        // touch irreversibly destroyed every memory tier — including the
+        // Keystore-backed sensitive store — or a whole category. Confirm
+        // first, naming exactly what the active tab will lose (the same
+        // pattern Loop 1 added for the Logs / Notification History wipes).
+        val wipingAllTiers = selectedTab == MemoryScreenTab.GROWTH_GRAPH
+        AlertDialog(
+            onDismissRequest = { showWipeConfirmation = false },
+            title = {
+                Text(if (wipingAllTiers) "Wipe all memory tiers?" else "Wipe this category?")
+            },
+            text = {
+                Text(
+                    if (wipingAllTiers) {
+                        "This permanently deletes everything in all four memory tiers — " +
+                            "long-term facts, learned patterns, temporary context, and the " +
+                            "encrypted sensitive records. It cannot be undone."
+                    } else {
+                        "This permanently deletes everything in the '${selectedTab.title}' " +
+                            "category. It cannot be undone."
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    when (selectedTab) {
+                        // The graph tab shows all four tiers — its wipe
+                        // clears all of them (incl. the sensitive store),
+                        // not just learned patterns.
+                        MemoryScreenTab.GROWTH_GRAPH -> viewModel.clearAllGraphTiers()
+                        MemoryScreenTab.SEMANTIC -> viewModel.clearMemories(MemoryType.SEMANTIC)
+                        MemoryScreenTab.WORKING -> viewModel.clearMemories(MemoryType.WORKING)
+                        MemoryScreenTab.EPISODIC -> viewModel.clearMemories(MemoryType.EPISODIC)
+                        MemoryScreenTab.PROCEDURAL -> viewModel.clearMemories(MemoryType.PROCEDURAL)
+                    }
+                    showWipeConfirmation = false
+                }) {
+                    Text("Delete", color = AppTheme.colors.accentRed)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showWipeConfirmation = false }) { Text("Cancel") }
+            },
+            containerColor = AppTheme.colors.cardBackground,
+            titleContentColor = AppTheme.colors.textPrimary,
+            textContentColor = AppTheme.colors.textSecondary
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -211,18 +262,7 @@ fun MemoryScreen(
                     )
                 },
                 actions = {
-                    TextButton(onClick = {
-                        when (selectedTab) {
-                            // The graph tab shows all four tiers — its wipe
-                            // clears all of them (incl. the sensitive store),
-                            // not just learned patterns.
-                            MemoryScreenTab.GROWTH_GRAPH -> viewModel.clearAllGraphTiers()
-                            MemoryScreenTab.SEMANTIC -> viewModel.clearMemories(MemoryType.SEMANTIC)
-                            MemoryScreenTab.WORKING -> viewModel.clearMemories(MemoryType.WORKING)
-                            MemoryScreenTab.EPISODIC -> viewModel.clearMemories(MemoryType.EPISODIC)
-                            MemoryScreenTab.PROCEDURAL -> viewModel.clearMemories(MemoryType.PROCEDURAL)
-                        }
-                    }) {
+                    TextButton(onClick = { showWipeConfirmation = true }) {
                         Text(
                             if (selectedTab == MemoryScreenTab.GROWTH_GRAPH) "Wipe all tiers" else "Wipe category",
                             color = AppTheme.colors.accentRed,
@@ -1153,6 +1193,8 @@ fun KnowledgeGraphView(
     var newLabel by remember { mutableStateOf("") }
     var newSummary by remember { mutableStateOf("") }
     var newCategory by remember { mutableStateOf(KnowledgeCategory.NOTE_FACT) }
+    // Key of a sensitive record whose overwrite is awaiting confirmation.
+    var pendingSensitiveOverwriteKey by remember { mutableStateOf<String?>(null) }
     // C5: List | Graph — the graph renders the same filtered nodes below.
     var showGraph by remember { mutableStateOf(false) }
 
@@ -1176,6 +1218,55 @@ fun KnowledgeGraphView(
         }.thenByDescending { it.confidence }
          .thenByDescending { it.lastUpdated }
     )
+
+    // Keys of the secrets already in the store (sensitive node ids are
+    // "sensitive_<key>"; graphFlow also synthesizes nodes for store keys
+    // written directly, e.g. by a backup restore, so this covers them all).
+    val existingSensitiveKeys = allNodes
+        .filter { it.tier == MemoryTier.SENSITIVE }
+        .map { it.id.removePrefix("sensitive_") }
+        .toSet()
+
+    val performSaveEntry: () -> Unit = {
+        if (addIsSensitive) {
+            viewModel.recordSensitiveData(newLabel, newSummary, newLabel)
+        } else {
+            viewModel.recordExplicitKnowledge(newLabel, newSummary, newCategory)
+        }
+        newLabel = ""
+        newSummary = ""
+        isAddingKnowledge = false
+    }
+
+    pendingSensitiveOverwriteKey?.let { existingKey ->
+        // Re-adding a secret under an existing key used to silently
+        // overwrite (and irrecoverably destroy) the old value. Confirm
+        // first — the same protection MCP server names got in Loop 1.
+        AlertDialog(
+            onDismissRequest = { pendingSensitiveOverwriteKey = null },
+            title = { Text("Replace the existing secret?") },
+            text = {
+                Text(
+                    "A secret is already stored under '$existingKey'. Saving will replace it, " +
+                        "and the old value cannot be recovered."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingSensitiveOverwriteKey = null
+                    performSaveEntry()
+                }) {
+                    Text("Replace", color = AppTheme.colors.accentRed)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingSensitiveOverwriteKey = null }) { Text("Cancel") }
+            },
+            containerColor = AppTheme.colors.cardBackground,
+            titleContentColor = AppTheme.colors.textPrimary,
+            textContentColor = AppTheme.colors.textSecondary
+        )
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Tier Chips
@@ -1415,14 +1506,13 @@ fun KnowledgeGraphView(
                         Button(
                             onClick = {
                                 if (newLabel.isNotBlank() && newSummary.isNotBlank()) {
-                                    if (addIsSensitive) {
-                                        viewModel.recordSensitiveData(newLabel, newSummary, newLabel)
+                                    if (addIsSensitive && newLabel in existingSensitiveKeys) {
+                                        // Never silently overwrite an existing
+                                        // secret — confirm the replacement first.
+                                        pendingSensitiveOverwriteKey = newLabel
                                     } else {
-                                        viewModel.recordExplicitKnowledge(newLabel, newSummary, newCategory)
+                                        performSaveEntry()
                                     }
-                                    newLabel = ""
-                                    newSummary = ""
-                                    isAddingKnowledge = false
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(

@@ -33,6 +33,13 @@ class PersonasViewModel @Inject constructor(
     val sessionBindings: StateFlow<Map<String, String>> = personaRepository.sessionBindings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
+    /**
+     * True when the stored persona library exists but cannot be read.
+     * The screen warns about it; mutations are refused by the repository
+     * in this state so the unreadable library is never overwritten.
+     */
+    val storageError: StateFlow<Boolean> = personaRepository.storageError
+
     private val _userMessage = MutableStateFlow<String?>(null)
 
     /** One-shot result message (import outcome, validation failure); cleared by the UI. */
@@ -54,14 +61,16 @@ class PersonasViewModel @Inject constructor(
 
     fun duplicatePersona(id: String) {
         viewModelScope.launch {
-            personaRepository.duplicatePersona(id)
+            runCatching { personaRepository.duplicatePersona(id) }
+                .onFailure { error -> _userMessage.value = error.message ?: "Could not save" }
         }
     }
 
     /** Deletes an entry; the repository strips its chat bindings in the same edit. */
     fun deletePersona(id: String) {
         viewModelScope.launch {
-            personaRepository.deletePersona(id)
+            runCatching { personaRepository.deletePersona(id) }
+                .onFailure { error -> _userMessage.value = error.message ?: "Could not save" }
         }
     }
 

@@ -82,6 +82,12 @@ object MemoryProvenance {
                 if (origin.detail.isNotBlank()) append(" (${origin.detail})")
                 append(".")
             }
+
+            OriginKind.UNKNOWN -> buildString {
+                append("This memory's origin was recorded in a form this version of the app doesn't recognise")
+                if (date != null) append(" (recorded $date)")
+                append(", so I can't say exactly where it came from.")
+            }
         }
     }
 
