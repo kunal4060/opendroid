@@ -43,6 +43,18 @@ class PinHasherTest {
     }
 
     @Test
+    fun `record naming an iteration count above the cap never verifies`() {
+        // Swap a genuine record's count for an absurd one: verify must
+        // reject it outright instead of starting a near-endless PBKDF2
+        // derivation (this test returning at all is the assertion).
+        val parts = PinHasher.createRecord("1234").split('$').toMutableList()
+        parts[1] = "2000000000"
+        assertFalse(PinHasher.verify("1234", parts.joinToString("$")))
+        parts[1] = (PinHasher.MAX_ITERATIONS + 1).toString()
+        assertFalse(PinHasher.verify("1234", parts.joinToString("$")))
+    }
+
+    @Test
     fun `pin format is four to six digits`() {
         assertFalse(PinHasher.isValidPinFormat(""))
         assertFalse(PinHasher.isValidPinFormat("123"))
