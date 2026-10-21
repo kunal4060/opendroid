@@ -8,6 +8,7 @@ import com.opendroid.ai.core.crash.OpenDroidCrashHandler
 import com.opendroid.ai.core.memory.MemoryManager
 import com.opendroid.ai.core.security.AppLockManager
 import com.opendroid.ai.core.security.LegacyPreferenceMigration
+import com.opendroid.ai.widget.WidgetStateSync
 import com.opendroid.ai.data.crash.CrashLogRepository
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -31,6 +32,9 @@ class OpenDroidApp : Application() {
     @Inject
     lateinit var appLockManager: AppLockManager
 
+    @Inject
+    lateinit var widgetStateSync: WidgetStateSync
+
     private val appScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     override fun onCreate() {
@@ -43,6 +47,12 @@ class OpenDroidApp : Application() {
         // that re-locks the UI after the background timeout. The manager's
         // initial state already reflects a cold start (locked when enabled).
         appLockManager.start()
+
+        // Keep the home-screen widget + dynamic shortcuts fed with live
+        // repository data (C1): observes routines, task history, routing and
+        // briefing stamps for the whole process lifetime. Best-effort — the
+        // sync guards its own writes, so a failure here never blocks startup.
+        widgetStateSync.start()
 
         // Retire the legacy preference files into the direct-Keystore stores. This opens the
         // Keystore and the legacy keyset, so it runs off the main thread; splash routing and

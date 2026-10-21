@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    OpenDroid command widget metadata (C1).
+
+    Sizes track the two Glance SizeMode.Responsive buckets in
+    OpenDroidCommandWidget (compact command bar / large with routine +
+    briefing). updatePeriodMillis is only a 30-minute backstop (the smallest
+    period Android honours) — real refreshes are pushed by WidgetStateSync
+    the moment routines, tasks, briefings or routing change.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_opendroid_description"
+    android:initialLayout="@layout/glance_default_loading_layout"
+    android:minWidth="180dp"
+    android:minHeight="84dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
+    android:maxResizeWidth="400dp"
+    android:maxResizeHeight="260dp"
+    android:previewImage="@mipmap/ic_launcher"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="1800000"
+    android:widgetCategory="home_screen" />

@@ -30,9 +30,14 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.opendroid.ai.core.intent.ExternalIntentRouter
+import com.opendroid.ai.core.intent.ExternalIntentRouterEntryPoint
+import com.opendroid.ai.core.intent.ExternalLaunch
 import com.opendroid.ai.ui.screens.*
 import com.opendroid.ai.ui.theme.*
 import com.opendroid.ai.ui.viewmodel.*
+import dagger.hilt.android.EntryPointAccessors
+import kotlinx.coroutines.launch
 
 /**
  * Route names of the top-level navigation graph.
@@ -83,6 +88,22 @@ fun NavHostController.navigateAfterOnboarding() {
 fun OpenDroidNavigation(
     navController: NavHostController = rememberNavController()
 ) {
+    // External launches: MainActivity publishes widget/shortcut intents (C1)
+    // and shares (C2) to the one router; the latest launch is handed to the
+    // dashboard, which is the first destination that can honour the C1
+    // kinds (shares are claimed by ChatScreen instead — see MainDashboard).
+    // While the app is locked this whole graph is not composed (see
+    // MainActivity), so launches wait in the router's replay behind the A5
+    // gate instead of bypassing it.
+    val appContext = LocalContext.current.applicationContext
+    val externalIntentRouter = remember {
+        EntryPointAccessors.fromApplication(
+            appContext,
+            ExternalIntentRouterEntryPoint::class.java
+        ).externalIntentRouter()
+    }
+    val pendingExternalLaunch by externalIntentRouter.launches.collectAsState(initial = null)
+
     NavHost(
         navController = navController,
         startDestination = OpenDroidRoutes.SPLASH,
@@ -182,6 +203,10 @@ fun OpenDroidNavigation(
                 },
                 onNavigateToPersonas = {
                     navController.navigate(OpenDroidRoutes.PERSONAS)
+                },
+                pendingExternalLaunch = pendingExternalLaunch,
+                onExternalLaunchClaim = { launch ->
+                    externalIntentRouter.claim(launch)
                 }
             )
         }
@@ -342,7 +367,9 @@ fun MainDashboard(
     onNavigateToCrashLog: () -> Unit = {},
     onNavigateToRoutines: () -> Unit = {},
     onNavigateToActionLearning: () -> Unit = {},
-    onNavigateToPersonas: () -> Unit = {}
+    onNavigateToPersonas: () -> Unit = {},
+    pendingExternalLaunch: ExternalLaunch? = null,
+    onExternalLaunchClaim: (ExternalLaunch) -> Boolean = { false }
 ) {
     val context = LocalContext.current
 
@@ -377,6 +404,51 @@ fun MainDashboard(
     val macroViewModel: MacroViewModel = hiltViewModel()
     val historyViewModel: HistoryViewModel = hiltViewModel()
     val settingsViewModel: SettingsViewModel = hiltViewModel()
+
+    // External launches (C1 widget/shortcuts): honoured once, as soon as the
+    // dashboard is composed — which is after splash routing and the app-lock
+    // gate, so an outside tap can never jump either queue. Voice/new-chat/
+    // briefing act on the chat tab; routine/macro launches run headlessly
+    // through AgentCommandRunner, the same engine paths the UI uses.
+    val dashboardScope = rememberCoroutineScope()
+    val agentCommandRunner = remember {
+        EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            com.opendroid.ai.widget.OpenDroidWidgetEntryPoint::class.java
+        ).agentCommandRunner()
+    }
+    LaunchedEffect(pendingExternalLaunch) {
+        val launch = pendingExternalLaunch ?: return@LaunchedEffect
+        // Shares (C2) are staged by ChatScreen's own collector off the same
+        // router; the dashboard must not claim them.
+        if (launch is ExternalLaunch.SharedContent) return@LaunchedEffect
+        // Claim before acting: the router replays the latest launch to every
+        // new collector, and the claim is what makes handling exactly-once.
+        if (!onExternalLaunchClaim(launch)) return@LaunchedEffect
+        when (launch) {
+            ExternalLaunch.OpenChat -> currentTab = Screen.Chat
+            ExternalLaunch.VoiceCommand -> {
+                currentTab = Screen.Chat
+                chatViewModel.requestVoiceInput()
+            }
+            ExternalLaunch.NewChat -> {
+                currentTab = Screen.Chat
+                chatViewModel.newChat()
+            }
+            ExternalLaunch.MorningBriefing -> {
+                currentTab = Screen.Chat
+                chatViewModel.showMorningBriefing()
+            }
+            ExternalLaunch.OpenRoutines -> onNavigateToRoutines()
+            is ExternalLaunch.RunRoutine -> dashboardScope.launch {
+                agentCommandRunner.runRoutine(launch.routineId)
+            }
+            is ExternalLaunch.RunMacro -> dashboardScope.launch {
+                agentCommandRunner.runMacro(launch.macroId)
+            }
+            is ExternalLaunch.SharedContent -> Unit // unreachable: guarded above
+        }
+    }
 
     val tabs = listOf(
         Screen.Chat,

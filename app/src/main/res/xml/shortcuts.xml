@@ -1,17 +1,68 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
     App shortcuts + share targets for MainActivity (referenced by the
-    android.app.shortcuts meta-data in AndroidManifest.xml).
+    android.app.shortcuts meta-data in AndroidManifest.xml). Union of:
 
-    This file currently carries only C2's Direct Share target. C1 owns the
-    static <shortcut> entries (voice command / new chat / morning briefing)
-    and adds them here — merge as a union of both.
+    - Static launcher shortcuts (C1): voice command / new chat / morning
+      briefing. Each intent speaks the ExternalLaunch wire format spelled
+      out in core/launch/ExternalLaunchCodec.kt (same action + extras) —
+      the values here must move together with that file. targetPackage is
+      the applicationId; targetClass is MainActivity's fully-qualified
+      name. Dynamic shortcuts for recent routines/macros are published in
+      code by widget/DynamicShortcutPublisher.kt.
+    - The Direct Share target (C2): pairs with the long-lived dynamic
+      shortcut published by SharingShortcutPublisher (same category) so
+      OpenDroid can surface in the Direct Share row of other apps' share
+      sheets.
 -->
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="voice_command"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_mic"
+        android:shortcutShortLabel="@string/shortcut_voice_short"
+        android:shortcutLongLabel="@string/shortcut_voice_long">
+        <intent
+            android:action="com.opendroid.ai.action.EXTERNAL_LAUNCH"
+            android:targetPackage="com.opendroid.aiagent"
+            android:targetClass="com.opendroid.ai.MainActivity">
+            <extra
+                android:name="com.opendroid.ai.extra.LAUNCH_KIND"
+                android:value="voice" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="new_chat"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_chat"
+        android:shortcutShortLabel="@string/shortcut_new_chat_short"
+        android:shortcutLongLabel="@string/shortcut_new_chat_long">
+        <intent
+            android:action="com.opendroid.ai.action.EXTERNAL_LAUNCH"
+            android:targetPackage="com.opendroid.aiagent"
+            android:targetClass="com.opendroid.ai.MainActivity">
+            <extra
+                android:name="com.opendroid.ai.extra.LAUNCH_KIND"
+                android:value="new_chat" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="morning_briefing"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_briefing"
+        android:shortcutShortLabel="@string/shortcut_briefing_short"
+        android:shortcutLongLabel="@string/shortcut_briefing_long">
+        <intent
+            android:action="com.opendroid.ai.action.EXTERNAL_LAUNCH"
+            android:targetPackage="com.opendroid.aiagent"
+            android:targetClass="com.opendroid.ai.MainActivity">
+            <extra
+                android:name="com.opendroid.ai.extra.LAUNCH_KIND"
+                android:value="morning_briefing" />
+        </intent>
+    </shortcut>
 
-    <!-- Direct Share target (C2): pairs with the long-lived dynamic shortcut
-         published by SharingShortcutPublisher (same category) so OpenDroid can
-         surface in the Direct Share row of other apps' share sheets. -->
+    <!-- Direct Share target (C2). -->
     <share-target android:targetClass="com.opendroid.ai.MainActivity">
         <data android:mimeType="text/plain" />
         <category android:name="com.opendroid.ai.category.ASK_AGENT" />

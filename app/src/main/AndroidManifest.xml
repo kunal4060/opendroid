@@ -105,11 +105,29 @@
                 <data android:mimeType="text/plain" />
                 <data android:mimeType="image/*" />
             </intent-filter>
-            <!-- App shortcuts + the Direct Share target (res/xml/shortcuts.xml). -->
+            <!-- App shortcuts (C1 static + dynamic) and the Direct Share
+                 target (C2): res/xml/shortcuts.xml. singleTask above is what
+                 routes shortcut/widget/share intents to onNewIntent instead
+                 of stacking a second MainActivity. -->
             <meta-data
                 android:name="android.app.shortcuts"
                 android:resource="@xml/shortcuts" />
         </activity>
+
+        <!-- Home-screen widget (C1): Glance command widget. All rendering and
+             actions live in widget/OpenDroidCommandWidget.kt; state is pushed
+             by widget/WidgetStateSync.kt from the app's repositories. -->
+        <receiver
+            android:name=".widget.OpenDroidWidgetReceiver"
+            android:exported="false"
+            android:label="@string/widget_opendroid_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/opendroid_widget_info" />
+        </receiver>
 
         <provider
             android:name="rikka.shizuku.ShizukuProvider"

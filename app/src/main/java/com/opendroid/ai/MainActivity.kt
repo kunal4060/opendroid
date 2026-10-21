@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.opendroid.ai.core.intent.ExternalIntentRouter
 import com.opendroid.ai.core.intent.ExternalLaunch
+import com.opendroid.ai.core.launch.ExternalIntents
 import com.opendroid.ai.core.security.AppLockManager
 import com.opendroid.ai.core.service.OpenDroidService
 import com.opendroid.ai.core.share.SharedIntentParser
@@ -46,10 +47,11 @@ class MainActivity : FragmentActivity() {
         enableOpenDroidEdgeToEdge(isDarkTheme = true)
         super.onCreate(savedInstanceState)
 
-        // Cold start: hand any inbound share (C2) to the intent router. The
-        // router replays it to the UI once the lock gate and the
-        // splash/onboarding flow let the chat compose — nothing is rendered
-        // or staged before then.
+        // Cold start: hand any external intent — an inbound share (C2) or a
+        // widget/shortcut launch (C1); C3/C7 ride the same path — to the one
+        // intent router. The router replays it to the UI once the lock gate
+        // and the splash/onboarding flow let the UI compose — nothing is
+        // rendered or staged before then.
         routeLaunchIntent(intent)
 
         // Direct Share row (C2): publish the long-lived sharing shortcut so
@@ -105,7 +107,8 @@ class MainActivity : FragmentActivity() {
 
     /**
      * Warm start: with launchMode=singleTask the running instance receives
-     * new external intents here instead of a second activity being created.
+     * new external intents here — widget/shortcut taps and shares while the
+     * app is running — instead of a second activity being created.
      */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -114,20 +117,30 @@ class MainActivity : FragmentActivity() {
     }
 
     /**
-     * Parses an inbound share intent and publishes it to the
-     * [ExternalIntentRouter] for the chat layer to stage. The intent is
-     * marked once routed: the same intent object is redelivered when the
-     * activity is recreated (rotation, theme change), and a recreation must
-     * not stage the same share a second time. (The router's claim is the
-     * second line of defence on the consumer side.)
+     * Routes one external intent to the [ExternalIntentRouter]: an inbound
+     * share (C2, ACTION_SEND / SEND_MULTIPLE) is parsed by
+     * [SharedIntentParser]; a widget/shortcut launch (C1) is parsed from
+     * the [ExternalIntents] wire format. Anything else (the plain launcher
+     * intent) routes nowhere.
+     *
+     * The intent is marked once routed: the same intent object is
+     * redelivered when the activity is recreated (rotation, theme change),
+     * and a recreation must not publish the same launch a second time.
+     * (The router's claim is the second line of defence on the consumer
+     * side.)
      */
     private fun routeLaunchIntent(intent: Intent?) {
-        if (!SharedIntentParser.isShareIntent(intent)) return
-        intent!!
+        if (intent == null) return
         if (intent.getBooleanExtra(EXTRA_LAUNCH_ROUTED, false)) return
+        if (SharedIntentParser.isShareIntent(intent)) {
+            intent.putExtra(EXTRA_LAUNCH_ROUTED, true)
+            val parsed = SharedIntentParser.parse(intent) ?: return
+            externalIntentRouter.publish(ExternalLaunch.SharedContent(parsed))
+            return
+        }
+        val launch = ExternalIntents.fromIntent(intent) ?: return
         intent.putExtra(EXTRA_LAUNCH_ROUTED, true)
-        val parsed = SharedIntentParser.parse(intent) ?: return
-        externalIntentRouter.publish(ExternalLaunch.SharedContent(parsed))
+        externalIntentRouter.publish(launch)
     }
 
     override fun onDestroy() {

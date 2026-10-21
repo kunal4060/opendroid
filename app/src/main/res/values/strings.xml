@@ -2,4 +2,16 @@
 <resources>
     <string name="app_name">OpenDroid</string>
     <string name="accessibility_service_desc">Provides autonomous UI interaction, screen reading, and navigation assistance for OpenDroid Agent control.</string>
+
+    <!-- Home-screen widget (C1) -->
+    <string name="widget_opendroid_label">OpenDroid</string>
+    <string name="widget_opendroid_description">Ask OpenDroid, run your next routine, and get your morning briefing without opening the app.</string>
+
+    <!-- Launcher shortcuts (C1) -->
+    <string name="shortcut_voice_short">Voice command</string>
+    <string name="shortcut_voice_long">Ask OpenDroid by voice</string>
+    <string name="shortcut_new_chat_short">New chat</string>
+    <string name="shortcut_new_chat_long">Start a new chat with OpenDroid</string>
+    <string name="shortcut_briefing_short">Morning briefing</string>
+    <string name="shortcut_briefing_long">Get your morning briefing</string>
 </resources>

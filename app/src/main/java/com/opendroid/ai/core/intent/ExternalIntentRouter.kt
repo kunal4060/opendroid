@@ -1,5 +1,8 @@
 package com.opendroid.ai.core.intent
 
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -58,4 +61,11 @@ class ExternalIntentRouter @Inject constructor() {
             if (claimedLaunch === launch) claimedLaunch = null
         }
     }
+}
+
+/** Lets composables reach the router without a ViewModel of their own. */
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+interface ExternalIntentRouterEntryPoint {
+    fun externalIntentRouter(): ExternalIntentRouter
 }

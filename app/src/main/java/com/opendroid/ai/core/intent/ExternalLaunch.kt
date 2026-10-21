@@ -17,6 +17,27 @@ import com.opendroid.ai.core.share.ParsedShare
  */
 sealed interface ExternalLaunch {
 
+    /** Plain app open on the chat tab (widget body tap, C1). */
+    data object OpenChat : ExternalLaunch
+
+    /** Open chat and immediately start voice input (C1). */
+    data object VoiceCommand : ExternalLaunch
+
+    /** Open chat on a brand-new, empty session (C1). */
+    data object NewChat : ExternalLaunch
+
+    /** Open chat and surface a freshly generated morning briefing in it (C1). */
+    data object MorningBriefing : ExternalLaunch
+
+    /** Open the Routines screen (C1). */
+    data object OpenRoutines : ExternalLaunch
+
+    /** Execute the routine with this id headlessly, through the real engine (C1). */
+    data class RunRoutine(val routineId: String) : ExternalLaunch
+
+    /** Execute the macro with this id headlessly, through the step executor (C1). */
+    data class RunMacro(val macroId: String) : ExternalLaunch
+
     /**
      * Inbound share (feature C2): another app handed us text and/or images via
      * ACTION_SEND / ACTION_SEND_MULTIPLE. [parsed] holds the raw extras;
