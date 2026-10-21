@@ -79,7 +79,12 @@ object ProviderSetupPolicy {
         if (ProviderCatalog.isOnDevice(active)) {
             val selectedId = config.selectedModelFor(active)
             return when (OnDeviceModelRegistry.findById(selectedId)?.backend) {
-                OnDeviceBackend.AI_CORE -> aiCoreAvailable
+                // Hybrid falls back to LiteRT when AI Core is unavailable,
+                // so a ready LiteRT model can answer here too — the AI_CORE
+                // branch must mirror that instead of reporting "can't answer"
+                // on devices where chat would in fact work.
+                OnDeviceBackend.AI_CORE -> aiCoreAvailable ||
+                    liteRtModels.any { it.status == ModelStatus.READY }
                 OnDeviceBackend.LITERT_LM -> aiCoreAvailable ||
                     liteRtModels.any { it.id == selectedId && it.status == ModelStatus.READY }
                 // Custom imports and legacy ids: usable when either backend is.
