@@ -82,16 +82,16 @@ class SocialAnalyticsEngine @Inject constructor(
         // Every figure below is derived from THIS week's data only.
         val weekPosts = socialRepository.getPostsByStatus(PostStatus.PUBLISHED)
             .filter { (it.publishedTime ?: it.createdAt) >= sevenDaysAgo }
-        val weekComments = socialRepository.getAllCommentsFlow().first()
-            .filter { it.timestamp >= sevenDaysAgo }
+        val allComments = socialRepository.getAllCommentsFlow().first()
 
         // Comments RECEIVED this week (stored comments timestamped in
         // the window) and replies actually SENT this week (comments
-        // whose reply was sent in the window) are two different numbers
-        // from two different sources — the previous implementation
-        // reported one all-time comments-received sum as both.
-        val commentsReceived = weekComments.size
-        val repliesSent = weekComments.count { comment ->
+        // whose reply was sent in the window, whenever the comment
+        // itself arrived) are two different numbers from two different
+        // sources — the previous implementation reported one all-time
+        // comments-received sum as both.
+        val commentsReceived = allComments.count { it.timestamp >= sevenDaysAgo }
+        val repliesSent = allComments.count { comment ->
             val repliedAt = comment.replyTimestamp
             repliedAt != null && repliedAt >= sevenDaysAgo
         }
