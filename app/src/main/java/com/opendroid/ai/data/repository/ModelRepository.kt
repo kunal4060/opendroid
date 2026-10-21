@@ -177,7 +177,16 @@ class ModelRepository @Inject constructor(
      */
     suspend fun assessDownloadFit(spec: OnDeviceModelSpec): ModelFitAssessment {
         val entity = modelDao.getModelById(spec.id)
-        val alreadyFetched = if (entity?.status == ModelStatus.PAUSED) {
+        // Credit the bytes already fetched for every resumable row, not
+        // only PAUSED ones: the worker resumes from the retained temp file
+        // regardless of DB status and records progress as DOWNLOADING, and
+        // seeding preserves DOWNLOADING across restarts — so an interrupted
+        // download would otherwise be charged the full model size here and
+        // wrongly BLOCKed on a tight device even though only the
+        // remaining bytes would actually be fetched.
+        val alreadyFetched = if (entity != null &&
+            (entity.status == ModelStatus.PAUSED || entity.status == ModelStatus.DOWNLOADING)
+        ) {
             entity.downloadedSize
         } else {
             0L
@@ -560,8 +569,19 @@ class ModelRepository @Inject constructor(
     override suspend fun load(model: OnDeviceModel) {
         modelDao.updateModelStatus(model.id, ModelStatus.LOADING)
 
-        // Simulate loading process
-        kotlinx.coroutines.delay(1000)
+        // Prove the artifact before claiming success: the previous body
+        // simulated the load (a fixed delay) and marked the model READY
+        // and active with no file, manifest or integrity check, so a
+        // stale READY row whose file was removed or corrupted outside the
+        // delete paths was re-confirmed — and only failed later, at first
+        // inference, detached from the action that reported success.
+        if (!isDownloaded(model)) {
+            modelDao.markDownloadFailed(
+                model.id,
+                "The model file is missing or failed its integrity check. Download or import it again."
+            )
+            return
+        }
 
         modelDao.updateModelStatus(model.id, ModelStatus.READY)
         modelDao.updateLastUsed(model.id, System.currentTimeMillis())
