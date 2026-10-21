@@ -29,6 +29,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
@@ -37,6 +39,7 @@ import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Warning
@@ -65,6 +68,7 @@ import com.opendroid.ai.core.agent.ChatErrorUiState
 import com.opendroid.ai.core.agent.guidance
 import com.opendroid.ai.core.agent.primaryAction
 import com.opendroid.ai.core.agent.title
+import com.opendroid.ai.core.llm.RoutingStatus
 import com.opendroid.ai.core.voice.SpeechRecognitionEngine
 import com.opendroid.ai.data.export.ChatExportFormat
 import com.opendroid.ai.data.export.ChatExporter
@@ -98,6 +102,9 @@ fun ChatScreen(
     // not wherever the user has navigated to) must never be displayed as if it were
     // happening here. See ChatViewModel.visibleAgentState.
     val visibleAgentState by viewModel.visibleAgentState.collectAsState()
+    // A8: live routing state (cloud vs on-device vs offline) — drives the
+    // header badge, the composer's offline notice, and the send guard.
+    val routingStatus by viewModel.routingStatus.collectAsState()
     val chatError by viewModel.chatError.collectAsState()
     val speakingMessageId by viewModel.speakingMessageId.collectAsState()
     // Id of whichever chat (if any) has a task actively running, regardless of which
@@ -167,6 +174,10 @@ fun ChatScreen(
     fun submitInput() {
         val text = inputQuery
         if (text.isBlank()) return
+        // Offline with no on-device route: keep the draft and let the inline
+        // notice above the composer explain — never dispatch a request that
+        // could only hang (the ViewModel enforces the same guard).
+        if (routingStatus is RoutingStatus.OfflineNoRoute) return
         val editing = editingMessageId
         if (editing != null) {
             viewModel.editAndResend(editing, text, context)
@@ -282,6 +293,7 @@ fun ChatScreen(
                             letterSpacing = 2.sp
                         )
                         AgentStatusSubtitle(visibleAgentState, runningElsewhere)
+                        RoutingBadge(routingStatus)
                     }
                 },
                 actions = {
@@ -609,6 +621,15 @@ fun ChatScreen(
                     if (voiceError != null) {
                         Text(
                             text = voiceError.orEmpty(),
+                            fontSize = 11.sp,
+                            color = AccentRed,
+                            modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
+                        )
+                    }
+                    if (routingStatus is RoutingStatus.OfflineNoRoute) {
+                        Text(
+                            text = "You're offline and no on-device model is ready — " +
+                                "download one in Model Manager or reconnect.",
                             fontSize = 11.sp,
                             color = AccentRed,
                             modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
@@ -950,6 +971,43 @@ fun AgentStatusSubtitle(state: AgentState, runningElsewhere: Boolean = false) {
         color = color,
         fontFamily = FontFamily.SansSerif
     )
+}
+
+/**
+ * A8 routing badge: where answers are coming from right now — a cloud
+ * provider, an on-device backend, or (offline) the on-device route / no
+ * route at all. Driven entirely by [RoutingStatus], which is fused from the
+ * real selection/routing signals, so it flips when connectivity drops, when
+ * routing switches, and after a failover answer — it is never a static
+ * icon, and the label is always text (never colour alone).
+ */
+@Composable
+fun RoutingBadge(status: RoutingStatus) {
+    val (icon, label, color) = when (status) {
+        is RoutingStatus.Cloud ->
+            Triple(Icons.Default.Cloud, status.provider, TextSecondary)
+        is RoutingStatus.OnDevice ->
+            Triple(Icons.Default.Smartphone, "On-device · ${status.backend}", AccentCyan)
+        is RoutingStatus.OfflineWillUseOnDevice ->
+            Triple(Icons.Default.CloudOff, "Offline — will answer on-device", AccentOrange)
+        RoutingStatus.OfflineNoRoute ->
+            Triple(Icons.Default.CloudOff, "Offline — no local model", AccentRed)
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = color,
+            modifier = Modifier.size(11.dp)
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = label,
+            fontSize = 10.sp,
+            color = color,
+            fontFamily = FontFamily.SansSerif
+        )
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)

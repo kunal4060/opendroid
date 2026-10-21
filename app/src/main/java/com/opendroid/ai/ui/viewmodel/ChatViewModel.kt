@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.opendroid.ai.core.agent.AgentLoop
 import com.opendroid.ai.core.agent.AgentState
+import com.opendroid.ai.core.llm.RoutingStatus
+import com.opendroid.ai.core.llm.RoutingStatusRepository
 import com.opendroid.ai.core.agent.ChatErrorPrimaryAction
 import com.opendroid.ai.core.agent.ChatErrorUiState
 import com.opendroid.ai.core.agent.primaryAction
@@ -49,6 +51,7 @@ class ChatViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val modelRepository: ModelRepository,
     private val modelFetcher: dagger.Lazy<ModelFetcher>,
+    private val routingStatusRepository: RoutingStatusRepository,
     private val textToSpeechEngine: com.opendroid.ai.core.voice.TextToSpeechEngine
 ) : ViewModel() {
 
@@ -339,6 +342,14 @@ class ChatViewModel @Inject constructor(
     val agentState: StateFlow<AgentState> = agentLoop.agentState
 
     /**
+     * Live chat routing state (A8): which provider/on-device backend will
+     * answer, or that no route exists while offline. Rendered as the header
+     * badge and consulted by the send paths below — one shared state, so
+     * what the badge says and what sending does can never disagree.
+     */
+    val routingStatus: StateFlow<RoutingStatus> = routingStatusRepository.status
+
+    /**
      * [AgentLoop.chatError], but scoped to whichever chat is on screen - the same rule
      * [visibleAgentState] applies to the shared agent state. An error raised by a task
      * in chat A must never render its recovery card inside chat B; the underlying error
@@ -576,11 +587,20 @@ class ChatViewModel @Inject constructor(
         return sessionId
     }
 
-    fun sendMessage(query: String, context: Context) {
-        if (query.isBlank()) return
+    /**
+     * Sends [query] through the agent. Returns false without dispatching
+     * when there is currently no route that could answer — offline with no
+     * on-device model ready ([RoutingStatus.OfflineNoRoute], the same state
+     * the header badge shows) — so the caller keeps the user's draft and
+     * the inline offline notice explains, instead of a request hanging.
+     */
+    fun sendMessage(query: String, context: Context): Boolean {
+        if (query.isBlank()) return false
+        if (routingStatus.value is RoutingStatus.OfflineNoRoute) return false
         val sessionId = pinTaskSessionSnapshot()
         val session = sessions.value.firstOrNull { it.id == sessionId }
         agentLoop.processQuery(query, context, sessionId, configOverrideFor(session))
+        return true
     }
 
     /**
@@ -592,6 +612,9 @@ class ChatViewModel @Inject constructor(
      */
     fun editAndResend(messageId: String, newText: String, context: Context) {
         if (newText.isBlank()) return
+        // Same no-route guard as sendMessage: never rewind the conversation
+        // for a resend that cannot be answered right now.
+        if (routingStatus.value is RoutingStatus.OfflineNoRoute) return
         agentLoop.cancelCurrentTask()
         viewModelScope.launch {
             val sessionId = conversationRepository.ensureCurrentSessionId()
