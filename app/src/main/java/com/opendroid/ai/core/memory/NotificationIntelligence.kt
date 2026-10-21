@@ -134,7 +134,7 @@ class NotificationIntelligence @Inject constructor(
             storePattern("contact_time_$contact",
                 "$contact usually messages in the $contactPeriod (${notifs.size} messages this week)")
         }
-        return topGroups.keys
+        return topGroups.map { it.key }.toSet()
     }
 
     /**
