@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -29,10 +30,8 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.opendroid.ai.core.templates.TemplateExport
 import com.opendroid.ai.core.templates.TemplateFormat
@@ -43,12 +42,57 @@ import com.opendroid.ai.data.models.StepStatus
 import com.opendroid.ai.ui.templates.TemplateFileIo
 import com.opendroid.ai.ui.theme.*
 import com.opendroid.ai.ui.components.PlanStepCard
+import com.opendroid.ai.ui.components.StepDisplayState
+import com.opendroid.ai.ui.components.getDisplayState
 import com.opendroid.ai.ui.viewmodel.PlanViewModel
 import com.opendroid.ai.ui.viewmodel.TemplateShareViewModel
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+/**
+ * Plan-level status presentation — the same token roles as the
+ * step-level Part-2 table in PlanStepCard (running = brand accent,
+ * completed = success family, failed = error red, paused/blocked =
+ * permission amber, everything else neutral), so the header and the
+ * step list can never drift into two different colour maps again.
+ */
+private fun PlanStatus.label(): String = when (this) {
+    PlanStatus.PROPOSED -> "Proposed"
+    PlanStatus.PENDING -> "Pending"
+    PlanStatus.RUNNING -> "Running"
+    PlanStatus.COMPLETED -> "Completed"
+    PlanStatus.FAILED -> "Failed"
+    PlanStatus.PAUSED -> "Paused"
+    PlanStatus.CANCELLED -> "Cancelled"
+}
+
+private fun PlanStatus.statusColor(colors: OpenDroidColors): Color = when (this) {
+    PlanStatus.RUNNING -> colors.accentNeonGreen
+    PlanStatus.COMPLETED -> colors.success
+    PlanStatus.FAILED -> colors.accentRed
+    PlanStatus.PAUSED -> colors.accentOrange
+    PlanStatus.CANCELLED -> colors.textTertiary
+    PlanStatus.PROPOSED, PlanStatus.PENDING -> colors.textSecondary
+}
+
+private fun PlanStatus.statusIcon(): ImageVector = when (this) {
+    PlanStatus.RUNNING -> Icons.Default.Autorenew
+    PlanStatus.COMPLETED -> Icons.Default.CheckCircle
+    PlanStatus.FAILED -> Icons.Default.Error
+    PlanStatus.PAUSED -> Icons.Default.FrontHand
+    PlanStatus.CANCELLED -> Icons.Default.Cancel
+    PlanStatus.PROPOSED, PlanStatus.PENDING -> Icons.Default.RadioButtonUnchecked
+}
+
+/** Steps that count as finished for the header progress derivation. */
+private fun PlanStep.isFinished(): Boolean = when (getDisplayState(this)) {
+    StepDisplayState.COMPLETED,
+    StepDisplayState.REPAIRED,
+    StepDisplayState.SKIPPED -> true
+    else -> false
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,6 +105,7 @@ fun PlanScreen(
     val planHistory by viewModel.planHistory.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val colors = AppTheme.colors
 
     // ---- C6 template export (save-to-file via SAF / share sheet) ----
     var pendingExport by remember { mutableStateOf<TemplateExport?>(null) }
@@ -114,26 +159,23 @@ fun PlanScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "PLAN ENGINE",
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary,
-                        fontSize = 20.sp,
-                        letterSpacing = 2.sp,
+                        text = "Plan",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = colors.textPrimary,
                         modifier = Modifier.semantics { heading() }
                     )
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBackground)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.background)
             )
         },
-        containerColor = DarkBackground,
+        containerColor = colors.background,
         modifier = modifier
     ) { padding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(bottom = 24.dp)
         ) {
@@ -154,27 +196,35 @@ fun PlanScreen(
 
                 item {
                     Text(
-                        text = "PLAN SEQUENCE STAGE",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = TextSecondary,
+                        text = "Plan sequence",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = colors.textSecondary,
                         modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
                     )
                 }
 
-                items(displayPlan!!.steps, key = { it.stepId }) { step ->
-                    val isStepEditable = isCurrentActivePlan &&
-                        displayPlan!!.status == PlanStatus.RUNNING &&
-                        step.status == StepStatus.PENDING
-                    PlanStepCard(
-                        step = step,
-                        editable = isStepEditable,
-                        onSaveEdit = { description, params ->
-                            viewModel.editStep(step.stepId, description, params)
-                        },
-                        onDeleteStep = { viewModel.deleteStep(step.stepId) }
-                    )
+                // Steps render as one timeline block so the rail in
+                // PlanStepCard runs continuously from the first node
+                // to the last; per-step editability is unchanged.
+                item {
+                    Column {
+                        val steps = displayPlan!!.steps
+                        steps.forEachIndexed { index, step ->
+                            val isStepEditable = isCurrentActivePlan &&
+                                displayPlan!!.status == PlanStatus.RUNNING &&
+                                step.status == StepStatus.PENDING
+                            PlanStepCard(
+                                step = step,
+                                editable = isStepEditable,
+                                onSaveEdit = { description, params ->
+                                    viewModel.editStep(step.stepId, description, params)
+                                },
+                                onDeleteStep = { viewModel.deleteStep(step.stepId) },
+                                isFirst = index == 0,
+                                isLast = index == steps.lastIndex
+                            )
+                        }
+                    }
                 }
             } else {
                 item {
@@ -186,11 +236,9 @@ fun PlanScreen(
             if (planHistory.isNotEmpty()) {
                 item {
                     Text(
-                        text = "AUTONOMOUS EXECUTION HISTORY",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = TextSecondary,
+                        text = "Past runs",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = colors.textSecondary,
                         modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)
                     )
                 }
@@ -212,14 +260,14 @@ fun PlanScreen(
     transferMessage?.let { message ->
         AlertDialog(
             onDismissRequest = { transferMessage = null },
-            containerColor = CardBackground,
-            titleContentColor = TextPrimary,
-            textContentColor = TextPrimary,
-            title = { Text("Template Transfer", fontWeight = FontWeight.Bold, fontSize = 15.sp) },
-            text = { Text(message, fontSize = 13.sp) },
+            containerColor = colors.surfaceRaised,
+            titleContentColor = colors.textPrimary,
+            textContentColor = colors.textPrimary,
+            title = { Text("Template transfer", style = MaterialTheme.typography.titleSmall) },
+            text = { Text(message, style = MaterialTheme.typography.bodyMedium) },
             confirmButton = {
                 TextButton(onClick = { transferMessage = null }) {
-                    Text("OK", color = AccentCyan, fontWeight = FontWeight.Bold)
+                    Text("OK", style = MaterialTheme.typography.labelLarge, color = colors.accentNeonGreen)
                 }
             }
         )
@@ -235,13 +283,26 @@ fun PlanHeaderCard(
     onExportTemplate: (() -> Unit)? = null,
     onShareTemplate: (() -> Unit)? = null
 ) {
+    val colors = AppTheme.colors
+    val cardShape = RoundedCornerShape(18.dp)
+    val isRunning = plan.status == PlanStatus.RUNNING
+    val isReview = plan.status == PlanStatus.PROPOSED || plan.status == PlanStatus.PENDING
+
+    // Determinate progress derived from the step states already on
+    // screen — never time-based (research-2 Part 4 anti-pattern).
+    val totalSteps = plan.steps.size
+    val doneSteps = plan.steps.count { it.isFinished() }
+    val runningIndex = plan.steps.indexOfFirst { getDisplayState(it) == StepDisplayState.RUNNING }
+    val blockedStep = plan.steps.firstOrNull { getDisplayState(it) == StepDisplayState.BLOCKED }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, if (isCurrentActive) AccentCyan.copy(alpha = 0.5f) else BorderColor, RoundedCornerShape(12.dp)),
-        colors = CardDefaults.cardColors(containerColor = DarkSurface)
+            .border(1.dp, colors.borderColor, cardShape),
+        shape = cardShape,
+        colors = CardDefaults.cardColors(containerColor = colors.surfaceRaised)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(20.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -253,90 +314,166 @@ fun PlanHeaderCard(
                     // are announced to TalkBack without stealing focus.
                     modifier = Modifier.semantics {
                         liveRegion = LiveRegionMode.Polite
-                        contentDescription = "Plan status: ${plan.status.name.lowercase(Locale.getDefault())}"
+                        contentDescription = "Plan status: ${plan.status.label().lowercase(Locale.getDefault())}"
                     }
                 ) {
-                    val statusColor = when (plan.status) {
-                        PlanStatus.COMPLETED -> AccentCyan
-                        PlanStatus.RUNNING -> AccentCyan
-                        PlanStatus.FAILED -> AccentRed
-                        PlanStatus.CANCELLED -> AccentOrange // Amber (theme token; hard-coded #FFB300 failed AA on light)
-                        else -> TextSecondary
-                    }
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .clip(RoundedCornerShape(5.dp))
-                            .background(statusColor)
+                    val statusColor = plan.status.statusColor(colors)
+                    Icon(
+                        imageVector = plan.status.statusIcon(),
+                        contentDescription = null,
+                        tint = statusColor,
+                        modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = plan.status.name,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = statusColor,
-                        fontFamily = FontFamily.Monospace
+                        text = plan.status.label(),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = statusColor
                     )
                 }
                 if (!isCurrentActive) {
                     Text(
-                        text = "Viewing Past Run",
-                        fontSize = 10.sp,
-                        color = AccentPurple,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
+                        text = "Viewing past run",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.textSecondary,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(AccentPurple.copy(alpha = 0.2f))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(colors.surfaceOverlay)
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
                             .clickable { onClearSelection() }
                             .semantics {
                                 role = Role.Button
                                 contentDescription = "Viewing past run. Activate to return to the current plan"
                             }
                     )
-                } else {
+                } else if (isReview) {
+                    // Review register: the plan is a proposal, not a run.
                     Text(
-                        text = "ACTIVE RUN",
-                        fontSize = 10.sp,
-                        color = AccentCyan,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
+                        text = "Proposed plan",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.textSecondary,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(AccentCyan.copy(alpha = 0.15f))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(colors.surfaceOverlay)
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
             }
             Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = plan.goal,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary
+                style = MaterialTheme.typography.titleMedium,
+                color = colors.textPrimary
             )
+
+            // Waiting-for-you surfaces in the header itself — the user
+            // never has to scroll to find why the agent stopped.
+            if (blockedStep != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(colors.accentOrange.copy(alpha = 0.12f))
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FrontHand,
+                        contentDescription = null,
+                        tint = colors.accentOrange,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = "Waiting for you",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = colors.accentOrange
+                        )
+                        if (!blockedStep.error.isNullOrBlank()) {
+                            Text(
+                                text = blockedStep.error!!,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.textPrimary
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (totalSteps > 0) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = when {
+                            runningIndex >= 0 -> "Step ${runningIndex + 1} of $totalSteps"
+                            doneSteps > 0 -> "$doneSteps of $totalSteps steps done"
+                            else -> "$totalSteps steps scheduled"
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.textSecondary
+                    )
+                    if (doneSteps > 0) {
+                        Text(
+                            text = "$doneSteps done",
+                            style = MonoMedium,
+                            color = colors.textTertiary
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                LinearProgressIndicator(
+                    progress = { if (totalSteps == 0) 0f else doneSteps.toFloat() / totalSteps.toFloat() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp)),
+                    color = colors.accentNeonGreen,
+                    trackColor = colors.surfaceOverlay
+                )
+            }
+
+            // Running register condenses the meta row: progress above
+            // is the overview, so only the step count stays; review
+            // and finished plans keep the full scheduled summary.
             Spacer(modifier = Modifier.height(12.dp))
-            Divider(color = BorderColor)
+            Divider(color = colors.borderSubtle)
             Spacer(modifier = Modifier.height(12.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column {
-                    Text("Steps", fontSize = 10.sp, color = TextSecondary)
-                    Text("${plan.steps.size} scheduled", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    Text("Steps", style = MaterialTheme.typography.labelMedium, color = colors.textTertiary)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "$totalSteps scheduled",
+                        style = MonoMedium,
+                        color = colors.textPrimary
+                    )
                 }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text("Estimated duration", fontSize = 10.sp, color = TextSecondary)
-                    Text(plan.estimatedDuration, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                if (!isRunning) {
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text("Estimated duration", style = MaterialTheme.typography.labelMedium, color = colors.textTertiary)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = plan.estimatedDuration,
+                            style = MonoMedium,
+                            color = colors.textPrimary
+                        )
+                    }
                 }
             }
 
             // C6: share this plan as a portable template file
             if (onExportTemplate != null || onShareTemplate != null) {
                 Spacer(modifier = Modifier.height(12.dp))
-                Divider(color = BorderColor)
+                Divider(color = colors.borderSubtle)
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -345,44 +482,45 @@ fun PlanHeaderCard(
                 ) {
                     if (onExportTemplate != null) {
                         TextButton(onClick = onExportTemplate) {
-                            Icon(imageVector = Icons.Default.FileUpload, contentDescription = "Export Template", modifier = Modifier.size(16.dp), tint = AccentCyan)
+                            Icon(imageVector = Icons.Default.FileUpload, contentDescription = "Export template", modifier = Modifier.size(16.dp), tint = colors.textSecondary)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Export Template", fontSize = 11.sp, color = AccentCyan, fontWeight = FontWeight.Bold)
+                            Text("Export template", style = MaterialTheme.typography.labelLarge, color = colors.textPrimary)
                         }
                     }
                     if (onShareTemplate != null) {
                         TextButton(onClick = onShareTemplate) {
-                            Icon(imageVector = Icons.Default.Share, contentDescription = "Share Template", modifier = Modifier.size(16.dp), tint = AccentCyan)
+                            Icon(imageVector = Icons.Default.Share, contentDescription = "Share template", modifier = Modifier.size(16.dp), tint = colors.textSecondary)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Share", fontSize = 11.sp, color = AccentCyan, fontWeight = FontWeight.Bold)
+                            Text("Share", style = MaterialTheme.typography.labelLarge, color = colors.textPrimary)
                         }
                     }
                 }
             }
 
-            if (isCurrentActive && plan.status == PlanStatus.RUNNING) {
+            if (isCurrentActive && isRunning) {
                 Spacer(modifier = Modifier.height(12.dp))
-                Divider(color = BorderColor)
-                Spacer(modifier = Modifier.height(12.dp))
-                Button(
-                    onClick = onStop,
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentRed, contentColor = TextPrimary),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth()
+                Divider(color = colors.borderSubtle)
+                // Calm stop: a clearly labelled text action in the
+                // header action row, not a full-width alarm button.
+                // Same onStop wiring as before.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Stop,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "STOP TASK",
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp,
-                        letterSpacing = 1.sp
-                    )
+                    TextButton(onClick = onStop) {
+                        Icon(
+                            imageVector = Icons.Default.Stop,
+                            contentDescription = null,
+                            tint = colors.accentRed,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Stop task",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = colors.accentRed
+                        )
+                    }
                 }
             }
         }
@@ -391,11 +529,14 @@ fun PlanHeaderCard(
 
 @Composable
 fun EmptyPlanPlaceholder() {
+    val colors = AppTheme.colors
+    val cardShape = RoundedCornerShape(18.dp)
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
-        colors = CardDefaults.cardColors(containerColor = DarkSurface)
+            .border(1.dp, colors.borderColor, cardShape),
+        shape = cardShape,
+        colors = CardDefaults.cardColors(containerColor = colors.cardBackground)
     ) {
         Column(
             modifier = Modifier
@@ -406,21 +547,20 @@ fun EmptyPlanPlaceholder() {
             Icon(
                 imageVector = Icons.Default.Info,
                 contentDescription = "No plan",
-                tint = TextSecondary,
-                modifier = Modifier.size(36.dp)
+                tint = colors.textTertiary,
+                modifier = Modifier.size(28.dp)
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = "No active plans running",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary
+                style = MaterialTheme.typography.titleMedium,
+                color = colors.textPrimary
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = "Plans formulated by the autonomous system will display here in real-time.",
-                fontSize = 11.sp,
-                color = TextSecondary,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textSecondary,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
         }
@@ -434,80 +574,80 @@ fun PastPlanRow(
     onSelect: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val colors = AppTheme.colors
     val dateFormat = remember { SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()) }
-    
+    val doneSteps = plan.steps.count { it.isFinished() }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (isSelected) CardBackground else Color.Transparent)
-            .border(1.dp, if (isSelected) BorderColor else Color.Transparent, RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (isSelected) colors.surfaceRaised else Color.Transparent)
+            .border(1.dp, if (isSelected) colors.borderStrong else Color.Transparent, RoundedCornerShape(14.dp))
             .clickable { onSelect() }
             .semantics {
                 // D8: selection is state, not just a highlight colour.
                 stateDescription = if (isSelected) "Selected" else "Not selected"
                 contentDescription = "Past plan: ${plan.goal}, ${plan.steps.size} steps, " +
-                    "status ${plan.status.name.lowercase(Locale.getDefault())}"
+                    "status ${plan.status.label().lowercase(Locale.getDefault())}"
             }
             .padding(12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = plan.goal,
-                fontSize = 13.sp,
-                color = TextPrimary,
-                maxLines = 1,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = plan.status.statusIcon(),
+                contentDescription = plan.status.label(),
+                tint = plan.status.statusColor(colors),
+                modifier = Modifier.size(18.dp)
             )
-            Spacer(modifier = Modifier.height(4.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Spacer(modifier = Modifier.width(10.dp))
+            Column {
                 Text(
-                    text = dateFormat.format(Date(plan.createdAt)),
-                    fontSize = 10.sp,
-                    color = TextSecondary
+                    text = plan.goal,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textPrimary,
+                    maxLines = 1,
+                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
                 )
-                Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = "${plan.steps.size} steps",
-                    fontSize = 10.sp,
-                    color = AccentCyan,
-                    fontFamily = FontFamily.Monospace
-                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = dateFormat.format(Date(plan.createdAt)),
+                        style = MonoMedium,
+                        color = colors.textTertiary
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "$doneSteps/${plan.steps.size} steps done",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.textSecondary
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = plan.status.label(),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = plan.status.statusColor(colors)
+                    )
+                }
             }
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(
+            onClick = onDelete,
+            // 40dp (was 24dp): the 24dp target was too small to hit
+            // reliably; still compact inside the row (D8).
+            modifier = Modifier.size(40.dp)
+        ) {
             Icon(
-                imageVector = when (plan.status) {
-                    PlanStatus.COMPLETED -> Icons.Default.Check
-                    PlanStatus.FAILED -> Icons.Default.Close
-                    PlanStatus.CANCELLED -> Icons.Default.Cancel
-                    else -> Icons.Default.Info
-                },
-                contentDescription = plan.status.name,
-                tint = when (plan.status) {
-                    PlanStatus.COMPLETED -> AccentCyan
-                    PlanStatus.FAILED -> AccentRed
-                    PlanStatus.CANCELLED -> AccentOrange // Amber (theme token; hard-coded #FFB300 failed AA on light)
-                    else -> TextSecondary
-                },
-                modifier = Modifier.size(16.dp)
+                imageVector = Icons.Default.Delete,
+                contentDescription = "Delete plan",
+                tint = colors.textTertiary,
+                modifier = Modifier.size(18.dp)
             )
-            Spacer(modifier = Modifier.width(8.dp))
-            IconButton(
-                onClick = onDelete,
-                // 40dp (was 24dp): the 24dp target was too small to hit
-                // reliably; still compact inside the row (D8).
-                modifier = Modifier.size(40.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "Delete Plan",
-                    tint = TextSecondary.copy(alpha = 0.5f),
-                    modifier = Modifier.size(18.dp)
-                )
-            }
         }
     }
 }
