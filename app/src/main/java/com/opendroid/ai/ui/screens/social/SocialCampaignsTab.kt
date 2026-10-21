@@ -2,7 +2,6 @@ package com.opendroid.ai.ui.screens.social
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -16,12 +15,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.opendroid.ai.social.domain.model.*
+import com.opendroid.ai.ui.components.StatusBadge
 import com.opendroid.ai.ui.theme.AppTheme
+import com.opendroid.ai.ui.theme.JetBrainsMonoFamily
+import com.opendroid.ai.ui.theme.MonoMedium
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -47,19 +48,19 @@ fun SocialCampaignsTab(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("Campaign Strategies", color = theme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Text("Multi-day coordinated cross-platform campaigns", color = theme.textSecondary, fontSize = 11.sp)
+                    Text("Campaign Strategies", color = theme.textPrimary, style = MaterialTheme.typography.titleMedium)
+                    Text("Multi-day coordinated cross-platform campaigns", color = theme.textTertiary, style = MaterialTheme.typography.labelMedium)
                 }
 
                 Button(
                     onClick = { showCreateDialog = true },
-                    colors = ButtonDefaults.buttonColors(containerColor = theme.accentCyan),
+                    colors = ButtonDefaults.buttonColors(containerColor = theme.accentGreenButton, contentColor = theme.onAccent),
                     shape = RoundedCornerShape(16.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Add, contentDescription = null, tint = theme.onAccent, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("New Campaign", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("New Campaign", color = theme.onAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -69,8 +70,8 @@ fun SocialCampaignsTab(
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth()
-                        .border(1.dp, theme.borderColor, RoundedCornerShape(16.dp)),
-                    shape = RoundedCornerShape(16.dp),
+                        .border(1.dp, theme.borderColor, RoundedCornerShape(18.dp)),
+                    shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
                 ) {
                     Column(
@@ -78,35 +79,33 @@ fun SocialCampaignsTab(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Box(
-                            modifier = Modifier.size(52.dp).clip(CircleShape).background(theme.accentCyan.copy(alpha = 0.12f)),
+                            modifier = Modifier.size(52.dp).clip(CircleShape).background(theme.accentContainer),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.Campaign, contentDescription = null, tint = theme.accentCyan, modifier = Modifier.size(28.dp))
+                            Icon(Icons.Default.Campaign, contentDescription = null, tint = theme.onAccentContainer, modifier = Modifier.size(28.dp))
                         }
                         Spacer(modifier = Modifier.height(14.dp))
                         Text(
                             "No Campaigns Created Yet",
                             color = theme.textPrimary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
+                            style = MaterialTheme.typography.titleSmall
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             "Launch an AI-generated multi-day marketing campaign with teaser, release, and follow-up posts scheduled automatically across your platforms.",
                             color = theme.textSecondary,
-                            fontSize = 12.sp,
-                            lineHeight = 16.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(
                             onClick = { showCreateDialog = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = theme.accentCyan),
+                            colors = ButtonDefaults.buttonColors(containerColor = theme.accentGreenButton, contentColor = theme.onAccent),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = theme.onAccent, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Generate First Campaign", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text("Generate First Campaign", color = theme.onAccent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
                     }
                 }
@@ -145,8 +144,8 @@ private fun CampaignCard(campaign: SocialCampaign) {
 
     Card(
         modifier = Modifier.fillMaxWidth()
-            .border(1.dp, theme.borderColor, RoundedCornerShape(16.dp)),
-        shape = RoundedCornerShape(16.dp),
+            .border(1.dp, theme.borderColor, RoundedCornerShape(18.dp)),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -157,11 +156,18 @@ private fun CampaignCard(campaign: SocialCampaign) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(campaign.name, color = theme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    Text("$startStr – $endStr", color = theme.textSecondary, fontSize = 11.sp)
+                    Text(campaign.name, color = theme.textPrimary, style = MaterialTheme.typography.titleSmall)
+                    Text("$startStr – $endStr", color = theme.textTertiary, style = MaterialTheme.typography.labelMedium, fontFamily = JetBrainsMonoFamily)
                 }
 
-                CampaignStatusBadge(campaign.status)
+                // Shared badge (unit 5A): same label -> colour meaning, mapped to tokens.
+                val (badgeLabel, badgeColor) = when (campaign.status) {
+                    CampaignStatus.ACTIVE -> "ACTIVE" to theme.success
+                    CampaignStatus.PLANNING -> "PLANNING" to theme.accentOrange
+                    CampaignStatus.PAUSED -> "PAUSED" to theme.textSecondary
+                    CampaignStatus.COMPLETED -> "COMPLETED" to theme.textSecondary
+                }
+                StatusBadge(label = badgeLabel, color = badgeColor)
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -170,8 +176,7 @@ private fun CampaignCard(campaign: SocialCampaign) {
             Text(
                 campaign.objective,
                 color = theme.textSecondary,
-                fontSize = 12.sp,
-                lineHeight = 16.sp
+                style = MaterialTheme.typography.bodySmall
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -182,16 +187,16 @@ private fun CampaignCard(campaign: SocialCampaign) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Timeline Progress", color = theme.textSecondary, fontSize = 10.sp)
-                Text("${(progress * 100).toInt()}%", color = theme.accentCyan, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text("Timeline Progress", color = theme.textTertiary, style = MaterialTheme.typography.labelMedium)
+                Text("${(progress * 100).toInt()}%", color = theme.accentNeonGreen, style = MonoMedium)
             }
 
             Spacer(modifier = Modifier.height(4.dp))
             LinearProgressIndicator(
                 progress = progress,
                 modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(3.dp)),
-                color = theme.accentCyan,
-                trackColor = theme.surface
+                color = theme.accentNeonGreen,
+                trackColor = theme.surfaceSunken
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -202,13 +207,13 @@ private fun CampaignCard(campaign: SocialCampaign) {
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Platforms:", color = theme.textSecondary, fontSize = 11.sp)
+                Text("Platforms:", color = theme.textTertiary, style = MaterialTheme.typography.labelMedium)
                 campaign.platforms.forEach { platform ->
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
-                            .background(theme.surface)
-                            .border(0.5.dp, theme.borderColor, RoundedCornerShape(6.dp))
+                            .background(theme.surfaceRaised)
+                            .border(0.5.dp, theme.borderSubtle, RoundedCornerShape(6.dp))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(platform.displayName, color = theme.textPrimary, fontSize = 9.sp)
@@ -220,31 +225,11 @@ private fun CampaignCard(campaign: SocialCampaign) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     "Target Audience: ${campaign.targetAudience}",
-                    color = theme.accentCyan,
-                    fontSize = 10.sp
+                    color = theme.accentInfo,
+                    style = MaterialTheme.typography.labelMedium
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun CampaignStatusBadge(status: CampaignStatus) {
-    val theme = AppTheme.colors
-    val (color, text) = when (status) {
-        CampaignStatus.ACTIVE -> theme.accentCyan to "ACTIVE"
-        CampaignStatus.PLANNING -> theme.accentOrange to "PLANNING"
-        CampaignStatus.PAUSED -> theme.textSecondary to "PAUSED"
-        CampaignStatus.COMPLETED -> theme.textSecondary to "COMPLETED"
-    }
-
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(color.copy(alpha = 0.15f))
-            .padding(horizontal = 6.dp, vertical = 2.dp)
-    ) {
-        Text(text, color = color, fontSize = 9.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -264,12 +249,13 @@ private fun CreateCampaignDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = theme.cardBackground,
+        containerColor = theme.surfaceRaised,
+        shape = RoundedCornerShape(24.dp),
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = theme.accentCyan, modifier = Modifier.size(20.dp))
+                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = theme.accentNeonGreen, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("AI Campaign Generator", color = theme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text("AI Campaign Generator", color = theme.textPrimary, style = MaterialTheme.typography.titleMedium)
             }
         },
         text = {
@@ -287,8 +273,10 @@ private fun CreateCampaignDialog(
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = theme.textPrimary,
                         unfocusedTextColor = theme.textPrimary,
-                        focusedBorderColor = theme.accentCyan,
-                        unfocusedBorderColor = theme.borderColor
+                        focusedBorderColor = theme.accentNeonGreen,
+                        unfocusedBorderColor = theme.borderColor,
+                        focusedContainerColor = theme.surface,
+                        unfocusedContainerColor = theme.surface
                     )
                 )
 
@@ -301,12 +289,14 @@ private fun CreateCampaignDialog(
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = theme.textPrimary,
                         unfocusedTextColor = theme.textPrimary,
-                        focusedBorderColor = theme.accentCyan,
-                        unfocusedBorderColor = theme.borderColor
+                        focusedBorderColor = theme.accentNeonGreen,
+                        unfocusedBorderColor = theme.borderColor,
+                        focusedContainerColor = theme.surface,
+                        unfocusedContainerColor = theme.surface
                     )
                 )
 
-                Text("Duration: $durationDays days", color = theme.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text("Duration: $durationDays days", color = theme.textPrimary, style = MaterialTheme.typography.titleSmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(3, 7, 14, 30).forEach { days ->
                         FilterChip(
@@ -314,14 +304,14 @@ private fun CreateCampaignDialog(
                             onClick = { durationDays = days },
                             label = { Text("$days Days", fontSize = 10.sp) },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = theme.accentCyan.copy(alpha = 0.2f),
-                                selectedLabelColor = theme.accentCyan
+                                selectedContainerColor = theme.accentContainer,
+                                selectedLabelColor = theme.onAccentContainer
                             )
                         )
                     }
                 }
 
-                Text("Target Platforms:", color = theme.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text("Target Platforms:", color = theme.textPrimary, style = MaterialTheme.typography.titleSmall)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(SocialPlatform.values()) { platform ->
                         val isSelected = selectedPlatforms.contains(platform)
@@ -332,8 +322,8 @@ private fun CreateCampaignDialog(
                             },
                             label = { Text(platform.displayName, fontSize = 10.sp) },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = theme.accentCyan.copy(alpha = 0.2f),
-                                selectedLabelColor = theme.accentCyan
+                                selectedContainerColor = theme.accentContainer,
+                                selectedLabelColor = theme.onAccentContainer
                             )
                         )
                     }
@@ -348,12 +338,12 @@ private fun CreateCampaignDialog(
                     }
                 },
                 enabled = name.isNotBlank() && objective.isNotBlank() && selectedPlatforms.isNotEmpty() && !isGenerating,
-                colors = ButtonDefaults.buttonColors(containerColor = theme.accentCyan)
+                colors = ButtonDefaults.buttonColors(containerColor = theme.accentGreenButton, contentColor = theme.onAccent)
             ) {
                 if (isGenerating) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.Black, strokeWidth = 2.dp)
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = theme.onAccent, strokeWidth = 2.dp)
                 } else {
-                    Text("Generate Strategy", color = Color.Black, fontWeight = FontWeight.Bold)
+                    Text("Generate Strategy", color = theme.onAccent, fontWeight = FontWeight.Bold)
                 }
             }
         },
