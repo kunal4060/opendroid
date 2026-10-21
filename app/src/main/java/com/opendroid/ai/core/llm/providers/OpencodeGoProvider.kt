@@ -12,6 +12,7 @@ import com.opendroid.ai.core.llm.ResponseFormat
 import com.opendroid.ai.core.llm.error.LLMErrorMapper
 import com.opendroid.ai.core.llm.error.ProviderErrorDetail
 import com.opendroid.ai.core.llm.error.toSafeProviderException
+import com.opendroid.ai.core.llm.executeCancellable
 import com.opendroid.ai.core.llm.toOpenAIMessages
 import com.opendroid.ai.core.util.UrlUtils
 import com.opendroid.ai.data.repository.SettingsRepository
@@ -82,7 +83,7 @@ class OpencodeGoProvider @Inject constructor(
             .build()
 
         return withContext(Dispatchers.IO) {
-            client.newCall(httpRequest).execute().use { response ->
+            client.executeCancellable(httpRequest).use { response ->
                 if (!response.isSuccessful) {
                     throw response.toSafeProviderException(
                         provider = ProviderErrorDetail.Provider.OPENCODE_GO,
@@ -146,12 +147,12 @@ class OpencodeGoProvider @Inject constructor(
     }
 
     override fun streamComplete(request: LLMRequest): Flow<String> = flow {
-        val response = complete(request)
-        val words = response.content.split(" ")
-        for ((index, word) in words.withIndex()) {
-            emit(if (index == words.lastIndex) word else "$word ")
-            kotlinx.coroutines.delay(50)
-        }
+        // No streaming endpoint is wired for this provider: deliver the
+        // completed response verbatim, in one chunk. The previous
+        // word-by-word re-emission at 50 ms/word fabricated the pacing
+        // (a ~17 s artificial tail on a 500-token reply) and mutated the
+        // text — whitespace re-joined, trailing space appended (Finding 14).
+        emit(complete(request).content)
     }
 
     override suspend fun isAvailable(): Boolean {

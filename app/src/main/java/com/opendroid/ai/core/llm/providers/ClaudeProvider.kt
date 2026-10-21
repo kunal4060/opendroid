@@ -4,12 +4,10 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.opendroid.ai.core.llm.*
 import com.opendroid.ai.core.llm.error.LLMErrorMapper
-import com.opendroid.ai.core.llm.error.LLMException
 import com.opendroid.ai.core.llm.error.ProviderErrorDetail
 import com.opendroid.ai.core.llm.error.toSafeProviderException
 import com.opendroid.ai.data.models.resolveClaudeModelOrNull
 import com.opendroid.ai.data.repository.SettingsRepository
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -122,7 +120,7 @@ class ClaudeProvider @Inject constructor(
             .build()
 
         return withContext(Dispatchers.IO) {
-        client.newCall(httpRequest).execute().use { response ->
+        client.executeCancellable(httpRequest).use { response ->
             if (!response.isSuccessful) {
                 throw response.toSafeProviderException(
                     provider = ProviderErrorDetail.Provider.CLAUDE,
@@ -176,29 +174,15 @@ class ClaudeProvider @Inject constructor(
     }
 
     override fun streamComplete(request: LLMRequest): Flow<String> = flow {
-        try {
-            val response = complete(request)
-            val words = response.content.split(" ")
-            for (word in words) {
-                emit("$word ")
-                kotlinx.coroutines.delay(50)
-            }
-        } catch (e: CancellationException) {
-            // Never convert cancellation into a failure: it must propagate so the
-            // collecting coroutine unwinds normally.
-            throw e
-        } catch (e: LLMException) {
-            // Typed API errors (rate limit, invalid key, server errors) must reach
-            // AgentLoop's LLMException handlers unchanged; wrapping them in IOException
-            // would bypass publishChatError and the structured error card.
-            throw e
-        } catch (e: IllegalStateException) {
-            // Configuration failures belong in AgentLoop's Error state, not in
-            // persisted assistant content that looks like a Claude response.
-            throw e
-        } catch (e: Exception) {
-            throw IOException("Claude streaming failed.", e)
-        }
+        // complete() throws the typed failure and the flow fails with it
+        // unchanged: cancellation propagates as cancellation, LLMException
+        // keeps its classification, configuration failures reach the error
+        // state. The previous catch-all re-wrapped everything else as
+        // IOException("Claude streaming failed."), mis-classifying parse
+        // failures (MalformedResponse) as Network — and its word-by-word
+        // loop fabricated streaming like the rest of the family's
+        // (Findings 14 and 15).
+        emit(complete(request).content)
     }
 
     override suspend fun isAvailable(): Boolean {

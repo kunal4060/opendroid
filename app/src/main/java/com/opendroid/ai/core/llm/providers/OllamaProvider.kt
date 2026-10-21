@@ -6,13 +6,11 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.opendroid.ai.core.llm.*
 import com.opendroid.ai.core.llm.error.LLMErrorMapper
-import com.opendroid.ai.core.llm.error.LLMException
 import com.opendroid.ai.core.llm.error.ProviderErrorDetail
 import com.opendroid.ai.core.llm.error.toSafeProviderException
 import com.opendroid.ai.core.util.UrlUtils
 import com.opendroid.ai.data.models.ChatMessage
 import com.opendroid.ai.data.repository.SettingsRepository
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -84,7 +82,7 @@ class OllamaProvider @Inject constructor(
         }
 
         return withContext(Dispatchers.IO) {
-        client.newCall(requestBuilder.build()).execute().use { response ->
+        client.executeCancellable(requestBuilder.build()).use { response ->
             if (!response.isSuccessful) {
                 throw response.toSafeProviderException(
                     provider = ProviderErrorDetail.Provider.OLLAMA,
@@ -125,27 +123,15 @@ class OllamaProvider @Inject constructor(
     }
 
     override fun streamComplete(request: LLMRequest): Flow<String> = flow {
-        try {
-            val response = complete(request)
-            val words = response.content.split(" ")
-            for (word in words) {
-                emit("$word ")
-                kotlinx.coroutines.delay(50)
-            }
-        } catch (e: CancellationException) {
-            // Cancellation must propagate so the collecting coroutine unwinds;
-            // it must never surface as the assistant's reply.
-            throw e
-        } catch (e: LLMException) {
-            // Typed API errors reach the collector's error handlers unchanged.
-            throw e
-        } catch (e: IllegalStateException) {
-            // Configuration failures belong in the error state, not in
-            // persisted assistant content.
-            throw e
-        } catch (e: Exception) {
-            throw IOException("Ollama streaming failed.", e)
-        }
+        // complete() throws the typed failure and the flow fails with it
+        // unchanged: cancellation propagates as cancellation, LLMException
+        // keeps its classification, configuration failures reach the error
+        // state. The previous catch-all re-wrapped everything else as
+        // IOException("Ollama streaming failed."), mis-classifying parse
+        // failures (MalformedResponse) as Network — and its word-by-word
+        // loop fabricated streaming like the rest of the family's
+        // (Findings 14 and 15).
+        emit(complete(request).content)
     }
 
     override suspend fun isAvailable(): Boolean {

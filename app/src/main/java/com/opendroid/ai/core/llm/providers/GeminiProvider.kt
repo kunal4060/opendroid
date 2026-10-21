@@ -105,7 +105,7 @@ class GeminiProvider @Inject constructor(
             .build()
 
         return withContext(Dispatchers.IO) {
-        client.newCall(httpRequest).execute().use { response ->
+        client.executeCancellable(httpRequest).use { response ->
             if (!response.isSuccessful) {
                 throw response.toSafeProviderException(
                     provider = ProviderErrorDetail.Provider.GEMINI,
@@ -169,12 +169,12 @@ class GeminiProvider @Inject constructor(
     }
 
     override fun streamComplete(request: LLMRequest): Flow<String> = flow {
-        val response = complete(request)
-        val words = response.content.split(" ")
-        for (word in words) {
-            emit("$word ")
-            kotlinx.coroutines.delay(50)
-        }
+        // No streaming endpoint is wired for this provider: deliver the
+        // completed response verbatim, in one chunk. The previous
+        // word-by-word re-emission at 50 ms/word fabricated the pacing
+        // (a ~17 s artificial tail on a 500-token reply) and mutated the
+        // text — whitespace re-joined, trailing space appended (Finding 14).
+        emit(complete(request).content)
     }
 
     override suspend fun isAvailable(): Boolean {

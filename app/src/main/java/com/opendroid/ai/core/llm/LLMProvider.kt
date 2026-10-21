@@ -1,9 +1,15 @@
 package com.opendroid.ai.core.llm
 
 import com.opendroid.ai.data.models.ChatMessage
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
 
 @Serializable
 data class ToolDefinition(
@@ -149,6 +155,21 @@ fun List<ChatMessage>.sanitizeForRoleAlternatingApi(): List<ChatMessage> {
         }
     }
     return result
+}
+
+/**
+ * Executes [request] on this client, cancelling the in-flight HTTP call
+ * when the calling coroutine is cancelled. Providers run the blocking
+ * `execute()` inside `withContext(Dispatchers.IO)`, where plain coroutine
+ * cancellation cannot reach it: without this hook a cancelled call (and
+ * its server-side cost) runs to completion, bounded only by timeouts.
+ */
+internal suspend fun OkHttpClient.executeCancellable(request: Request): Response {
+    val call = newCall(request)
+    currentCoroutineContext()[Job]?.invokeOnCompletion { cause ->
+        if (cause is CancellationException) call.cancel()
+    }
+    return call.execute()
 }
 
 private fun ChatMessage.mergedWithNextTurn(next: ChatMessage): ChatMessage = copy(
