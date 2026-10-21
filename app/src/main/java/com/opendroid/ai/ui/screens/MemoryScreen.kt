@@ -213,14 +213,21 @@ fun MemoryScreen(
                 actions = {
                     TextButton(onClick = {
                         when (selectedTab) {
-                            MemoryScreenTab.GROWTH_GRAPH -> viewModel.clearMemoryTier(MemoryTier.LEARNED_PATTERN)
+                            // The graph tab shows all four tiers — its wipe
+                            // clears all of them (incl. the sensitive store),
+                            // not just learned patterns.
+                            MemoryScreenTab.GROWTH_GRAPH -> viewModel.clearAllGraphTiers()
                             MemoryScreenTab.SEMANTIC -> viewModel.clearMemories(MemoryType.SEMANTIC)
                             MemoryScreenTab.WORKING -> viewModel.clearMemories(MemoryType.WORKING)
                             MemoryScreenTab.EPISODIC -> viewModel.clearMemories(MemoryType.EPISODIC)
                             MemoryScreenTab.PROCEDURAL -> viewModel.clearMemories(MemoryType.PROCEDURAL)
                         }
                     }) {
-                        Text("Wipe category", color = AppTheme.colors.accentRed, style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            if (selectedTab == MemoryScreenTab.GROWTH_GRAPH) "Wipe all tiers" else "Wipe category",
+                            color = AppTheme.colors.accentRed,
+                            style = MaterialTheme.typography.labelLarge
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = AppTheme.colors.background)
@@ -1145,7 +1152,7 @@ fun KnowledgeGraphView(
     var addIsSensitive by remember { mutableStateOf(false) }
     var newLabel by remember { mutableStateOf("") }
     var newSummary by remember { mutableStateOf("") }
-    var newCategory by remember { mutableStateOf(KnowledgeCategory.USER_PREFERENCE) }
+    var newCategory by remember { mutableStateOf(KnowledgeCategory.NOTE_FACT) }
     // C5: List | Graph — the graph renders the same filtered nodes below.
     var showGraph by remember { mutableStateOf(false) }
 
@@ -1355,6 +1362,50 @@ fun KnowledgeGraphView(
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )
+                    if (!addIsSensitive) {
+                        // Category picker — newCategory used to be stuck on
+                        // USER_PREFERENCE with no control anywhere, so every
+                        // entity added here was misfiled under it.
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Category",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AppTheme.colors.textSecondary
+                        )
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(vertical = 4.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(KnowledgeCategory.values()) { cat ->
+                                FilterChip(
+                                    selected = newCategory == cat,
+                                    onClick = { newCategory = cat },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = memoryCategoryIcon(cat),
+                                            contentDescription = null,
+                                            tint = AppTheme.colors.textSecondary,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    },
+                                    label = {
+                                        Text(
+                                            cat.name.replace('_', ' ').lowercase()
+                                                .replaceFirstChar { it.uppercase() },
+                                            style = MaterialTheme.typography.labelMedium
+                                        )
+                                    },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = AppTheme.colors.accentContainer,
+                                        selectedLabelColor = AppTheme.colors.onAccentContainer,
+                                        containerColor = AppTheme.colors.cardBackground,
+                                        labelColor = AppTheme.colors.textSecondary
+                                    )
+                                )
+                            }
+                        }
+                    }
                     Spacer(modifier = Modifier.height(10.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         TextButton(onClick = { isAddingKnowledge = false }) {
