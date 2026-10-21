@@ -36,6 +36,7 @@ import java.util.UUID
 fun MacrosScreen(
     viewModel: MacroViewModel,
     onNavigateToRoutines: () -> Unit = {},
+    onNavigateToSchedules: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val macros by viewModel.macros.collectAsState()
@@ -128,6 +129,48 @@ fun MacrosScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                             contentDescription = "View Routines",
+                            tint = AccentCyan
+                        )
+                    }
+                }
+            }
+
+            // Scheduled Tasks Entry Banner (C4)
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, AccentCyan.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                        .clickable { onNavigateToSchedules() },
+                    colors = CardDefaults.cardColors(containerColor = CardBackground)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("⏰", fontSize = 24.sp)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "SCHEDULED TASKS",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                color = AccentCyan
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Agent instructions & macros that run at a set time — and actually fire. Manage times, pause or cancel them here.",
+                                fontSize = 11.sp,
+                                color = TextSecondary,
+                                lineHeight = 16.sp
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = "View Scheduled Tasks",
                             tint = AccentCyan
                         )
                     }

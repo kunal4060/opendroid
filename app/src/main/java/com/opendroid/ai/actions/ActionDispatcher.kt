@@ -36,6 +36,7 @@ class ActionDispatcher @Inject constructor(
     private val smartHomeActions: SmartHomeActions,
     private val financeActions: FinanceActions,
     private val macroActions: MacroActions,
+    private val scheduleTaskActions: ScheduleTaskActions,
     private val advancedControlActions: AdvancedControlActions,
     private val notificationActions: NotificationActions,
     private val routineActions: RoutineActions,
@@ -79,6 +80,7 @@ class ActionDispatcher @Inject constructor(
         putAll(smartHomeActions.getActions().associateBy { it.name })
         putAll(financeActions.getActions().associateBy { it.name })
         putAll(macroActions.getActions().associateBy { it.name })
+        putAll(scheduleTaskActions.getActions().associateBy { it.name })
         putAll(advancedControlActions.getActions().associateBy { it.name })
         putAll(notificationActions.getActions().associateBy { it.name })
         putAll(routineActions.getActions().associateBy { it.name })

@@ -56,6 +56,7 @@ object OpenDroidRoutes {
     const val CRASH_LOG = "crash_log"
     const val ROUTINES = "routines"
     const val SOCIAL = "social"
+    const val SCHEDULES = "schedules"
 }
 
 /**
@@ -78,7 +79,8 @@ fun NavHostController.navigateAfterOnboarding() {
 
 @Composable
 fun OpenDroidNavigation(
-    navController: NavHostController = rememberNavController()
+    navController: NavHostController = rememberNavController(),
+    initialSessionId: String? = null
 ) {
     NavHost(
         navController = navController,
@@ -138,6 +140,7 @@ fun OpenDroidNavigation(
 
         composable(OpenDroidRoutes.MAIN) {
             MainDashboard(
+                initialSessionId = initialSessionId,
                 onNavigateToBenchmark = {
                     navController.navigate(OpenDroidRoutes.BENCHMARK)
                 },
@@ -170,6 +173,9 @@ fun OpenDroidNavigation(
                 },
                 onNavigateToRoutines = {
                     navController.navigate(OpenDroidRoutes.ROUTINES)
+                },
+                onNavigateToSchedules = {
+                    navController.navigate(OpenDroidRoutes.SCHEDULES)
                 }
             )
         }
@@ -271,6 +277,16 @@ fun OpenDroidNavigation(
             )
         }
 
+        composable(OpenDroidRoutes.SCHEDULES) {
+            val schedulesViewModel: SchedulesViewModel = hiltViewModel()
+            SchedulesScreen(
+                viewModel = schedulesViewModel,
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
         composable(OpenDroidRoutes.SOCIAL) {
             val socialViewModel: SocialViewModel = hiltViewModel()
             SocialScreen(viewModel = socialViewModel)
@@ -290,6 +306,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
 
 @Composable
 fun MainDashboard(
+    initialSessionId: String? = null,
     onNavigateToBenchmark: () -> Unit,
     onNavigateToPrivacyPolicy: () -> Unit,
     onNavigateToTermsOfUse: () -> Unit,
@@ -300,7 +317,8 @@ fun MainDashboard(
     onNavigateToNotificationHistory: () -> Unit = {},
     onNavigateToPermissions: () -> Unit = {},
     onNavigateToCrashLog: () -> Unit = {},
-    onNavigateToRoutines: () -> Unit = {}
+    onNavigateToRoutines: () -> Unit = {},
+    onNavigateToSchedules: () -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -329,6 +347,17 @@ fun MainDashboard(
     var currentTab by remember { mutableStateOf<Screen>(Screen.Chat) }
 
     val chatViewModel: ChatViewModel = hiltViewModel()
+
+    // C4 deep link: a scheduled-task notification asked to open a specific
+    // chat session (the one its run wrote into). Switch to it and land on
+    // the Chat tab. Fires once per distinct id, including when the id
+    // arrives via onNewIntent while the dashboard is already composed.
+    LaunchedEffect(initialSessionId) {
+        if (initialSessionId != null) {
+            chatViewModel.switchToSession(initialSessionId)
+            currentTab = Screen.Chat
+        }
+    }
     val planViewModel: PlanViewModel = hiltViewModel()
     val memoryViewModel: MemoryViewModel = hiltViewModel()
     val socialViewModel: SocialViewModel = hiltViewModel()
@@ -424,7 +453,8 @@ fun MainDashboard(
                     Screen.Social -> SocialScreen(viewModel = socialViewModel)
                     Screen.Macros -> MacrosScreen(
                         viewModel = macroViewModel,
-                        onNavigateToRoutines = onNavigateToRoutines
+                        onNavigateToRoutines = onNavigateToRoutines,
+                        onNavigateToSchedules = onNavigateToSchedules
                     )
                     Screen.History -> LogsScreen(viewModel = historyViewModel)
                     Screen.Settings -> SettingsScreen(

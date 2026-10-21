@@ -6,6 +6,8 @@ import com.opendroid.ai.core.crash.CrashLogRecorder
 import com.opendroid.ai.core.crash.DeviceMetadata
 import com.opendroid.ai.core.crash.OpenDroidCrashHandler
 import com.opendroid.ai.core.memory.MemoryManager
+import com.opendroid.ai.core.schedule.ScheduledTaskScheduler
+import com.opendroid.ai.core.schedule.ScheduledTaskSweepWorker
 import com.opendroid.ai.core.security.AppLockManager
 import com.opendroid.ai.core.security.LegacyPreferenceMigration
 import com.opendroid.ai.data.crash.CrashLogRepository
@@ -30,6 +32,9 @@ class OpenDroidApp : Application() {
 
     @Inject
     lateinit var appLockManager: AppLockManager
+
+    @Inject
+    lateinit var scheduledTaskScheduler: ScheduledTaskScheduler
 
     private val appScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -56,6 +61,21 @@ class OpenDroidApp : Application() {
                 memoryManager.cleanPoisonedMemories()
             } catch (e: Exception) {
                 // Silently ignore cleanup errors to not block app startup
+            }
+        }
+
+        // C4: make sure the scheduled-task sweep exists and every alarm is
+        // registered, even when the process was started by the user rather
+        // than by the boot receiver (alarms can be dropped by force-stops
+        // and OEM task killers; re-arming on every cold start is the cheap
+        // self-heal). Enqueueing WorkManager work from Application.onCreate
+        // is always allowed — no foreground service is started here.
+        appScope.launch {
+            try {
+                ScheduledTaskSweepWorker.enqueuePeriodicWork(this@OpenDroidApp)
+                scheduledTaskScheduler.rearmAll()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to arm scheduled tasks", e)
             }
         }
     }
