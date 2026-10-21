@@ -17,11 +17,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.opendroid.ai.social.domain.model.AutomationLevel
 import com.opendroid.ai.ui.screens.social.*
 import com.opendroid.ai.ui.theme.AppTheme
@@ -89,7 +87,7 @@ fun SocialScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(theme.surface)
-                    .border(0.5.dp, theme.borderColor)
+                    .border(0.5.dp, theme.borderSubtle)
                     .statusBarsPadding()
             ) {
                 // Top Header Row
@@ -105,13 +103,13 @@ fun SocialScreen(
                             modifier = Modifier
                                 .size(34.dp)
                                 .clip(CircleShape)
-                                .background(theme.accentCyan.copy(alpha = 0.15f)),
+                                .background(theme.accentContainer),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 Icons.Default.Share,
                                 contentDescription = null,
-                                tint = theme.accentCyan,
+                                tint = theme.accentNeonGreen,
                                 modifier = Modifier.size(18.dp)
                             )
                         }
@@ -120,13 +118,12 @@ fun SocialScreen(
                             Text(
                                 "Social Studio",
                                 color = theme.textPrimary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp
+                                style = MaterialTheme.typography.titleMedium
                             )
                             Text(
                                 "${connectedAccounts.size} active channels • ${automationLevel.displayName}",
-                                color = theme.textSecondary,
-                                fontSize = 10.sp
+                                color = theme.textTertiary,
+                                style = MaterialTheme.typography.labelMedium
                             )
                         }
                     }
@@ -138,14 +135,14 @@ fun SocialScreen(
                         if (isGenerating) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(18.dp),
-                                color = theme.accentCyan,
+                                color = theme.accentNeonGreen,
                                 strokeWidth = 2.dp
                             )
                         }
 
                         IconButton(
                             onClick = { viewModel.refreshAll() },
-                            modifier = Modifier.size(34.dp).background(theme.background, CircleShape)
+                            modifier = Modifier.size(34.dp).background(theme.surfaceRaised, CircleShape)
                         ) {
                             Icon(
                                 Icons.Default.Refresh,
@@ -170,11 +167,11 @@ fun SocialScreen(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(20.dp))
                                 .background(
-                                    if (isSelected) theme.accentCyan else theme.cardBackground
+                                    if (isSelected) theme.accentContainer else theme.accentContainer.copy(alpha = 0f)
                                 )
                                 .border(
                                     1.dp,
-                                    if (isSelected) theme.accentCyan else theme.borderColor,
+                                    if (isSelected) theme.borderSubtle else theme.borderColor,
                                     RoundedCornerShape(20.dp)
                                 )
                                 .clickable { selectedTabIndex = index }
@@ -185,15 +182,15 @@ fun SocialScreen(
                                 Icon(
                                     tab.icon,
                                     contentDescription = null,
-                                    tint = if (isSelected) Color.Black else theme.textSecondary,
+                                    tint = if (isSelected) theme.onAccentContainer else theme.textSecondary,
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(5.dp))
                                 Text(
                                     tab.title,
-                                    color = if (isSelected) Color.Black else theme.textPrimary,
+                                    color = if (isSelected) theme.onAccentContainer else theme.textSecondary,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    fontSize = 11.sp
+                                    style = MaterialTheme.typography.labelMedium
                                 )
                             }
                         }

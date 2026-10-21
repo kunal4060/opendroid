@@ -16,12 +16,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.opendroid.ai.social.core.ai.Tone
 import com.opendroid.ai.social.domain.model.*
+import com.opendroid.ai.ui.components.StatusBadge
 import com.opendroid.ai.ui.theme.AppTheme
 import java.text.SimpleDateFormat
 import java.util.*
@@ -78,8 +77,8 @@ fun SocialContentTab(
         item {
             Card(
                 modifier = Modifier.fillMaxWidth()
-                    .border(1.dp, theme.accentCyan.copy(alpha = 0.4f), RoundedCornerShape(16.dp)),
-                shape = RoundedCornerShape(16.dp),
+                    .border(1.dp, theme.borderColor, RoundedCornerShape(18.dp)),
+                shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -89,20 +88,20 @@ fun SocialContentTab(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = theme.accentCyan, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = theme.accentNeonGreen, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("AI Content Composer", color = theme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            Text("AI Content Composer", color = theme.textPrimary, style = MaterialTheme.typography.titleMedium)
                         }
 
                         if (isGenerating) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = theme.accentCyan, strokeWidth = 2.dp)
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = theme.accentNeonGreen, strokeWidth = 2.dp)
                         }
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
                     // Platform Selector
-                    Text("Target Platform", color = theme.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    Text("Target Platform", color = theme.textTertiary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium)
                     Spacer(modifier = Modifier.height(6.dp))
                     LazyRow(
                         modifier = Modifier.fillMaxWidth(),
@@ -112,10 +111,12 @@ fun SocialContentTab(
                             FilterChip(
                                 selected = selectedPlatform == platform,
                                 onClick = { selectedPlatform = platform },
-                                label = { Text(platform.displayName, fontSize = 11.sp) },
+                                label = { Text(platform.displayName, style = MaterialTheme.typography.labelMedium) },
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = theme.accentCyan.copy(alpha = 0.2f),
-                                    selectedLabelColor = theme.accentCyan
+                                    selectedContainerColor = theme.accentContainer,
+                                    selectedLabelColor = theme.onAccentContainer,
+                                    containerColor = theme.cardBackground,
+                                    labelColor = theme.textSecondary
                                 )
                             )
                         }
@@ -127,22 +128,24 @@ fun SocialContentTab(
                     OutlinedTextField(
                         value = topicInput,
                         onValueChange = { topicInput = it },
-                        label = { Text("What would you like to post about?", fontSize = 12.sp) },
-                        placeholder = { Text("e.g. OpenDroid v2 release with local AI agent capabilities", fontSize = 12.sp) },
+                        label = { Text("What would you like to post about?", style = MaterialTheme.typography.bodyMedium) },
+                        placeholder = { Text("e.g. OpenDroid v2 release with local AI agent capabilities", style = MaterialTheme.typography.bodyMedium) },
                         modifier = Modifier.fillMaxWidth(),
                         maxLines = 3,
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = theme.textPrimary,
                             unfocusedTextColor = theme.textPrimary,
-                            focusedBorderColor = theme.accentCyan,
-                            unfocusedBorderColor = theme.borderColor
+                            focusedBorderColor = theme.accentNeonGreen,
+                            unfocusedBorderColor = theme.borderStrong,
+                            focusedLabelColor = theme.accentNeonGreen,
+                            unfocusedLabelColor = theme.textSecondary
                         )
                     )
 
                     Spacer(modifier = Modifier.height(10.dp))
 
                     // Tone Selector
-                    Text("Tone", color = theme.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    Text("Tone", color = theme.textTertiary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium)
                     Spacer(modifier = Modifier.height(4.dp))
                     LazyRow(
                         modifier = Modifier.fillMaxWidth(),
@@ -152,10 +155,12 @@ fun SocialContentTab(
                             FilterChip(
                                 selected = selectedTone == tone,
                                 onClick = { selectedTone = tone },
-                                label = { Text(tone.name.lowercase().capitalize(Locale.ROOT), fontSize = 10.sp) },
+                                label = { Text(tone.name.lowercase().capitalize(Locale.ROOT), style = MaterialTheme.typography.labelMedium) },
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = theme.surface,
-                                    selectedLabelColor = theme.textPrimary
+                                    selectedContainerColor = theme.accentContainer,
+                                    selectedLabelColor = theme.onAccentContainer,
+                                    containerColor = theme.cardBackground,
+                                    labelColor = theme.textSecondary
                                 )
                             )
                         }
@@ -171,17 +176,17 @@ fun SocialContentTab(
                             }
                         },
                         enabled = topicInput.isNotBlank() && !isGenerating,
-                        colors = ButtonDefaults.buttonColors(containerColor = theme.accentCyan),
+                        colors = ButtonDefaults.buttonColors(containerColor = theme.accentGreenButton, contentColor = theme.onAccent),
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = theme.onAccent, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Generate Platform Post", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("Generate Platform Post", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
                     }
 
                     Spacer(modifier = Modifier.height(14.dp))
-                    HorizontalDivider(color = theme.borderColor.copy(alpha = 0.5f), thickness = 0.5.dp)
+                    HorizontalDivider(color = theme.borderSubtle, thickness = 0.5.dp)
                     Spacer(modifier = Modifier.height(14.dp))
 
                     // Direct Content Editor
@@ -190,12 +195,12 @@ fun SocialContentTab(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Draft Content", color = theme.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        Text("Draft Content", color = theme.textPrimary, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleSmall)
                         val isOverLimit = currentContent.length > maxLimit
                         Text(
                             "${currentContent.length} / $maxLimit",
-                            color = if (isOverLimit) theme.accentRed else theme.textSecondary,
-                            fontSize = 11.sp,
+                            color = if (isOverLimit) theme.accentRed else theme.textTertiary,
+                            style = MaterialTheme.typography.labelMedium,
                             fontWeight = if (isOverLimit) FontWeight.Bold else FontWeight.Normal
                         )
                     }
@@ -206,19 +211,21 @@ fun SocialContentTab(
                         value = currentContent,
                         onValueChange = { currentContent = it },
                         modifier = Modifier.fillMaxWidth().height(120.dp),
-                        placeholder = { Text("Generated or custom post text appears here...", fontSize = 12.sp) },
+                        placeholder = { Text("Generated or custom post text appears here...", style = MaterialTheme.typography.bodyMedium) },
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = theme.textPrimary,
                             unfocusedTextColor = theme.textPrimary,
-                            focusedBorderColor = theme.accentCyan,
-                            unfocusedBorderColor = theme.borderColor
+                            focusedBorderColor = theme.accentNeonGreen,
+                            unfocusedBorderColor = theme.borderStrong,
+                            focusedLabelColor = theme.accentNeonGreen,
+                            unfocusedLabelColor = theme.textSecondary
                         )
                     )
 
                     Spacer(modifier = Modifier.height(10.dp))
 
                     // Quick AI Modifiers Row
-                    Text("AI Modifiers", color = theme.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    Text("AI Modifiers", color = theme.textTertiary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium)
                     Spacer(modifier = Modifier.height(4.dp))
                     LazyRow(
                         modifier = Modifier.fillMaxWidth(),
@@ -301,7 +308,7 @@ fun SocialContentTab(
                             shape = RoundedCornerShape(12.dp),
                             border = androidx.compose.foundation.BorderStroke(1.dp, theme.borderColor)
                         ) {
-                            Text("Save Draft", color = theme.textPrimary, fontSize = 12.sp)
+                            Text("Save Draft", color = theme.textPrimary, style = MaterialTheme.typography.labelLarge)
                         }
 
                         OutlinedButton(
@@ -311,7 +318,7 @@ fun SocialContentTab(
                             shape = RoundedCornerShape(12.dp),
                             border = androidx.compose.foundation.BorderStroke(1.dp, theme.borderColor)
                         ) {
-                            Text("Schedule", color = theme.textPrimary, fontSize = 12.sp)
+                            Text("Schedule", color = theme.textPrimary, style = MaterialTheme.typography.labelLarge)
                         }
 
                         Button(
@@ -325,9 +332,9 @@ fun SocialContentTab(
                             enabled = currentContent.isNotBlank(),
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = theme.accentCyan)
+                            colors = ButtonDefaults.buttonColors(containerColor = theme.accentGreenButton, contentColor = theme.onAccent)
                         ) {
-                            Text("Post Now", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text("Post Now", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
                         }
                     }
                 }
@@ -341,7 +348,7 @@ fun SocialContentTab(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Post History & Queue", color = theme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text("Post History & Queue", color = theme.textPrimary, style = MaterialTheme.typography.titleSmall)
             }
         }
 
@@ -354,10 +361,12 @@ fun SocialContentTab(
                     FilterChip(
                         selected = activeFilter == null,
                         onClick = { activeFilter = null },
-                        label = { Text("All (${posts.size})", fontSize = 11.sp) },
+                        label = { Text("All (${posts.size})", style = MaterialTheme.typography.labelMedium) },
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = theme.accentCyan.copy(alpha = 0.2f),
-                            selectedLabelColor = theme.accentCyan
+                            selectedContainerColor = theme.accentContainer,
+                            selectedLabelColor = theme.onAccentContainer,
+                            containerColor = theme.cardBackground,
+                            labelColor = theme.textSecondary
                         )
                     )
                 }
@@ -367,10 +376,12 @@ fun SocialContentTab(
                     FilterChip(
                         selected = activeFilter == status,
                         onClick = { activeFilter = status },
-                        label = { Text("${status.name.lowercase().capitalize(Locale.ROOT)} ($count)", fontSize = 11.sp) },
+                        label = { Text("${status.name.lowercase().capitalize(Locale.ROOT)} ($count)", style = MaterialTheme.typography.labelMedium) },
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = theme.accentCyan.copy(alpha = 0.2f),
-                            selectedLabelColor = theme.accentCyan
+                            selectedContainerColor = theme.accentContainer,
+                            selectedLabelColor = theme.onAccentContainer,
+                            containerColor = theme.cardBackground,
+                            labelColor = theme.textSecondary
                         )
                     )
                 }
@@ -384,7 +395,7 @@ fun SocialContentTab(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("No posts found in this filter", color = theme.textSecondary, fontSize = 13.sp)
+                    Text("No posts found in this filter", color = theme.textSecondary, style = MaterialTheme.typography.bodyMedium)
                 }
             }
         } else {
@@ -438,9 +449,9 @@ private fun ModifierChip(title: String, icon: androidx.compose.ui.graphics.vecto
             .padding(horizontal = 8.dp, vertical = 5.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, contentDescription = null, tint = theme.accentCyan, modifier = Modifier.size(13.dp))
+            Icon(icon, contentDescription = null, tint = theme.accentNeonGreen, modifier = Modifier.size(13.dp))
             Spacer(modifier = Modifier.width(4.dp))
-            Text(title, color = theme.textPrimary, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+            Text(title, color = theme.textPrimary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium)
         }
     }
 }
@@ -464,8 +475,8 @@ private fun PostItemCard(
 
     Card(
         modifier = Modifier.fillMaxWidth()
-            .border(1.dp, theme.borderColor, RoundedCornerShape(16.dp)),
-        shape = RoundedCornerShape(16.dp),
+            .border(1.dp, theme.borderColor, RoundedCornerShape(18.dp)),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -481,30 +492,37 @@ private fun PostItemCard(
                 ) {
                     Text(
                         post.platform.displayName.take(1),
-                        color = theme.accentCyan,
+                        color = theme.accentNeonGreen,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp
+                        style = MaterialTheme.typography.labelMedium
                     )
                 }
 
                 Spacer(modifier = Modifier.width(8.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(post.platform.displayName, color = theme.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                    Text(dateString, color = theme.textSecondary, fontSize = 10.sp)
+                    Text(post.platform.displayName, color = theme.textPrimary, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                    Text(dateString, color = theme.textTertiary, style = MaterialTheme.typography.labelMedium)
                 }
 
-                PostStatusBadge(post.status)
+                val (postStatusLabel, postStatusColor) = when (post.status) {
+                    PostStatus.PUBLISHED -> "Published" to theme.success
+                    PostStatus.SCHEDULED -> "Scheduled" to theme.accentInfo
+                    PostStatus.DRAFT -> "Draft" to theme.textSecondary
+                    PostStatus.FAILED -> "Failed" to theme.accentRed
+                    PostStatus.CANCELLED -> "Cancelled" to theme.textSecondary
+                }
+                StatusBadge(label = postStatusLabel, color = postStatusColor)
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
             // Post content
-            Text(post.content, color = theme.textPrimary, fontSize = 12.sp, lineHeight = 17.sp)
+            Text(post.content, color = theme.textPrimary, style = MaterialTheme.typography.bodyMedium)
 
             if (!post.errorMessage.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("Error: ${post.errorMessage}", color = theme.accentRed, fontSize = 11.sp)
+                Text("Error: ${post.errorMessage}", color = theme.accentRed, style = MaterialTheme.typography.bodyMedium)
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -519,7 +537,7 @@ private fun PostItemCard(
                     onClick = onDelete,
                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                 ) {
-                    Text("Delete", color = theme.accentRed, fontSize = 11.sp)
+                    Text("Delete", color = theme.accentRed, style = MaterialTheme.typography.labelMedium)
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -530,16 +548,16 @@ private fun PostItemCard(
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                             border = androidx.compose.foundation.BorderStroke(0.5.dp, theme.borderColor)
                         ) {
-                            Text("Schedule", color = theme.textPrimary, fontSize = 11.sp)
+                            Text("Schedule", color = theme.textPrimary, style = MaterialTheme.typography.labelMedium)
                         }
 
                         Button(
                             onClick = onPublishNow,
                             shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = theme.accentCyan),
+                            colors = ButtonDefaults.buttonColors(containerColor = theme.accentGreenButton, contentColor = theme.onAccent),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                         ) {
-                            Text("Publish Now", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("Publish Now", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                         }
                     } else if (post.status == PostStatus.SCHEDULED) {
                         OutlinedButton(
@@ -548,51 +566,30 @@ private fun PostItemCard(
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                             border = androidx.compose.foundation.BorderStroke(0.5.dp, theme.borderColor)
                         ) {
-                            Text("Cancel", color = theme.textSecondary, fontSize = 11.sp)
+                            Text("Cancel", color = theme.textSecondary, style = MaterialTheme.typography.labelMedium)
                         }
 
                         Button(
                             onClick = onPublishNow,
                             shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = theme.accentCyan),
+                            colors = ButtonDefaults.buttonColors(containerColor = theme.accentGreenButton, contentColor = theme.onAccent),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                         ) {
-                            Text("Publish Now", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("Publish Now", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                         }
                     } else if (post.status == PostStatus.FAILED) {
                         Button(
                             onClick = onPublishNow,
                             shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = theme.accentCyan),
+                            colors = ButtonDefaults.buttonColors(containerColor = theme.accentGreenButton, contentColor = theme.onAccent),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                         ) {
-                            Text("Retry", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("Retry", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun PostStatusBadge(status: PostStatus) {
-    val theme = AppTheme.colors
-    val (color, text) = when (status) {
-        PostStatus.PUBLISHED -> theme.accentCyan to "PUBLISHED"
-        PostStatus.SCHEDULED -> theme.accentCyan to "SCHEDULED"
-        PostStatus.DRAFT -> theme.textSecondary to "DRAFT"
-        PostStatus.FAILED -> theme.accentRed to "FAILED"
-        PostStatus.CANCELLED -> theme.textSecondary to "CANCELLED"
-    }
-
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(color.copy(alpha = 0.15f))
-            .padding(horizontal = 6.dp, vertical = 2.dp)
-    ) {
-        Text(text, color = color, fontSize = 9.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -606,11 +603,12 @@ internal fun ScheduleTimeDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = theme.cardBackground,
-        title = { Text("Schedule Post Time", color = theme.textPrimary, fontWeight = FontWeight.Bold) },
+        containerColor = theme.surfaceRaised,
+        shape = RoundedCornerShape(24.dp),
+        title = { Text("Schedule Post Time", color = theme.textPrimary, style = MaterialTheme.typography.titleMedium) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Select when this post should be automatically published:", color = theme.textSecondary, fontSize = 12.sp)
+                Text("Select when this post should be automatically published:", color = theme.textSecondary, style = MaterialTheme.typography.bodyMedium)
 
                 listOf(
                     1 to "In 1 hour",
@@ -627,10 +625,10 @@ internal fun ScheduleTimeDialog(
                         RadioButton(
                             selected = selectedOffsetHours == hours,
                             onClick = { selectedOffsetHours = hours },
-                            colors = RadioButtonDefaults.colors(selectedColor = theme.accentCyan)
+                            colors = RadioButtonDefaults.colors(selectedColor = theme.accentNeonGreen, unselectedColor = theme.textSecondary)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(label, color = theme.textPrimary, fontSize = 13.sp)
+                        Text(label, color = theme.textPrimary, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
@@ -641,9 +639,9 @@ internal fun ScheduleTimeDialog(
                     val epoch = System.currentTimeMillis() + (selectedOffsetHours * 3600 * 1000L)
                     onConfirm(epoch)
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = theme.accentCyan)
+                colors = ButtonDefaults.buttonColors(containerColor = theme.accentGreenButton, contentColor = theme.onAccent)
             ) {
-                Text("Schedule", color = Color.Black, fontWeight = FontWeight.Bold)
+                Text("Schedule", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {

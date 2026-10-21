@@ -16,11 +16,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.opendroid.ai.social.domain.model.*
+import com.opendroid.ai.ui.components.PriorityBadge
+import com.opendroid.ai.ui.components.StatusBadge
 import com.opendroid.ai.ui.theme.AppTheme
 import java.text.SimpleDateFormat
 import java.util.*
@@ -60,10 +60,12 @@ fun SocialInboxTab(
                     FilterChip(
                         selected = selectedCategory == null,
                         onClick = { selectedCategory = null },
-                        label = { Text("All (${interactions.size})", fontSize = 12.sp) },
+                        label = { Text("All (${interactions.size})", style = MaterialTheme.typography.labelMedium) },
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = theme.accentCyan.copy(alpha = 0.2f),
-                            selectedLabelColor = theme.accentCyan
+                            selectedContainerColor = theme.accentContainer,
+                            selectedLabelColor = theme.onAccentContainer,
+                            containerColor = theme.cardBackground,
+                            labelColor = theme.textSecondary
                         )
                     )
                 }
@@ -74,10 +76,12 @@ fun SocialInboxTab(
                         FilterChip(
                             selected = selectedCategory == cat,
                             onClick = { selectedCategory = cat },
-                            label = { Text("${cat.name.replace('_', ' ')} ($count)", fontSize = 11.sp) },
+                            label = { Text("${cat.name.replace('_', ' ')} ($count)", style = MaterialTheme.typography.labelMedium) },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = theme.accentCyan.copy(alpha = 0.2f),
-                                selectedLabelColor = theme.accentCyan
+                                selectedContainerColor = theme.accentContainer,
+                                selectedLabelColor = theme.onAccentContainer,
+                                containerColor = theme.cardBackground,
+                                labelColor = theme.textSecondary
                             )
                         )
                     }
@@ -103,14 +107,13 @@ fun SocialInboxTab(
                         Text(
                             "Inbox is Clean",
                             color = theme.textPrimary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
+                            style = MaterialTheme.typography.titleMedium
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             "No pending notifications, mentions, or messages.",
                             color = theme.textSecondary,
-                            fontSize = 12.sp
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
                 }
@@ -133,12 +136,13 @@ fun SocialInboxTab(
 
         AlertDialog(
             onDismissRequest = { replyingInteraction = null },
-            containerColor = theme.cardBackground,
+            containerColor = theme.surfaceRaised,
+            shape = RoundedCornerShape(24.dp),
             title = {
                 Text(
                     "Reply on ${interaction.platform.displayName}",
                     color = theme.textPrimary,
-                    fontWeight = FontWeight.Bold
+                    style = MaterialTheme.typography.titleMedium
                 )
             },
             text = {
@@ -149,20 +153,22 @@ fun SocialInboxTab(
                     Text(
                         "${interaction.authorName}: \"${interaction.content}\"",
                         color = theme.textSecondary,
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         maxLines = 3
                     )
 
                     OutlinedTextField(
                         value = replyText,
                         onValueChange = { replyText = it },
-                        label = { Text("Your Reply", fontSize = 12.sp) },
+                        label = { Text("Your Reply", style = MaterialTheme.typography.bodyMedium) },
                         modifier = Modifier.fillMaxWidth().height(120.dp),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = theme.textPrimary,
                             unfocusedTextColor = theme.textPrimary,
-                            focusedBorderColor = theme.accentCyan,
-                            unfocusedBorderColor = theme.borderColor
+                            focusedBorderColor = theme.accentNeonGreen,
+                            unfocusedBorderColor = theme.borderStrong,
+                            focusedLabelColor = theme.accentNeonGreen,
+                            unfocusedLabelColor = theme.textSecondary
                         )
                     )
                 }
@@ -174,9 +180,9 @@ fun SocialInboxTab(
                         replyingInteraction = null
                     },
                     enabled = replyText.isNotBlank(),
-                    colors = ButtonDefaults.buttonColors(containerColor = theme.accentCyan)
+                    colors = ButtonDefaults.buttonColors(containerColor = theme.accentGreenButton, contentColor = theme.onAccent)
                 ) {
-                    Text("Send Reply", color = Color.Black, fontWeight = FontWeight.Bold)
+                    Text("Send Reply", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -200,8 +206,8 @@ private fun InteractionCard(
 
     Card(
         modifier = Modifier.fillMaxWidth()
-            .border(1.dp, theme.borderColor, RoundedCornerShape(16.dp)),
-        shape = RoundedCornerShape(16.dp),
+            .border(1.dp, theme.borderColor, RoundedCornerShape(18.dp)),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -217,9 +223,9 @@ private fun InteractionCard(
                 ) {
                     Text(
                         interaction.platform.displayName.take(1),
-                        color = theme.accentCyan,
+                        color = theme.accentNeonGreen,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp
+                        style = MaterialTheme.typography.bodyMedium
                     )
                 }
 
@@ -231,19 +237,31 @@ private fun InteractionCard(
                             interaction.authorName.ifBlank { "User" },
                             color = theme.textPrimary,
                             fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp
+                            style = MaterialTheme.typography.bodyMedium
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        PriorityBadge(interaction.priority)
+                        val (priorityLabel, priorityColor) = when (interaction.priority) {
+                            InteractionPriority.URGENT -> "Urgent" to theme.accentRed
+                            InteractionPriority.HIGH -> "High" to theme.accentOrange
+                            InteractionPriority.NORMAL -> "Normal" to theme.accentInfo
+                            InteractionPriority.LOW -> "Low" to theme.textSecondary
+                        }
+                        PriorityBadge(label = priorityLabel, color = priorityColor)
                     }
                     Text(
                         "${interaction.category.name} • $timeFormatted",
-                        color = theme.textSecondary,
-                        fontSize = 10.sp
+                        color = theme.textTertiary,
+                        style = MaterialTheme.typography.labelMedium
                     )
                 }
 
-                InteractionStatusBadge(interaction.status)
+                val (statusLabel, statusColor) = when (interaction.status.uppercase()) {
+                    "UNREAD" -> "Unread" to theme.accentInfo
+                    "RESOLVED" -> "Resolved" to theme.textSecondary
+                    "REPLIED" -> "Replied" to theme.success
+                    else -> interaction.status to theme.textSecondary
+                }
+                StatusBadge(label = statusLabel, color = statusColor)
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -252,8 +270,7 @@ private fun InteractionCard(
             Text(
                 interaction.content,
                 color = theme.textPrimary,
-                fontSize = 13.sp,
-                lineHeight = 18.sp
+                style = MaterialTheme.typography.bodyMedium
             )
 
             // AI Suggestion pill if present
@@ -264,21 +281,21 @@ private fun InteractionCard(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
                         .background(theme.surface)
-                        .border(0.5.dp, theme.accentCyan.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                        .border(0.5.dp, theme.borderColor, RoundedCornerShape(8.dp))
                         .padding(8.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             Icons.Default.AutoAwesome,
                             contentDescription = null,
-                            tint = theme.accentCyan,
+                            tint = theme.accentNeonGreen,
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             "Suggested: \"${interaction.suggestedAction}\"",
                             color = theme.textSecondary,
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.bodyMedium,
                             maxLines = 2
                         )
                     }
@@ -297,7 +314,7 @@ private fun InteractionCard(
                     onClick = onDismissClick,
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                 ) {
-                    Text("Dismiss", color = theme.textSecondary, fontSize = 11.sp)
+                    Text("Dismiss", color = theme.textSecondary, style = MaterialTheme.typography.labelMedium)
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -307,16 +324,16 @@ private fun InteractionCard(
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                         border = androidx.compose.foundation.BorderStroke(0.5.dp, theme.borderColor)
                     ) {
-                        Text("Resolve", color = theme.textPrimary, fontSize = 11.sp)
+                        Text("Resolve", color = theme.textPrimary, style = MaterialTheme.typography.labelMedium)
                     }
 
                     Button(
                         onClick = onReplyClick,
-                        colors = ButtonDefaults.buttonColors(containerColor = theme.accentCyan),
+                        colors = ButtonDefaults.buttonColors(containerColor = theme.accentGreenButton, contentColor = theme.onAccent),
                         shape = RoundedCornerShape(14.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                     ) {
-                        Text("Reply", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("Reply", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -324,42 +341,3 @@ private fun InteractionCard(
     }
 }
 
-@Composable
-private fun PriorityBadge(priority: InteractionPriority) {
-    val theme = AppTheme.colors
-    val (color, text) = when (priority) {
-        InteractionPriority.URGENT -> theme.accentRed to "URGENT"
-        InteractionPriority.HIGH -> theme.accentOrange to "HIGH"
-        InteractionPriority.NORMAL -> theme.accentCyan to "NORMAL"
-        InteractionPriority.LOW -> theme.textSecondary to "LOW"
-    }
-
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(color.copy(alpha = 0.15f))
-            .padding(horizontal = 4.dp, vertical = 1.dp)
-    ) {
-        Text(text, color = color, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-    }
-}
-
-@Composable
-private fun InteractionStatusBadge(status: String) {
-    val theme = AppTheme.colors
-    val (color, text) = when (status.uppercase()) {
-        "UNREAD" -> theme.accentCyan to "UNREAD"
-        "RESOLVED" -> theme.textSecondary to "RESOLVED"
-        "REPLIED" -> theme.accentCyan to "REPLIED"
-        else -> theme.textSecondary to status
-    }
-
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(color.copy(alpha = 0.15f))
-            .padding(horizontal = 6.dp, vertical = 3.dp)
-    ) {
-        Text(text, color = color, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
-    }
-}
