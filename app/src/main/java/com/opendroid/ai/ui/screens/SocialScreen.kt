@@ -239,6 +239,7 @@ fun SocialScreen(
                         isGenerating = isGenerating,
                         onGeneratePost = { topic, platform, tone, type -> viewModel.generatePost(topic, platform, tone, type) },
                         onCreateDraft = { platform, content, type, time -> viewModel.createDraft(platform, content, type, time) },
+                        onPostNow = { platform, content, type -> viewModel.createAndPublishPostNow(platform, content, type) },
                         onApprovePost = { postId, immediate -> viewModel.approvePost(postId, immediate) },
                         onPublishPostNow = { postId -> viewModel.publishPostNow(postId) },
                         onSchedulePost = { postId, time -> viewModel.schedulePost(postId, time) },

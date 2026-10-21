@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -172,6 +173,7 @@ fun SocialSettingsTab(
     // ── ADD RULE DIALOG ──────────────────────────────────────────────
     if (showAddRuleDialog) {
         AddRuleDialog(
+            currentLevel = currentLevel,
             onDismiss = { showAddRuleDialog = false },
             onConfirm = { rule ->
                 onSaveRule(rule)
@@ -325,6 +327,7 @@ private fun AuditLogItem(log: SocialAuditEntry) {
 
 @Composable
 private fun AddRuleDialog(
+    currentLevel: AutomationLevel,
     onDismiss: () -> Unit,
     onConfirm: (SocialAutomationRule) -> Unit
 ) {
@@ -332,7 +335,28 @@ private fun AddRuleDialog(
     var ruleName by remember { mutableStateOf("") }
     var selectedTrigger by remember { mutableStateOf("SENTIMENT_POSITIVE") }
     var selectedAction by remember { mutableStateOf("AUTO_REPLY") }
+    var keywordsText by remember { mutableStateOf("") }
     var confidence by remember { mutableStateOf(0.85f) }
+    // Approval defaults from the automation level the user picked on
+    // this screen (anything but AUTONOMOUS means a human approves) —
+    // it used to be hardcoded false, so every rule silently ran
+    // unapproved regardless of the level.
+    var requireApproval by remember {
+        mutableStateOf(currentLevel != AutomationLevel.AUTONOMOUS)
+    }
+
+    // Only the trigger/action values the rule engine actually honours.
+    val triggerOptions = listOf(
+        "SENTIMENT_POSITIVE" to "Positive sentiment",
+        "KEYWORD_MATCH" to "Keyword match",
+        "INTENT_QUESTION" to "Question intent"
+    )
+    val actionOptions = listOf(
+        "AUTO_REPLY" to "Auto reply",
+        "DRAFT_REPLY_NOTIFY" to "Draft & notify",
+        "ESCALATE_TO_HUMAN" to "Escalate to human",
+        "AUTO_SCHEDULE" to "Auto schedule"
+    )
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -358,6 +382,65 @@ private fun AddRuleDialog(
                     )
                 )
 
+                Text("Trigger", color = theme.textPrimary, style = MonoMedium)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(triggerOptions) { (value, label) ->
+                        FilterChip(
+                            selected = selectedTrigger == value,
+                            onClick = { selectedTrigger = value },
+                            label = { Text(label, fontSize = 10.sp) }
+                        )
+                    }
+                }
+
+                if (selectedTrigger == "KEYWORD_MATCH") {
+                    OutlinedTextField(
+                        value = keywordsText,
+                        onValueChange = { keywordsText = it },
+                        label = { Text("Keywords (comma separated)", fontSize = 12.sp) },
+                        placeholder = { Text("e.g. price, buy, discount", fontSize = 11.sp) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = theme.textPrimary,
+                            unfocusedTextColor = theme.textPrimary,
+                            focusedBorderColor = theme.accentNeonGreen,
+                            unfocusedBorderColor = theme.borderColor,
+                            focusedContainerColor = theme.surface,
+                            unfocusedContainerColor = theme.surface
+                        )
+                    )
+                }
+
+                Text("Action", color = theme.textPrimary, style = MonoMedium)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(actionOptions) { (value, label) ->
+                        FilterChip(
+                            selected = selectedAction == value,
+                            onClick = { selectedAction = value },
+                            label = { Text(label, fontSize = 10.sp) }
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Require human approval", color = theme.textPrimary, style = MonoMedium)
+                    Switch(
+                        checked = requireApproval,
+                        onCheckedChange = { requireApproval = it },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = theme.onAccent,
+                            checkedTrackColor = theme.accentGreenButton,
+                            uncheckedThumbColor = theme.textSecondary,
+                            uncheckedTrackColor = theme.surfaceSunken
+                        )
+                    )
+                }
+
                 Text("Confidence Threshold: ${(confidence * 100).toInt()}%", color = theme.textPrimary, style = MonoMedium)
                 Slider(
                     value = confidence,
@@ -381,11 +464,15 @@ private fun AddRuleDialog(
                             isEnabled = true,
                             platform = null,
                             triggerType = selectedTrigger,
-                            keywords = emptyList(),
+                            keywords = if (selectedTrigger == "KEYWORD_MATCH") {
+                                keywordsText.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                            } else {
+                                emptyList()
+                            },
                             actionType = selectedAction,
                             replyTemplate = null,
                             confidenceThreshold = confidence,
-                            requireHumanApproval = false
+                            requireHumanApproval = requireApproval
                         )
                         onConfirm(rule)
                     }
