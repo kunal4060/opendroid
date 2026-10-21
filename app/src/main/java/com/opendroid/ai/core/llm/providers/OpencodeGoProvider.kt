@@ -1,5 +1,7 @@
 package com.opendroid.ai.core.llm.providers
 
+import com.opendroid.ai.core.llm.VisionSupport
+
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.opendroid.ai.BuildConfig
@@ -60,7 +62,7 @@ class OpencodeGoProvider @Inject constructor(
 
         val requestBodyMap = mutableMapOf<String, Any>(
             "model" to selectedModel,
-            "messages" to request.messages.toOpenAIMessages(request.systemPrompt),
+            "messages" to request.messages.toOpenAIMessages(request.systemPrompt, visionCapable = VisionSupport.supportsImage(name, selectedModel)),
             "temperature" to request.temperature,
             "max_tokens" to request.maxTokens
         )

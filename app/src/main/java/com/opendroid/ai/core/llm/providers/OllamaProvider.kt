@@ -1,5 +1,7 @@
 package com.opendroid.ai.core.llm.providers
 
+import com.opendroid.ai.core.llm.VisionSupport
+
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.opendroid.ai.core.llm.*
@@ -47,7 +49,7 @@ class OllamaProvider @Inject constructor(
 
         val startTime = System.currentTimeMillis()
 
-        val messagesList = request.messages.toOpenAIMessages(request.systemPrompt)
+        val messagesList = request.messages.toOpenAIMessages(request.systemPrompt, visionCapable = VisionSupport.supportsImage(name, selectedModel))
 
         val requestBodyMap = mutableMapOf<String, Any>(
             "model" to selectedModel,

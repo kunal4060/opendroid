@@ -60,19 +60,35 @@ class ClaudeProvider @Inject constructor(
         request.messages.forEach { msg ->
             val role = if (msg.sender == com.opendroid.ai.data.models.ChatMessage.Sender.USER) "user" else "assistant"
             if (msg.imageBase64 != null && role == "user") {
+                // B1: PDFs go as a native document block; images as an image
+                // block carrying the payload's real media type. No metadata
+                // means a legacy screenshot, historically image/jpeg.
+                val mimeType = msg.attachmentMimeType ?: "image/jpeg"
+                val attachmentBlock: Map<String, Any> = if (mimeType == "application/pdf") {
+                    mapOf(
+                        "type" to "document",
+                        "source" to mapOf(
+                            "type" to "base64",
+                            "media_type" to "application/pdf",
+                            "data" to msg.imageBase64
+                        )
+                    )
+                } else {
+                    mapOf(
+                        "type" to "image",
+                        "source" to mapOf(
+                            "type" to "base64",
+                            "media_type" to mimeType,
+                            "data" to msg.imageBase64
+                        )
+                    )
+                }
                 messagesList.add(
                     mapOf(
                         "role" to role,
                         "content" to listOf(
                             mapOf("type" to "text", "text" to msg.text),
-                            mapOf(
-                                "type" to "image",
-                                "source" to mapOf(
-                                    "type" to "base64",
-                                    "media_type" to "image/jpeg",
-                                    "data" to msg.imageBase64
-                                )
-                            )
+                            attachmentBlock
                         )
                     )
                 )

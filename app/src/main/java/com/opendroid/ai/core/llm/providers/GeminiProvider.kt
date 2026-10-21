@@ -52,10 +52,14 @@ class GeminiProvider @Inject constructor(
             val partsList = mutableListOf<Map<String, Any>>()
             partsList.add(mapOf("text" to msg.text))
             if (msg.imageBase64 != null && role == "user") {
+                // B1: the payload's real mime type - an image, or a PDF,
+                // which Gemini accepts natively as inlineData. Messages
+                // without attachment metadata are legacy screenshots and
+                // keep the historical image/jpeg default.
                 partsList.add(
                     mapOf(
                         "inlineData" to mapOf(
-                            "mimeType" to "image/jpeg",
+                            "mimeType" to (msg.attachmentMimeType ?: "image/jpeg"),
                             "data" to msg.imageBase64
                         )
                     )

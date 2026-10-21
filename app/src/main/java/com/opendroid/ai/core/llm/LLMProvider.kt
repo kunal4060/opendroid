@@ -106,12 +106,27 @@ data class LLMResponse(
     val latencyMs: Long
 )
 
-fun List<ChatMessage>.toOpenAIMessages(systemPrompt: String): List<Map<String, Any>> {
+/**
+ * Builds the OpenAI-shaped message list. Attachment parts (feature B1) are
+ * included only for images, only when the provider this payload is being
+ * built for is vision-capable ([visionCapable], from [VisionSupport] for
+ * that provider's own name/model): a text-only target - e.g. a fallback
+ * provider mid-task - gets the text alone rather than a payload it would
+ * reject or silently ignore. PDFs are never sent as binary through this
+ * family; their text is extracted and inlined upstream instead.
+ */
+fun List<ChatMessage>.toOpenAIMessages(
+    systemPrompt: String,
+    visionCapable: Boolean = true
+): List<Map<String, Any>> {
     val messagesList = mutableListOf<Map<String, Any>>()
     messagesList.add(mapOf("role" to "system", "content" to systemPrompt))
     this.forEach { msg ->
         val role = if (msg.sender == ChatMessage.Sender.USER) "user" else "assistant"
-        if (msg.imageBase64 != null && role == "user") {
+        val mimeType = msg.attachmentMimeType ?: "image/jpeg"
+        if (msg.imageBase64 != null && role == "user" && visionCapable &&
+            VisionSupport.isImageMime(mimeType)
+        ) {
             messagesList.add(
                 mapOf(
                     "role" to role,
@@ -120,7 +135,7 @@ fun List<ChatMessage>.toOpenAIMessages(systemPrompt: String): List<Map<String, A
                         mapOf(
                             "type" to "image_url",
                             "image_url" to mapOf(
-                                "url" to "data:image/jpeg;base64,${msg.imageBase64}"
+                                "url" to "data:$mimeType;base64,${msg.imageBase64}"
                             )
                         )
                     )
