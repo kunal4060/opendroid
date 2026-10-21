@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    C3: configuration for OpenDroidRecognitionService (referenced by
+    voice_interaction_service.xml). The settings activity points at the
+    main app, where recognition language/engine choices live.
+-->
+<recognition-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:settingsActivity="com.opendroid.ai.MainActivity" />

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    C3: configuration for OpenDroidVoiceInteractionService.
+
+    sessionService / recognitionService name the other two parts of the
+    voice-interaction stack; supportsAssist="true" is what routes the
+    assistant gesture (home long-press / power long-press / swipe) into
+    our session; the settings activity is where the system sends users
+    who tap "settings" for this assistant — the main app, whose Settings
+    tab hosts the Default assistant section.
+-->
+<voice-interaction-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:sessionService="com.opendroid.ai.core.assistant.OpenDroidVoiceInteractionSessionService"
+    android:recognitionService="com.opendroid.ai.core.assistant.OpenDroidRecognitionService"
+    android:settingsActivity="com.opendroid.ai.MainActivity"
+    android:supportsAssist="true"
+    android:supportsLaunchVoiceAssistFromKeyguard="true" />

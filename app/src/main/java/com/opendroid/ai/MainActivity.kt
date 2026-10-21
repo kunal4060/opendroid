@@ -14,6 +14,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import com.opendroid.ai.core.assistant.AssistantIntentParser
+import com.opendroid.ai.core.assistant.PendingAssistantCommand
 import com.opendroid.ai.core.intent.ExternalIntentRouter
 import com.opendroid.ai.core.intent.ExternalLaunch
 import com.opendroid.ai.core.launch.ExternalIntents
@@ -43,16 +45,23 @@ class MainActivity : FragmentActivity() {
 
     @Inject lateinit var externalIntentRouter: ExternalIntentRouter
 
+    @Inject lateinit var pendingAssistantCommand: PendingAssistantCommand
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableOpenDroidEdgeToEdge(isDarkTheme = true)
         super.onCreate(savedInstanceState)
 
         // Cold start: hand any external intent — an inbound share (C2) or a
-        // widget/shortcut launch (C1); C3/C7 ride the same path — to the one
+        // widget/shortcut launch (C1); C7 rides the same path — to the one
         // intent router. The router replays it to the UI once the lock gate
         // and the splash/onboarding flow let the UI compose — nothing is
         // rendered or staged before then.
         routeLaunchIntent(intent)
+
+        // C3: an assistant invocation (ACTION_ASSIST via AssistActivity)
+        // may carry a command — park it for the chat to deliver once it is
+        // composed (i.e. after the lock gate, never around it).
+        handleAssistantLaunch(intent)
 
         // Direct Share row (C2): publish the long-lived sharing shortcut so
         // OpenDroid can surface as a direct target in other apps' share
@@ -107,13 +116,15 @@ class MainActivity : FragmentActivity() {
 
     /**
      * Warm start: with launchMode=singleTask the running instance receives
-     * new external intents here — widget/shortcut taps and shares while the
-     * app is running — instead of a second activity being created.
+     * new external intents here — widget/shortcut taps, shares and
+     * assistant invocations while the app is running — instead of a second
+     * activity being created.
      */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         routeLaunchIntent(intent)
+        handleAssistantLaunch(intent)
     }
 
     /**
@@ -141,6 +152,21 @@ class MainActivity : FragmentActivity() {
         val launch = ExternalIntents.fromIntent(intent) ?: return
         intent.putExtra(EXTRA_LAUNCH_ROUTED, true)
         externalIntentRouter.publish(launch)
+    }
+
+    /**
+     * C3: parks a command carried by an assistant invocation (ACTION_ASSIST
+     * via AssistActivity) in [PendingAssistantCommand]; ChatViewModel
+     * delivers it through the normal send path once the chat composes.
+     * Non-assistant intents parse to no query and are ignored here — the
+     * share/launch routing above owns those.
+     */
+    private fun handleAssistantLaunch(launchIntent: Intent?) {
+        val parsed = AssistantIntentParser.parse(
+            launchIntent?.action,
+            AssistantIntentParser.extrasOf(launchIntent)
+        )
+        parsed.query?.let { pendingAssistantCommand.offer(it) }
     }
 
     override fun onDestroy() {

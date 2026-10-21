@@ -153,6 +153,19 @@ fun ChatScreen(
     val pendingComposerDraft by viewModel.pendingComposerDraft.collectAsState()
     val pendingSharedImages by viewModel.pendingSharedImages.collectAsState()
     val shareNotice by viewModel.shareNotice.collectAsState()
+
+    // C3: a command delivered by an assistant invocation (ACTION_ASSIST).
+    // ChatScreen only composes after the lock gate and inside the main
+    // dashboard, so consuming here keeps the command behind the A5 lock
+    // and on the exact same send path as typed input.
+    val pendingAssistantQuery by viewModel.pendingAssistantQuery.collectAsState()
+    LaunchedEffect(pendingAssistantQuery) {
+        if (pendingAssistantQuery != null) {
+            viewModel.consumePendingAssistantQuery()?.let { query ->
+                viewModel.sendMessage(query, context)
+            }
+        }
+    }
     val currentSessionId = sessions.firstOrNull { it.isCurrent }?.id
     val runningElsewhere = runningSessionId != null && runningSessionId != currentSessionId
 

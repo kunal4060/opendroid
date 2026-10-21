@@ -78,7 +78,8 @@ class ChatViewModel @Inject constructor(
     private val attachmentProcessor: AttachmentProcessor,
     private val externalIntentRouter: ExternalIntentRouter,
     private val sharedImageStore: SharedImageStore,
-    private val habitRoutineEngine: com.opendroid.ai.core.routine.HabitRoutineEngine
+    private val habitRoutineEngine: com.opendroid.ai.core.routine.HabitRoutineEngine,
+    private val pendingAssistantCommand: com.opendroid.ai.core.assistant.PendingAssistantCommand
 ) : ViewModel() {
 
     val llmConfig: StateFlow<LLMConfig> = settingsRepository.llmConfig
@@ -165,6 +166,17 @@ class ChatViewModel @Inject constructor(
     fun dismissShareNotice() {
         _shareNotice.value = null
     }
+    /**
+     * C3: a command parked by an assistant invocation (ACTION_ASSIST),
+     * waiting for ChatScreen to deliver it through [sendMessage] — the
+     * same path as typed input, including the offline-no-route guard. The
+     * screen only exists once the app-lock gate has opened, so a parked
+     * command can never bypass the lock.
+     */
+    val pendingAssistantQuery: StateFlow<String?> = pendingAssistantCommand.pendingQuery
+
+    /** Clears the parked assistant command; returns it so the caller can send it exactly once. */
+    fun consumePendingAssistantQuery(): String? = pendingAssistantCommand.consume()
 
     // Scoped to whichever session is current; re-collects automatically when the
     // user switches chats since the repository's flow is driven off the same

@@ -2585,6 +2585,12 @@ fun SettingsScreen(
                 BackupRestoreSection()
             }
 
+            // Default assistant (C3): role status + RoleManager request
+            item {
+                AssistantSettingsSection()
+            }
+            }
+
             // Privacy Policy link card
             item {
                 Card(
