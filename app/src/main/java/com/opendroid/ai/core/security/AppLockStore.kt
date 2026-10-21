@@ -35,6 +35,26 @@ interface AppLockStore {
     fun cooldownUntilMs(): Long
     fun setAttemptState(failedAttempts: Int, cooldownUntilMs: Long): Boolean
 
+    /**
+     * Monotonic (`SystemClock.elapsedRealtime`) millis until which PIN
+     * entry is in cooldown; 0 when the store tracks no monotonic deadline.
+     * The wall-clock deadline alone is not a rate limit — advancing the
+     * device clock used to expire the cooldown instantly (audit-4 #8) —
+     * so [AppLockManager] takes the later of the two.
+     */
+    fun cooldownUntilElapsedRealtimeMs(): Long = 0L
+
+    /**
+     * Records the attempt state with both cooldown deadlines. The default
+     * keeps stores that track only the wall-clock deadline working; the
+     * Android store overrides it to persist the monotonic deadline too.
+     */
+    fun setAttemptState(
+        failedAttempts: Int,
+        cooldownUntilMs: Long,
+        cooldownUntilElapsedRealtimeMs: Long
+    ): Boolean = setAttemptState(failedAttempts, cooldownUntilMs)
+
     /** Removes every lock record (PIN, flags, attempt state). Used by the wipe. */
     fun clearAll(): Boolean
 }
@@ -71,11 +91,23 @@ class AndroidAppLockStore(
     override fun failedAttempts(): Int =
         read(KEY_ATTEMPT_STATE)?.substringBefore(':')?.toIntOrNull() ?: 0
 
+    // The attempt-state record is "attempts:wallDeadline[:elapsedDeadline]";
+    // records written before the monotonic deadline existed have two fields.
     override fun cooldownUntilMs(): Long =
-        read(KEY_ATTEMPT_STATE)?.substringAfter(':', "")?.toLongOrNull() ?: 0L
+        read(KEY_ATTEMPT_STATE)?.split(':')?.getOrNull(1)?.toLongOrNull() ?: 0L
+
+    override fun cooldownUntilElapsedRealtimeMs(): Long =
+        read(KEY_ATTEMPT_STATE)?.split(':')?.getOrNull(2)?.toLongOrNull() ?: 0L
 
     override fun setAttemptState(failedAttempts: Int, cooldownUntilMs: Long): Boolean =
-        write(KEY_ATTEMPT_STATE, "$failedAttempts:$cooldownUntilMs")
+        setAttemptState(failedAttempts, cooldownUntilMs, 0L)
+
+    override fun setAttemptState(
+        failedAttempts: Int,
+        cooldownUntilMs: Long,
+        cooldownUntilElapsedRealtimeMs: Long
+    ): Boolean =
+        write(KEY_ATTEMPT_STATE, "$failedAttempts:$cooldownUntilMs:$cooldownUntilElapsedRealtimeMs")
 
     override fun clearAll(): Boolean = synchronized(lock) {
         var allSuccess = true

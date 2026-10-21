@@ -1,5 +1,6 @@
 package com.opendroid.ai.core.security
 
+import android.os.SystemClock
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 class AppLockManager(
     private val store: AppLockStore,
+    private val elapsedRealtimeMs: () -> Long = { SystemClock.elapsedRealtime() },
     private val nowMs: () -> Long = { System.currentTimeMillis() }
 ) {
     private val _lockEnabled = MutableStateFlow(store.isEnabled())
@@ -102,14 +104,14 @@ class AppLockManager(
     fun setPin(pin: String): Boolean {
         if (!PinHasher.isValidPinFormat(pin)) return false
         if (!store.setPinRecord(PinHasher.createRecord(pin))) return false
-        store.setAttemptState(0, 0L)
+        store.setAttemptState(0, 0L, 0L)
         _hasPin.value = true
         return true
     }
 
     fun removePin() {
         if (store.setPinRecord(null)) {
-            store.setAttemptState(0, 0L)
+            store.setAttemptState(0, 0L, 0L)
             _hasPin.value = false
         }
     }
@@ -136,34 +138,47 @@ class AppLockManager(
     fun verifyPin(pin: String): PinVerification {
         val record = store.pinRecord() ?: return PinVerification.NoPinSet
         val now = nowMs()
-        val cooldownUntil = store.cooldownUntilMs()
-        if (now < cooldownUntil) {
-            return PinVerification.InCooldown(cooldownUntil - now)
+        val remaining = cooldownRemainingMs(now)
+        if (remaining > 0) {
+            return PinVerification.InCooldown(remaining)
         }
         if (PinHasher.verify(pin, record)) {
-            store.setAttemptState(0, 0L)
+            store.setAttemptState(0, 0L, 0L)
             return PinVerification.Success
         }
         val attempts = store.failedAttempts() + 1
         if (attempts < MAX_FAILED_ATTEMPTS) {
-            store.setAttemptState(attempts, 0L)
+            store.setAttemptState(attempts, 0L, 0L)
             return PinVerification.Incorrect(MAX_FAILED_ATTEMPTS - attempts)
         }
         val exponent = minOf(attempts - MAX_FAILED_ATTEMPTS, MAX_COOLDOWN_EXPONENT)
         val cooldownMs = minOf(BASE_COOLDOWN_MS * (1L shl exponent), MAX_COOLDOWN_MS)
-        store.setAttemptState(attempts, now + cooldownMs)
+        store.setAttemptState(attempts, now + cooldownMs, elapsedRealtimeMs() + cooldownMs)
         return PinVerification.InCooldown(cooldownMs)
     }
 
-    /** Milliseconds left in the current PIN cooldown; 0 when entry is allowed. */
-    fun pinCooldownRemainingMs(): Long {
-        val remaining = store.cooldownUntilMs() - nowMs()
-        return if (remaining > 0) remaining else 0L
+    /**
+     * Milliseconds left in the PIN cooldown. Two deadlines are persisted
+     * (audit-4 #8): a wall-clock one and a monotonic elapsedRealtime one.
+     * The wall clock alone is not a rate limit — advancing the device
+     * clock used to expire the cooldown instantly — so whichever deadline
+     * expires later wins. The result is capped at [MAX_COOLDOWN_MS]: no
+     * legitimate cooldown is longer, and a larger remainder can only be
+     * an artifact of the monotonic clock having reset under an old
+     * deadline (reboot) or of the wall clock having moved backwards.
+     */
+    private fun cooldownRemainingMs(now: Long = nowMs()): Long {
+        val wallRemaining = store.cooldownUntilMs() - now
+        val elapsedRemaining = store.cooldownUntilElapsedRealtimeMs() - elapsedRealtimeMs()
+        return maxOf(wallRemaining, elapsedRemaining).coerceIn(0L, MAX_COOLDOWN_MS)
     }
+
+    /** Milliseconds left in the current PIN cooldown; 0 when entry is allowed. */
+    fun pinCooldownRemainingMs(): Long = cooldownRemainingMs()
 
     /** Marks the UI unlocked after any successful authentication (biometric or PIN). */
     fun unlock() {
-        store.setAttemptState(0, 0L)
+        store.setAttemptState(0, 0L, 0L)
         backgroundedAtMs = null
         _isLocked.value = false
     }
