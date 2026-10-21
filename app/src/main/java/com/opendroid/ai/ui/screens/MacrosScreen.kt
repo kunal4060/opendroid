@@ -1,5 +1,9 @@
 package com.opendroid.ai.ui.screens
 
+import android.app.Activity
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -12,23 +16,34 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.opendroid.ai.core.templates.TemplateExport
+import com.opendroid.ai.core.templates.TemplateFormat
 import com.opendroid.ai.data.models.Macro
 import com.opendroid.ai.data.models.PlanStep
 import com.opendroid.ai.data.models.StepStatus
+import com.opendroid.ai.ui.templates.TemplateFileIo
+import com.opendroid.ai.ui.templates.TemplateImportDialog
 import com.opendroid.ai.ui.theme.*
 import com.opendroid.ai.ui.viewmodel.MacroViewModel
+import com.opendroid.ai.ui.viewmodel.TemplateShareViewModel
+import kotlinx.coroutines.launch
 import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -37,10 +52,83 @@ fun MacrosScreen(
     viewModel: MacroViewModel,
     onNavigateToRoutines: () -> Unit = {},
     onNavigateToSchedules: () -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    templateViewModel: TemplateShareViewModel = hiltViewModel()
 ) {
     val macros by viewModel.macros.collectAsState()
-    
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // ---- C6 template transfer (export / share / import) ----
+    val importPreview by templateViewModel.importPreview.collectAsState()
+    val transferMessage by templateViewModel.message.collectAsState()
+    var pendingExport by remember { mutableStateOf<TemplateExport?>(null) }
+
+    // SAF save-to-file for an export payload (no storage permission needed).
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val export = pendingExport
+        pendingExport = null
+        val uri = result.data?.data
+        if (result.resultCode != Activity.RESULT_OK || uri == null || export == null) {
+            return@rememberLauncherForActivityResult // picker cancelled
+        }
+        scope.launch {
+            try {
+                TemplateFileIo.writeExport(context, uri, export)
+                templateViewModel.showMessage("Template saved: ${export.fileName}")
+            } catch (e: Exception) {
+                templateViewModel.showMessage("Export failed: ${e.localizedMessage ?: "unknown error"}")
+            }
+        }
+    }
+
+    fun startExport(macro: Macro) {
+        val export = templateViewModel.macroExport(macro)
+        pendingExport = export
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = TemplateFormat.MIME_TYPE
+            putExtra(Intent.EXTRA_TITLE, export.fileName)
+        }
+        exportLauncher.launch(intent)
+    }
+
+    fun shareMacro(macro: Macro) {
+        val export = templateViewModel.macroExport(macro)
+        if (!TemplateFileIo.shareExport(context, export)) {
+            templateViewModel.showMessage("Share failed: could not prepare the template file.")
+        }
+    }
+
+    // SAF open-file for import; the picked file is validated into a preview
+    // (TemplateShareViewModel) — nothing is written until the user confirms.
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val uri = result.data?.data
+        if (result.resultCode != Activity.RESULT_OK || uri == null) {
+            return@rememberLauncherForActivityResult // picker cancelled
+        }
+        scope.launch {
+            try {
+                val raw = TemplateFileIo.readTemplateText(context, uri)
+                templateViewModel.beginImport(raw)
+            } catch (e: Exception) {
+                templateViewModel.showMessage("Could not read that file: ${e.localizedMessage ?: "unknown error"}")
+            }
+        }
+    }
+
+    fun startImport() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+        }
+        importLauncher.launch(intent)
+    }
+
     var isAddingMacro by remember { mutableStateOf(false) }
     var newMacroName by remember { mutableStateOf("") }
     var newMacroTrigger by remember { mutableStateOf("") }
@@ -69,6 +157,15 @@ fun MacrosScreen(
                     )
                 },
                 actions = {
+                    IconButton(
+                        onClick = { startImport() }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FileDownload,
+                            contentDescription = "Import Template",
+                            tint = TextPrimary
+                        )
+                    }
                     IconButton(
                         onClick = { isAddingMacro = !isAddingMacro }
                     ) {
@@ -395,7 +492,9 @@ fun MacrosScreen(
                     MacroCard(
                         macro = mc,
                         onToggle = { isEnabled -> viewModel.toggleMacro(mc.id, isEnabled) },
-                        onDelete = { viewModel.deleteMacro(mc.id) }
+                        onDelete = { viewModel.deleteMacro(mc.id) },
+                        onExport = { startExport(mc) },
+                        onShare = { shareMacro(mc) }
                     )
                 }
             } else {
@@ -417,13 +516,41 @@ fun MacrosScreen(
             }
         }
     }
+
+    // C6: import preview (validate → preview → confirm; nothing written yet)
+    importPreview?.let { preview ->
+        TemplateImportDialog(
+            preview = preview,
+            onConfirm = { templateViewModel.confirmImport() },
+            onDismiss = { templateViewModel.dismissImport() }
+        )
+    }
+
+    // C6: one-shot outcome message (import done, export saved/failed, …)
+    transferMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { templateViewModel.clearMessage() },
+            containerColor = CardBackground,
+            titleContentColor = TextPrimary,
+            textContentColor = TextPrimary,
+            title = { Text("Template Transfer", fontWeight = FontWeight.Bold, fontSize = 15.sp) },
+            text = { Text(message, fontSize = 13.sp) },
+            confirmButton = {
+                TextButton(onClick = { templateViewModel.clearMessage() }) {
+                    Text("OK", color = AccentCyan, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
 }
 
 @Composable
 fun MacroCard(
     macro: Macro,
     onToggle: (Boolean) -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onExport: () -> Unit = {},
+    onShare: () -> Unit = {}
 ) {
     var expanded by remember { mutableStateOf(false) }
 
@@ -507,16 +634,32 @@ fun MacroCard(
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
-                    if (!macro.isSystem) {
-                        Button(
-                            onClick = onDelete,
-                            colors = ButtonDefaults.buttonColors(containerColor = AccentRed.copy(alpha = 0.1f), contentColor = AccentRed),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.align(Alignment.End)
-                        ) {
-                            Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", modifier = Modifier.size(16.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(onClick = onExport) {
+                            Icon(imageVector = Icons.Default.FileUpload, contentDescription = "Export Template", modifier = Modifier.size(16.dp), tint = AccentCyan)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Delete Macro", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("Export", fontSize = 11.sp, color = AccentCyan, fontWeight = FontWeight.Bold)
+                        }
+                        TextButton(onClick = onShare) {
+                            Icon(imageVector = Icons.Default.Share, contentDescription = "Share Template", modifier = Modifier.size(16.dp), tint = AccentCyan)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Share", fontSize = 11.sp, color = AccentCyan, fontWeight = FontWeight.Bold)
+                        }
+                        if (!macro.isSystem) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = onDelete,
+                                colors = ButtonDefaults.buttonColors(containerColor = AccentRed.copy(alpha = 0.1f), contentColor = AccentRed),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Delete Macro", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
