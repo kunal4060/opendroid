@@ -957,6 +957,7 @@ fun ChatScreen(
                                     .clickable { viewModel.dismissShareNotice() }
                             )
                         }
+                    }
                     if (voiceError != null) {
                         Text(
                             text = voiceError.orEmpty(),
