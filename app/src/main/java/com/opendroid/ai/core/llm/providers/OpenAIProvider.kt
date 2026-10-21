@@ -22,6 +22,23 @@ import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * Defensive extraction of the first choice's message content from an
+ * OpenAI-style chat-completions response, shared by every provider that
+ * parses this shape. A 200 with an empty `choices` array (content-filter
+ * finishes on some gateways) or a message with null/absent `content`
+ * (tool-call replies) yields an empty string instead of crashing the
+ * parse with IndexOutOfBounds/NPE.
+ */
+internal fun JsonObject.firstChoiceContent(): String {
+    val choices = get("choices")?.takeIf { it.isJsonArray }?.asJsonArray ?: return ""
+    val message = choices.firstOrNull()
+        ?.takeIf { it.isJsonObject }?.asJsonObject
+        ?.get("message")?.takeIf { it.isJsonObject }?.asJsonObject
+        ?: return ""
+    return message.get("content")?.takeIf { it.isJsonPrimitive }?.asString ?: ""
+}
+
 @Singleton
 class OpenAIProvider @Inject constructor(
     private val client: OkHttpClient,
@@ -79,9 +96,7 @@ class OpenAIProvider @Inject constructor(
                 throw IOException("Empty response body from OpenAI")
             }
             val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
-            val choices = jsonResponse.getAsJsonArray("choices")
-            val messageObj = choices[0].asJsonObject.getAsJsonObject("message")
-            val content = messageObj.get("content").asString
+            val content = jsonResponse.firstChoiceContent()
 
             val usageJson = jsonResponse.getAsJsonObject("usage")
             val usage = parseOpenAiStyleUsage(usageJson)

@@ -75,9 +75,7 @@ class DeepSeekProvider @Inject constructor(
             val responseBody = response.body.string()
             if (responseBody.isBlank()) throw IOException("Empty response body from DeepSeek")
             val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
-            val choices = jsonResponse.getAsJsonArray("choices")
-            val messageObj = choices[0].asJsonObject.getAsJsonObject("message")
-            val content = messageObj.get("content").asString
+            val content = jsonResponse.firstChoiceContent()
 
             val usageJson = jsonResponse.getAsJsonObject("usage")
             val usage = parseOpenAiStyleUsage(usageJson)
