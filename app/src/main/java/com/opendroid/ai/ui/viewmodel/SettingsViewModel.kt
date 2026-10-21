@@ -51,7 +51,9 @@ import dagger.Lazy
 import com.opendroid.ai.data.models.ChatMessage
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.coroutineContext
 
@@ -109,6 +111,17 @@ class SettingsViewModel @Inject constructor(
 
     private var connectionTestJob: Job? = null
     private val apiKeyUpdateJobs = mutableMapOf<String, Job>()
+
+    /**
+     * The latest not-yet-persisted transform of every debounced settings
+     * write, by write key. Debounced fields (API keys, URLs, the model
+     * pick, …) update [_llmConfig] immediately but only reach DataStore
+     * after a 1 s delay; if the process dies inside that window the edit
+     * used to be lost while the field still looked saved. [onCleared]
+     * flushes whatever is still pending here.
+     */
+    private val pendingConfigWrites = mutableMapOf<String, (LLMConfig) -> LLMConfig>()
+
     private var activeModelJob: Job? = null
     private var elevenLabsApiKeyJob: Job? = null
     private var elevenLabsVoiceIdJob: Job? = null
@@ -118,6 +131,41 @@ class SettingsViewModel @Inject constructor(
     private var customEndpointJob: Job? = null
 
     private var isLoaded = false
+
+    /** Records [transform] as the pending debounced write for [key]. */
+    private fun registerPendingWrite(key: String, transform: (LLMConfig) -> LLMConfig) {
+        pendingConfigWrites[key] = transform
+    }
+
+    /** Drops [key]'s pending write once its debounced job has persisted it. */
+    private fun completePendingWrite(key: String, transform: (LLMConfig) -> LLMConfig) {
+        if (pendingConfigWrites[key] === transform) pendingConfigWrites.remove(key)
+    }
+
+    override fun onCleared() {
+        // Flush debounced writes that are still inside their 1 s window:
+        // viewModelScope is about to be cancelled, so persist them on a
+        // fresh scope — otherwise a key/URL/model edit made just before
+        // the app was swiped away or torn down never reaches DataStore.
+        val pending = pendingConfigWrites.values.toList()
+        pendingConfigWrites.clear()
+        if (pending.isNotEmpty()) {
+            CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                pending.forEach { transform ->
+                    try {
+                        settingsRepository.updateConfig(transform)
+                    } catch (e: Exception) {
+                        android.util.Log.e(
+                            "SettingsViewModel",
+                            "Failed to flush pending settings update: ${e.message}",
+                            e
+                        )
+                    }
+                }
+            }
+        }
+        super.onCleared()
+    }
 
     val providerCredentialRecoveryState = providerCredentialStore.recoveryState
     val providerCredentialPersistenceState = settingsRepository.providerCredentialPersistenceState
@@ -396,21 +444,29 @@ class SettingsViewModel @Inject constructor(
         val provider = _llmConfig.value.activeProvider
         val updated = _llmConfig.value.withSelectedModel(provider, model)
         _llmConfig.value = updated
+        // The persistence transform must use the provider captured HERE —
+        // the one the model was picked for. Re-reading the active provider
+        // when the debounced job fires stored the model under the wrong
+        // provider whenever the user switched providers inside the 1 s
+        // window (A's model id persisted as B's selected model).
+        val transform: (LLMConfig) -> LLMConfig = { current ->
+            // Prefer this session's in-memory Claude/live list for the
+            // provider if DataStore has not absorbed refreshModels yet.
+            val memoryModels = _llmConfig.value.modelCache[provider]
+            val config = if (!memoryModels.isNullOrEmpty()) {
+                current.copy(modelCache = current.modelCache + (provider to memoryModels))
+            } else {
+                current
+            }
+            config.withSelectedModel(provider, model)
+        }
+        registerPendingWrite(PENDING_ACTIVE_MODEL, transform)
         activeModelJob?.cancel()
         activeModelJob = viewModelScope.launch {
             try {
                 delay(1000)
-                // Prefer this session's in-memory Claude/live list for the active
-                // provider if DataStore has not absorbed refreshModels yet.
-                val memoryModels = _llmConfig.value.modelCache[provider]
-                settingsRepository.updateConfig { current ->
-                    val config = if (!memoryModels.isNullOrEmpty()) {
-                        current.copy(modelCache = current.modelCache + (provider to memoryModels))
-                    } else {
-                        current
-                    }
-                    config.withSelectedModel(current.activeProvider, model)
-                }
+                settingsRepository.updateConfig(transform)
+                completePendingWrite(PENDING_ACTIVE_MODEL, transform)
             } catch (e: Exception) {
                 if (e !is kotlinx.coroutines.CancellationException) {
                     android.util.Log.e("SettingsViewModel", "Failed to update active model: ${e.message}", e)
@@ -440,16 +496,20 @@ class SettingsViewModel @Inject constructor(
         val keys = _llmConfig.value.apiKeys.toMutableMap()
         keys[providerName] = key
         _llmConfig.value = _llmConfig.value.copy(apiKeys = keys)
-        
+
+        val writeKey = "apiKey:$providerName"
+        val transform: (LLMConfig) -> LLMConfig = { current ->
+            val currentKeys = current.apiKeys.toMutableMap()
+            currentKeys[providerName] = key
+            current.copy(apiKeys = currentKeys)
+        }
+        registerPendingWrite(writeKey, transform)
         apiKeyUpdateJobs[providerName]?.cancel()
         apiKeyUpdateJobs[providerName] = viewModelScope.launch {
             try {
                 delay(1000)
-                settingsRepository.updateConfig { current ->
-                    val currentKeys = current.apiKeys.toMutableMap()
-                    currentKeys[providerName] = key
-                    current.copy(apiKeys = currentKeys)
-                }
+                settingsRepository.updateConfig(transform)
+                completePendingWrite(writeKey, transform)
                 if (providerName == _llmConfig.value.activeProvider) {
                     refreshModels(force = true)
                 }
@@ -463,13 +523,16 @@ class SettingsViewModel @Inject constructor(
 
     fun updateElevenLabsApiKey(key: String) {
         _llmConfig.value = _llmConfig.value.copy(elevenLabsApiKey = key)
+        val transform: (LLMConfig) -> LLMConfig = { current ->
+            current.copy(elevenLabsApiKey = key)
+        }
+        registerPendingWrite(PENDING_ELEVENLABS_KEY, transform)
         elevenLabsApiKeyJob?.cancel()
         elevenLabsApiKeyJob = viewModelScope.launch {
             try {
                 delay(1000)
-                settingsRepository.updateConfig { current ->
-                    current.copy(elevenLabsApiKey = key)
-                }
+                settingsRepository.updateConfig(transform)
+                completePendingWrite(PENDING_ELEVENLABS_KEY, transform)
             } catch (e: Exception) {
                 if (e !is kotlinx.coroutines.CancellationException) {
                     android.util.Log.e("SettingsViewModel", "Failed to update ElevenLabs API Key: ${e.message}", e)
@@ -480,13 +543,16 @@ class SettingsViewModel @Inject constructor(
 
     fun updateElevenLabsVoiceId(voiceId: String) {
         _llmConfig.value = _llmConfig.value.copy(elevenLabsVoiceId = voiceId)
+        val transform: (LLMConfig) -> LLMConfig = { current ->
+            current.copy(elevenLabsVoiceId = voiceId)
+        }
+        registerPendingWrite(PENDING_ELEVENLABS_VOICE, transform)
         elevenLabsVoiceIdJob?.cancel()
         elevenLabsVoiceIdJob = viewModelScope.launch {
             try {
                 delay(1000)
-                settingsRepository.updateConfig { current ->
-                    current.copy(elevenLabsVoiceId = voiceId)
-                }
+                settingsRepository.updateConfig(transform)
+                completePendingWrite(PENDING_ELEVENLABS_VOICE, transform)
             } catch (e: Exception) {
                 if (e !is kotlinx.coroutines.CancellationException) {
                     android.util.Log.e("SettingsViewModel", "Failed to update ElevenLabs Voice ID: ${e.message}", e)
@@ -497,13 +563,16 @@ class SettingsViewModel @Inject constructor(
 
     fun updateOllamaUrl(url: String) {
         _llmConfig.value = _llmConfig.value.copy(ollamaUrl = url)
+        val transform: (LLMConfig) -> LLMConfig = { current ->
+            current.copy(ollamaUrl = url)
+        }
+        registerPendingWrite(PENDING_OLLAMA_URL, transform)
         ollamaUrlJob?.cancel()
         ollamaUrlJob = viewModelScope.launch {
             try {
                 delay(1000)
-                settingsRepository.updateConfig { current ->
-                    current.copy(ollamaUrl = url)
-                }
+                settingsRepository.updateConfig(transform)
+                completePendingWrite(PENDING_OLLAMA_URL, transform)
             } catch (e: Exception) {
                 if (e !is kotlinx.coroutines.CancellationException) {
                     android.util.Log.e("SettingsViewModel", "Failed to update Ollama URL: ${e.message}", e)
@@ -514,13 +583,16 @@ class SettingsViewModel @Inject constructor(
 
     fun updateCopilotUrl(url: String) {
         _llmConfig.value = _llmConfig.value.copy(copilotUrl = url)
+        val transform: (LLMConfig) -> LLMConfig = { current ->
+            current.copy(copilotUrl = url)
+        }
+        registerPendingWrite(PENDING_COPILOT_URL, transform)
         copilotUrlJob?.cancel()
         copilotUrlJob = viewModelScope.launch {
             try {
                 delay(1000)
-                settingsRepository.updateConfig { current ->
-                    current.copy(copilotUrl = url)
-                }
+                settingsRepository.updateConfig(transform)
+                completePendingWrite(PENDING_COPILOT_URL, transform)
             } catch (e: Exception) {
                 if (e !is kotlinx.coroutines.CancellationException) {
                     android.util.Log.e("SettingsViewModel", "Failed to update Copilot URL: ${e.message}", e)
@@ -533,16 +605,19 @@ class SettingsViewModel @Inject constructor(
         val endpoints = _llmConfig.value.customEndpoints.toMutableMap()
         endpoints[providerName] = url
         _llmConfig.value = _llmConfig.value.copy(customEndpoints = endpoints)
-        
+
+        val transform: (LLMConfig) -> LLMConfig = { current ->
+            val currentEndpoints = current.customEndpoints.toMutableMap()
+            currentEndpoints[providerName] = url
+            current.copy(customEndpoints = currentEndpoints)
+        }
+        registerPendingWrite(PENDING_CUSTOM_ENDPOINT, transform)
         customEndpointJob?.cancel()
         customEndpointJob = viewModelScope.launch {
             try {
                 delay(1000)
-                settingsRepository.updateConfig { current ->
-                    val currentEndpoints = current.customEndpoints.toMutableMap()
-                    currentEndpoints[providerName] = url
-                    current.copy(customEndpoints = currentEndpoints)
-                }
+                settingsRepository.updateConfig(transform)
+                completePendingWrite(PENDING_CUSTOM_ENDPOINT, transform)
             } catch (e: Exception) {
                 if (e !is kotlinx.coroutines.CancellationException) {
                     android.util.Log.e("SettingsViewModel", "Failed to update custom endpoint: ${e.message}", e)
@@ -727,13 +802,16 @@ class SettingsViewModel @Inject constructor(
     /** D1: the wake phrase. Local state updates per keystroke; persistence is debounced like the URL fields. */
     fun updateWakeWordKeyword(keyword: String) {
         _llmConfig.value = _llmConfig.value.copy(wakeWordKeyword = keyword)
+        val transform: (LLMConfig) -> LLMConfig = { current ->
+            current.copy(wakeWordKeyword = keyword)
+        }
+        registerPendingWrite(PENDING_WAKE_KEYWORD, transform)
         wakeKeywordJob?.cancel()
         wakeKeywordJob = viewModelScope.launch {
             try {
                 delay(1000)
-                settingsRepository.updateConfig { current ->
-                    current.copy(wakeWordKeyword = keyword)
-                }
+                settingsRepository.updateConfig(transform)
+                completePendingWrite(PENDING_WAKE_KEYWORD, transform)
             } catch (e: Exception) {
                 if (e !is kotlinx.coroutines.CancellationException) {
                     android.util.Log.e("SettingsViewModel", "Failed to update wake keyword: ${e.message}", e)
@@ -984,6 +1062,16 @@ class SettingsViewModel @Inject constructor(
     /** Restarts the app into its first-run state after the wipe report has been shown. */
     fun restartAfterWipe() {
         forgetEverythingUseCase.relaunchApp()
+    }
+
+    private companion object {
+        const val PENDING_ACTIVE_MODEL = "activeModel"
+        const val PENDING_ELEVENLABS_KEY = "elevenLabsApiKey"
+        const val PENDING_ELEVENLABS_VOICE = "elevenLabsVoiceId"
+        const val PENDING_OLLAMA_URL = "ollamaUrl"
+        const val PENDING_COPILOT_URL = "copilotUrl"
+        const val PENDING_CUSTOM_ENDPOINT = "customEndpoint"
+        const val PENDING_WAKE_KEYWORD = "wakeWordKeyword"
     }
 
     private fun clearHuggingFaceVerificationMetadata() {
