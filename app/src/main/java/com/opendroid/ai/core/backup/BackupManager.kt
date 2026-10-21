@@ -442,10 +442,29 @@ class BackupManager @Inject constructor(
 
     private fun currentDbVersion(): Int = database.openHelper.readableDatabase.version
 
-    private companion object {
-        const val SLICE_BYTES = 32 * 1024
+    companion object {
+        private const val SLICE_BYTES = 32 * 1024
         const val TEMP_FILE_PREFIX = "backup-restore"
         const val TEMP_FILE_SUFFIX = ".json"
+
+        /**
+         * Deletes decrypted-restore temp files orphaned by a previous
+         * process (audit-4 #3). The pending restore is tracked in memory
+         * only, so if the process dies after [inspectBackup] — or the user
+         * never confirms or discards — the plaintext payload (credentials
+         * included, when opted in) would sit in cacheDir indefinitely.
+         * Called at startup, when no restore can be pending yet in this
+         * process, so every matching file is stale by construction.
+         * Best-effort: individual delete failures are ignored.
+         */
+        fun sweepOrphanedTempFiles(cacheDir: File) {
+            val stale = cacheDir.listFiles { file ->
+                file.isFile &&
+                    file.name.startsWith(TEMP_FILE_PREFIX) &&
+                    file.name.endsWith(TEMP_FILE_SUFFIX)
+            } ?: return
+            stale.forEach { it.delete() }
+        }
     }
 }
 
