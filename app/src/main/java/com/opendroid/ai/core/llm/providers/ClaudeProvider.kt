@@ -3,6 +3,7 @@ package com.opendroid.ai.core.llm.providers
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.opendroid.ai.core.llm.*
+import com.opendroid.ai.core.llm.error.LLMErrorMapper
 import com.opendroid.ai.core.llm.error.LLMException
 import com.opendroid.ai.core.llm.error.ProviderErrorDetail
 import com.opendroid.ai.core.llm.error.toSafeProviderException
@@ -132,22 +133,34 @@ class ClaudeProvider @Inject constructor(
             val responseBody = response.body.string()
             if (responseBody.isBlank()) throw IOException("Empty response body from Claude")
             val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
-            // Take the first block that actually carries text: the array can
-            // be empty, and a non-text block (thinking/tool_use on models
-            // that return them) has no "text" member to read.
+                ?: throw IOException("Empty response body from Claude")
+            // Concatenate every text block in order: the array can be
+            // empty, a non-text block (thinking/tool_use) has no "text"
+            // member to read, and keeping only the first text block
+            // silently truncates replies split around such blocks. No text
+            // anywhere is a malformed result, not a successful "" reply.
             val contentArray = jsonResponse.get("content")
                 ?.takeIf { it.isJsonArray }?.asJsonArray
-            val content = contentArray?.firstNotNullOfOrNull { block ->
+            val content = contentArray?.joinToString("") { block ->
                 block.takeIf { it.isJsonObject }?.asJsonObject
-                    ?.get("text")?.takeIf { it.isJsonPrimitive }?.asString
+                    ?.get("text")?.takeIf { it.isJsonPrimitive }?.asString ?: ""
             } ?: ""
+            if (content.isBlank()) {
+                throw LLMErrorMapper.malformed(name, selectedModel)
+            }
 
-            val usage = jsonResponse.getAsJsonObject("usage")
+            // usage may be JSON null / non-object and a count may arrive
+            // as a non-number primitive: getAsJsonObject / asInt would
+            // throw on those shapes and discard a valid reply.
+            val usage = jsonResponse.get("usage")
+                ?.takeIf { it.isJsonObject }?.asJsonObject
             // Anthropic reports the split natively; keep it split for B3
             // metering instead of collapsing it. Absent fields stay null
             // (unknown), never reconstructed.
-            val inputTokens = usage?.get("input_tokens")?.takeIf { it.isJsonPrimitive }?.asInt
-            val outputTokens = usage?.get("output_tokens")?.takeIf { it.isJsonPrimitive }?.asInt
+            val inputTokens = usage?.get("input_tokens")
+                ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.asInt
+            val outputTokens = usage?.get("output_tokens")
+                ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.asInt
 
             LLMResponse(
                 content = content,

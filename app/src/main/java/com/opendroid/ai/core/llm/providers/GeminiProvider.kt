@@ -3,6 +3,7 @@ package com.opendroid.ai.core.llm.providers
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.opendroid.ai.core.llm.*
+import com.opendroid.ai.core.llm.error.LLMErrorMapper
 import com.opendroid.ai.core.llm.error.ProviderErrorDetail
 import com.opendroid.ai.core.llm.error.toSafeProviderException
 import com.opendroid.ai.data.repository.SettingsRepository
@@ -117,11 +118,13 @@ class GeminiProvider @Inject constructor(
                 throw IOException("Empty response body from Gemini")
             }
             val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
+                ?: throw IOException("Empty response body from Gemini")
             // A safety-blocked prompt returns 200 with NO candidates (only
-            // promptFeedback), and a candidate's first part may be a function
-            // call or inline data rather than text. Walk the parts for the
-            // first text part; no text anywhere is an empty/blocked result,
-            // not a crash.
+            // promptFeedback), and a candidate's parts may interleave text
+            // with function calls or inline data. Concatenate every text
+            // part in order — keeping only the first silently truncates
+            // multi-part replies. No text anywhere is a blocked/empty
+            // result: a typed malformed failure, not a successful "" reply.
             val candidates = jsonResponse.get("candidates")
                 ?.takeIf { it.isJsonArray }?.asJsonArray
             val firstCandidate = candidates?.firstOrNull()
@@ -129,17 +132,27 @@ class GeminiProvider @Inject constructor(
             val parts = firstCandidate?.get("content")
                 ?.takeIf { it.isJsonObject }?.asJsonObject
                 ?.get("parts")?.takeIf { it.isJsonArray }?.asJsonArray
-            val text = parts?.firstNotNullOfOrNull { part ->
+            val text = parts?.joinToString("") { part ->
                 part.takeIf { it.isJsonObject }?.asJsonObject
-                    ?.get("text")?.takeIf { it.isJsonPrimitive }?.asString
+                    ?.get("text")?.takeIf { it.isJsonPrimitive }?.asString ?: ""
             } ?: ""
+            if (text.isBlank()) {
+                throw LLMErrorMapper.malformed(name, selectedModel)
+            }
 
-            val usageMetadata = jsonResponse.getAsJsonObject("usageMetadata")
+            // usageMetadata may be JSON null / non-object, and a count may
+            // arrive as a non-number primitive: getAsJsonObject / asInt
+            // would throw on those shapes and discard a valid reply.
+            val usageMetadata = jsonResponse.get("usageMetadata")
+                ?.takeIf { it.isJsonObject }?.asJsonObject
             // Gemini reports the split in usageMetadata; keep it split for
             // B3 metering. Absent fields stay null (unknown).
-            val promptTokens = usageMetadata?.get("promptTokenCount")?.takeIf { it.isJsonPrimitive }?.asInt
-            val completionTokens = usageMetadata?.get("candidatesTokenCount")?.takeIf { it.isJsonPrimitive }?.asInt
-            val totalTokens = usageMetadata?.get("totalTokenCount")?.takeIf { it.isJsonPrimitive }?.asInt
+            val promptTokens = usageMetadata?.get("promptTokenCount")
+                ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.asInt
+            val completionTokens = usageMetadata?.get("candidatesTokenCount")
+                ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.asInt
+            val totalTokens = usageMetadata?.get("totalTokenCount")
+                ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.asInt
                 ?: ((promptTokens ?: 0) + (completionTokens ?: 0))
 
             LLMResponse(

@@ -6,6 +6,7 @@ import com.opendroid.ai.core.usage.parseOpenAiStyleUsage
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.opendroid.ai.core.llm.*
+import com.opendroid.ai.core.llm.error.LLMErrorMapper
 import com.opendroid.ai.core.llm.error.ProviderErrorDetail
 import com.opendroid.ai.core.llm.error.toSafeProviderException
 import com.opendroid.ai.data.repository.SettingsRepository
@@ -75,10 +76,15 @@ class TogetherAIProvider @Inject constructor(
             val responseBody = response.body.string()
             if (responseBody.isBlank()) throw IOException("Empty response body from Together AI")
             val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
+                ?: throw IOException("Empty response body from Together AI")
             val content = jsonResponse.firstChoiceContent()
+            if (content.isBlank()) {
+                // A 200 with no answer (content filter, refusal, tool-call
+                // only) is a malformed result, not a successful empty reply.
+                throw LLMErrorMapper.malformed(name, selectedModel)
+            }
 
-            val usageJson = jsonResponse.getAsJsonObject("usage")
-            val usage = parseOpenAiStyleUsage(usageJson)
+            val usage = parseOpenAiStyleUsage(jsonResponse.usageObjectOrNull())
 
             LLMResponse(
                 content = content,

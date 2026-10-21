@@ -6,6 +6,7 @@ import com.opendroid.ai.core.usage.parseOpenAiStyleUsage
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.opendroid.ai.core.llm.*
+import com.opendroid.ai.core.llm.error.LLMErrorMapper
 import com.opendroid.ai.core.llm.error.ProviderErrorDetail
 import com.opendroid.ai.core.llm.error.toSafeProviderException
 import com.opendroid.ai.data.repository.SettingsRepository
@@ -28,7 +29,10 @@ import javax.inject.Singleton
  * parses this shape. A 200 with an empty `choices` array (content-filter
  * finishes on some gateways) or a message with null/absent `content`
  * (tool-call replies) yields an empty string instead of crashing the
- * parse with IndexOutOfBounds/NPE.
+ * parse with IndexOutOfBounds/NPE — callers must treat that empty result
+ * as a malformed response, never as a successful empty reply. Content in
+ * array-of-parts form (multi-part replies) is concatenated from its text
+ * parts, not collapsed to empty.
  */
 internal fun JsonObject.firstChoiceContent(): String {
     val choices = get("choices")?.takeIf { it.isJsonArray }?.asJsonArray ?: return ""
@@ -36,8 +40,25 @@ internal fun JsonObject.firstChoiceContent(): String {
         ?.takeIf { it.isJsonObject }?.asJsonObject
         ?.get("message")?.takeIf { it.isJsonObject }?.asJsonObject
         ?: return ""
-    return message.get("content")?.takeIf { it.isJsonPrimitive }?.asString ?: ""
+    val content = message.get("content") ?: return ""
+    return when {
+        content.isJsonPrimitive -> content.asString
+        content.isJsonArray -> content.asJsonArray.joinToString("") { part ->
+            part.takeIf { it.isJsonObject }?.asJsonObject
+                ?.get("text")?.takeIf { it.isJsonPrimitive }?.asString ?: ""
+        }
+        else -> ""
+    }
 }
+
+/**
+ * Safe access to the `usage` member of an OpenAI-style response:
+ * `getAsJsonObject("usage")` throws ClassCastException when the member is
+ * JSON null or any non-object (a shape real gateways send), discarding an
+ * otherwise valid reply into a non-retryable Unknown error.
+ */
+internal fun JsonObject.usageObjectOrNull(): JsonObject? =
+    get("usage")?.takeIf { it.isJsonObject }?.asJsonObject
 
 @Singleton
 class OpenAIProvider @Inject constructor(
@@ -96,10 +117,15 @@ class OpenAIProvider @Inject constructor(
                 throw IOException("Empty response body from OpenAI")
             }
             val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
+                ?: throw IOException("Empty response body from OpenAI")
             val content = jsonResponse.firstChoiceContent()
+            if (content.isBlank()) {
+                // A 200 with no answer (content filter, refusal, tool-call
+                // only) is a malformed result, not a successful empty reply.
+                throw LLMErrorMapper.malformed(name, selectedModel)
+            }
 
-            val usageJson = jsonResponse.getAsJsonObject("usage")
-            val usage = parseOpenAiStyleUsage(usageJson)
+            val usage = parseOpenAiStyleUsage(jsonResponse.usageObjectOrNull())
 
             LLMResponse(
                 content = content,
