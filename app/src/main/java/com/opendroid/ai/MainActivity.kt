@@ -1,6 +1,7 @@
 package com.opendroid.ai
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.WindowManager
@@ -13,8 +14,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import com.opendroid.ai.core.intent.ExternalIntentRouter
+import com.opendroid.ai.core.intent.ExternalLaunch
 import com.opendroid.ai.core.security.AppLockManager
 import com.opendroid.ai.core.service.OpenDroidService
+import com.opendroid.ai.core.share.SharedIntentParser
+import com.opendroid.ai.core.share.SharingShortcutPublisher
 import com.opendroid.ai.data.repository.SettingsRepository
 import com.opendroid.ai.ui.OpenDroidNavigation
 import com.opendroid.ai.ui.lock.LockGate
@@ -35,9 +40,22 @@ class MainActivity : FragmentActivity() {
 
     @Inject lateinit var appLockManager: AppLockManager
 
+    @Inject lateinit var externalIntentRouter: ExternalIntentRouter
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableOpenDroidEdgeToEdge(isDarkTheme = true)
         super.onCreate(savedInstanceState)
+
+        // Cold start: hand any inbound share (C2) to the intent router. The
+        // router replays it to the UI once the lock gate and the
+        // splash/onboarding flow let the chat compose — nothing is rendered
+        // or staged before then.
+        routeLaunchIntent(intent)
+
+        // Direct Share row (C2): publish the long-lived sharing shortcut so
+        // OpenDroid can surface as a direct target in other apps' share
+        // sheets. Best-effort; the manifest share filter works without it.
+        SharingShortcutPublisher.publishOnce(this)
 
         // Start foreground assistant service only if RECORD_AUDIO permission is granted
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
@@ -85,11 +103,42 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    /**
+     * Warm start: with launchMode=singleTask the running instance receives
+     * new external intents here instead of a second activity being created.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        routeLaunchIntent(intent)
+    }
+
+    /**
+     * Parses an inbound share intent and publishes it to the
+     * [ExternalIntentRouter] for the chat layer to stage. The intent is
+     * marked once routed: the same intent object is redelivered when the
+     * activity is recreated (rotation, theme change), and a recreation must
+     * not stage the same share a second time. (The router's claim is the
+     * second line of defence on the consumer side.)
+     */
+    private fun routeLaunchIntent(intent: Intent?) {
+        if (!SharedIntentParser.isShareIntent(intent)) return
+        intent!!
+        if (intent.getBooleanExtra(EXTRA_LAUNCH_ROUTED, false)) return
+        intent.putExtra(EXTRA_LAUNCH_ROUTED, true)
+        val parsed = SharedIntentParser.parse(intent) ?: return
+        externalIntentRouter.publish(ExternalLaunch.SharedContent(parsed))
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         // We want the foreground service to continue running even if UI is destroyed
         // to maintain wake word tracking, but we can stop it if the user wants full quit.
         // For production autonomous helper, we keep the service running in background.
+    }
+
+    companion object {
+        private const val EXTRA_LAUNCH_ROUTED = "com.opendroid.ai.extra.LAUNCH_ROUTED"
     }
 }
 

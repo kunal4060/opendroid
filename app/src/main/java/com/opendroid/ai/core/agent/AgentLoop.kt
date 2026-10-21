@@ -236,7 +236,8 @@ class AgentLoop @Inject constructor(
         context: Context,
         explicitSessionId: String? = null,
         configOverride: LLMConfig? = null,
-        attachment: PreparedAttachment? = null
+        attachment: PreparedAttachment? = null,
+        attachedImageBase64: String? = null
     ) {
         // processQuery is also the delivery path for a reply to a pending
         // awaitUserResponse() prompt (see below). That's ONLY true when this message comes
@@ -298,16 +299,19 @@ class AgentLoop @Inject constructor(
                     null
                 }
 
-                // Save user message. A composer attachment (B1) supplies the
-                // payload instead of a screenshot when present; its mime/name
-                // ride along so providers and the history bubble know what
-                // the payload is.
+                // Save user message. An explicit attachment wins over the
+                // on-demand screenshot — it is what the user meant to send;
+                // the two never combine into one message. A composer
+                // attachment (B1) supplies its payload with mime/name riding
+                // along so providers and the history bubble know what the
+                // payload is; a shared image staged by C2 supplies a bare
+                // payload (no mime/name known at this layer).
                 val userMsg = ChatMessage(
                     id = UUID.randomUUID().toString(),
                     text = query,
                     sender = ChatMessage.Sender.USER,
                     modelBadge = null,
-                    imageBase64 = if (attachment != null) attachment.imageBase64 else screenshotBase64,
+                    imageBase64 = attachment?.imageBase64 ?: attachedImageBase64 ?: screenshotBase64,
                     attachmentMimeType = attachment?.attachmentMimeType,
                     attachmentName = attachment?.attachmentName
                 )
@@ -317,10 +321,15 @@ class AgentLoop @Inject constructor(
                 // (large PDFs are send-once), and screenshot payloads stay
                 // send-only, exactly as they behaved before the v11 columns
                 // existed (the old mapper dropped them).
-                val persistedMsg = if (attachment != null) {
-                    userMsg.copy(imageBase64 = attachment.persistedImageBase64)
-                } else {
-                    userMsg.copy(imageBase64 = null)
+                val persistedMsg = when {
+                    attachment != null ->
+                        userMsg.copy(imageBase64 = attachment.persistedImageBase64)
+                    // A shared image (C2) is user-sent content staged in
+                    // app-private storage, not an ambient screenshot: it
+                    // persists with the message (the v11 column B1 added —
+                    // this is the B1↔C2 hand-off point).
+                    attachedImageBase64 != null -> userMsg
+                    else -> userMsg.copy(imageBase64 = null)
                 }
                 conversationRepository.insertMessage(sessionId, persistedMsg)
 
