@@ -31,19 +31,32 @@ sealed interface DownloadFit {
  */
 object ProviderSetupPolicy {
 
-    /** Free space that must remain after a first-run model download. */
-    const val MIN_FREE_AFTER_DOWNLOAD_BYTES: Long = 1_000_000_000L
-
     /**
-     * A9-style fit gate: compares the model's real [OnDeviceModelSpec.expectedSize]
-     * (the same bytes the download worker enforces) against the device's actual
-     * free space, instead of steering a new user into a download that cannot land.
+     * Fit gate for a first-run download: compares the model's real
+     * [OnDeviceModelSpec.expectedSize] (the same bytes the download worker
+     * enforces) against the device's actual free space, instead of steering a
+     * new user into a download that cannot land.
+     *
+     * The verdict is delegated to [ModelFitPolicy] — the single policy the
+     * [ModelRepository] download funnel also enforces — so the margin this
+     * surface warns about is exactly the margin the funnel gates on
+     * (max(1 GiB, 5% of total storage)), and the two can never disagree about
+     * whether a download fits, warns, or is blocked.
      */
-    fun assessDownloadFit(modelBytes: Long, freeBytes: Long): DownloadFit = when {
-        modelBytes > freeBytes -> DownloadFit.DoesNotFit
-        freeBytes - modelBytes < MIN_FREE_AFTER_DOWNLOAD_BYTES ->
-            DownloadFit.FitsWithLowSpaceWarning
-        else -> DownloadFit.Fits
+    fun assessDownloadFit(
+        modelBytes: Long,
+        freeBytes: Long,
+        totalStorageBytes: Long
+    ): DownloadFit = when (
+        ModelFitPolicy.assess(
+            modelBytes = modelBytes,
+            freeBytes = freeBytes,
+            totalStorageBytes = totalStorageBytes
+        ).verdict
+    ) {
+        ModelFitVerdict.BLOCK -> DownloadFit.DoesNotFit
+        ModelFitVerdict.WARN -> DownloadFit.FitsWithLowSpaceWarning
+        ModelFitVerdict.OK -> DownloadFit.Fits
     }
 
     /**

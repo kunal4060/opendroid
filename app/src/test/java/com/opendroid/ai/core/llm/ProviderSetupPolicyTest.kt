@@ -26,30 +26,83 @@ class ProviderSetupPolicyTest {
     )
 
     // ── Download fit gate ──────────────────────────────────────────────────
+    //
+    // The verdicts come from ModelFitPolicy — the same policy the download
+    // funnel enforces — with margin max(1 GiB, 5% of total storage). These
+    // tests pin that unification: the old onboarding-only flat 1,000,000,000
+    // byte gate disagreed with the funnel in both directions (F2).
+
+    private fun gib(n: Long): Long = n * 1024L * 1024L * 1024L
 
     @Test
     fun `download that exceeds free space does not fit`() {
         assertEquals(
             DownloadFit.DoesNotFit,
-            ProviderSetupPolicy.assessDownloadFit(modelBytes = 2_000L, freeBytes = 1_000L)
+            ProviderSetupPolicy.assessDownloadFit(
+                modelBytes = 2_000L, freeBytes = 1_000L, totalStorageBytes = gib(16)
+            )
         )
     }
 
     @Test
     fun `download leaving less than the safety margin warns`() {
-        val free = ProviderSetupPolicy.MIN_FREE_AFTER_DOWNLOAD_BYTES + 500L
+        val free = ModelFitPolicy.MIN_SAFE_REMAINING_BYTES + 500L
         assertEquals(
             DownloadFit.FitsWithLowSpaceWarning,
-            ProviderSetupPolicy.assessDownloadFit(modelBytes = 600L, freeBytes = free)
+            ProviderSetupPolicy.assessDownloadFit(
+                modelBytes = 600L, freeBytes = free, totalStorageBytes = gib(8)
+            )
         )
     }
 
     @Test
     fun `download with room to spare fits`() {
-        val free = ProviderSetupPolicy.MIN_FREE_AFTER_DOWNLOAD_BYTES + 5_000L
+        val free = ModelFitPolicy.MIN_SAFE_REMAINING_BYTES + 5_000L
         assertEquals(
             DownloadFit.Fits,
-            ProviderSetupPolicy.assessDownloadFit(modelBytes = 600L, freeBytes = free)
+            ProviderSetupPolicy.assessDownloadFit(
+                modelBytes = 600L, freeBytes = free, totalStorageBytes = gib(8)
+            )
+        )
+    }
+
+    @Test
+    fun `download leaving exactly the safety margin fits`() {
+        val free = ModelFitPolicy.MIN_SAFE_REMAINING_BYTES + 600L
+        assertEquals(
+            DownloadFit.Fits,
+            ProviderSetupPolicy.assessDownloadFit(
+                modelBytes = 600L, freeBytes = free, totalStorageBytes = gib(8)
+            )
+        )
+    }
+
+    @Test
+    fun `remaining between the old flat gate and one GiB now warns`() {
+        // Regression (F2): the old onboarding gate used a flat 1,000,000,000
+        // bytes, so 1.05 GB remaining read as "Fits" here while the funnel's
+        // 1 GiB margin refused the same download as unconfirmed-tight. On a
+        // 16 GiB volume the 1 GiB floor binds (5% is only 0.8 GiB).
+        val free = 600L + 1_050_000_000L
+        assertEquals(
+            DownloadFit.FitsWithLowSpaceWarning,
+            ProviderSetupPolicy.assessDownloadFit(
+                modelBytes = 600L, freeBytes = free, totalStorageBytes = gib(16)
+            )
+        )
+    }
+
+    @Test
+    fun `five percent margin warns on a large volume above one GiB remaining`() {
+        // Regression (F2), other direction: on a 512 GiB volume the shared
+        // margin is 25.6 GiB, so 20 GiB remaining warns — the old flat gate
+        // called this "Fits" and the funnel then refused it.
+        val free = gib(20) + 600L
+        assertEquals(
+            DownloadFit.FitsWithLowSpaceWarning,
+            ProviderSetupPolicy.assessDownloadFit(
+                modelBytes = 600L, freeBytes = free, totalStorageBytes = gib(512)
+            )
         )
     }
 

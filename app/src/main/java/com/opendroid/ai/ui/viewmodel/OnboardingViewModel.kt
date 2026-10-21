@@ -11,6 +11,7 @@ import com.opendroid.ai.core.llm.ConnectionTestState
 import com.opendroid.ai.core.llm.DownloadFit
 import com.opendroid.ai.core.llm.LLMProviderFactory
 import com.opendroid.ai.core.llm.LLMRequest
+import com.opendroid.ai.core.llm.ModelDownloadStartResult
 import com.opendroid.ai.core.llm.OnDeviceBackend
 import com.opendroid.ai.core.llm.OnDeviceModelRegistry
 import com.opendroid.ai.core.llm.OnDeviceModelSpec
@@ -88,6 +89,7 @@ data class ProviderSetupUiState(
     val liteRtStatus: ModelStatus? = null,
     val liteRtProgress: Int = 0,
     val freeBytes: Long = 0L,
+    val totalStorageBytes: Long = 0L,
     val downloadFit: DownloadFit = DownloadFit.Fits,
     val onDeviceBusy: Boolean = false,
     val onDeviceError: String? = null,
@@ -146,19 +148,7 @@ class OnboardingViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            val freeBytes = withContext(Dispatchers.IO) {
-                runCatching { StatFs(Environment.getDataDirectory().path).availableBytes }
-                    .getOrDefault(0L)
-            }
-            mutableProviderState.update { state ->
-                state.copy(
-                    freeBytes = freeBytes,
-                    downloadFit = ProviderSetupPolicy.assessDownloadFit(
-                        modelBytes = state.liteRtSpec?.expectedSize ?: 0L,
-                        freeBytes = freeBytes
-                    )
-                )
-            }
+            refreshStorageStats()
         }
         viewModelScope.launch {
             val available = runCatching { gemmaProvider.isAvailable() }.getOrDefault(false)
@@ -196,8 +186,29 @@ class OnboardingViewModel @Inject constructor(
     private fun ProviderSetupUiState.downloadFit(): DownloadFit =
         ProviderSetupPolicy.assessDownloadFit(
             modelBytes = liteRtSpec?.expectedSize ?: 0L,
-            freeBytes = freeBytes
+            freeBytes = freeBytes,
+            totalStorageBytes = totalStorageBytes
         )
+
+    /**
+     * Re-reads the data volume — the same StatFs source [ModelRepository]'s
+     * funnel gates on — and refreshes the free/total bytes and the fit verdict
+     * in state, so the panel's numbers, and the low-space warning that doubles
+     * as the user's download confirmation, reflect the device right now
+     * instead of the moment onboarding opened.
+     */
+    private suspend fun refreshStorageStats() {
+        val stat = withContext(Dispatchers.IO) {
+            runCatching { StatFs(Environment.getDataDirectory().path) }.getOrNull()
+        } ?: return
+        mutableProviderState.update { state ->
+            val refreshed = state.copy(
+                freeBytes = stat.availableBytes,
+                totalStorageBytes = stat.totalBytes
+            )
+            refreshed.copy(downloadFit = refreshed.downloadFit())
+        }
+    }
 
     fun onNameChange(value: String) {
         mutableUiState.value = mutableUiState.value.copy(name = value, storageError = false)
@@ -271,9 +282,17 @@ class OnboardingViewModel @Inject constructor(
 
     /**
      * Queues the recommended LiteRT model download through the existing
-     * [ModelRepository] (WorkManager, integrity-checked) and points the config
-     * at it, so chat uses the model the moment the download lands. Blocked up
-     * front when the A9-style fit check says the file cannot fit.
+     * [ModelRepository] funnel (WorkManager, integrity-checked) and points the
+     * config at it, so chat uses the model the moment the download lands.
+     * Blocked up front when the fit check says the file cannot fit.
+     *
+     * When the fit lands in the low-space warning band, the panel has been
+     * showing that warning right above the button, so the tap itself is the
+     * confirmation the funnel requires — it is threaded through as
+     * `fitConfirmed` rather than dropped. The funnel re-evaluates the fit
+     * fresh and reports a typed result; the on-device path is only marked done
+     * when the download was actually enqueued, and a refusal is surfaced
+     * verbatim instead of being reported as success.
      */
     fun downloadLiteRtModel() {
         val state = mutableProviderState.value
@@ -284,8 +303,14 @@ class OnboardingViewModel @Inject constructor(
             }
             return
         }
+        // The panel's low-space warning is on screen for exactly this fit
+        // state; tapping Download is the user confirming it.
+        val fitConfirmed = state.downloadFit == DownloadFit.FitsWithLowSpaceWarning
         mutableProviderState.update { it.copy(onDeviceBusy = true, onDeviceError = null) }
         viewModelScope.launch {
+            // Keep the panel's storage numbers (and warning) current, so if
+            // the funnel still refuses, the state behind the retry is real.
+            refreshStorageStats()
             val ramFailure = runCatching {
                 OnDeviceModelRegistry.checkDeviceMemoryCompatibility(context, spec)
             }.exceptionOrNull()
@@ -298,32 +323,57 @@ class OnboardingViewModel @Inject constructor(
                 }
                 return@launch
             }
-            modelRepository.download(spec)
-            val saved = settingsRepository.updateConfig { current ->
-                current
-                    .withActiveProvider(ProviderCatalog.ON_DEVICE)
-                    .withSelectedModel(ProviderCatalog.ON_DEVICE, spec.id)
-            }
-            mutableProviderState.update {
-                if (saved == ProviderCredentialPersistenceState.Ready) {
-                    // Queued counts as configured (checklist A10); live readiness
-                    // keeps tracking the download through ProviderSetupReadiness.
-                    it.copy(onDeviceBusy = false, onDeviceDone = true)
-                } else {
-                    it.copy(
-                        onDeviceBusy = false,
-                        onDeviceError = "The download started, but the model could not be selected. " +
-                            "You can pick it later in Settings."
-                    )
+            when (val result = modelRepository.startDownload(spec, fitConfirmed)) {
+                ModelDownloadStartResult.Enqueued -> {
+                    val saved = settingsRepository.updateConfig { current ->
+                        current
+                            .withActiveProvider(ProviderCatalog.ON_DEVICE)
+                            .withSelectedModel(ProviderCatalog.ON_DEVICE, spec.id)
+                    }
+                    mutableProviderState.update {
+                        if (saved == ProviderCredentialPersistenceState.Ready) {
+                            // Queued counts as configured (checklist A10); live readiness
+                            // keeps tracking the download through ProviderSetupReadiness.
+                            it.copy(onDeviceBusy = false, onDeviceDone = true)
+                        } else {
+                            it.copy(
+                                onDeviceBusy = false,
+                                onDeviceError = "The download started, but the model could not be selected. " +
+                                    "You can pick it later in Settings."
+                            )
+                        }
+                    }
+                }
+                is ModelDownloadStartResult.Refused -> {
+                    // The funnel refused (storage shrank, integrity metadata
+                    // missing, …). Never mark the path done: show the reason.
+                    mutableProviderState.update {
+                        it.copy(onDeviceBusy = false, onDeviceError = result.reason)
+                    }
                 }
             }
         }
     }
 
-    /** Resumes a paused LiteRT download from the same card. */
+    /**
+     * Resumes a paused LiteRT download from the same card. The low-space
+     * warning renders above the Resume button for the same fit state, so the
+     * tap carries the same confirmation as a fresh download; a refusal from
+     * the funnel is surfaced on the card instead of failing silently.
+     */
     fun resumeLiteRtModel() {
-        val spec = mutableProviderState.value.liteRtSpec ?: return
-        viewModelScope.launch { modelRepository.resumeDownload(spec) }
+        val state = mutableProviderState.value
+        val spec = state.liteRtSpec ?: return
+        val fitConfirmed = state.downloadFit == DownloadFit.FitsWithLowSpaceWarning
+        viewModelScope.launch {
+            refreshStorageStats()
+            when (val result = modelRepository.resumeDownload(spec, fitConfirmed)) {
+                // The model table flow takes over the card from here.
+                ModelDownloadStartResult.Enqueued -> Unit
+                is ModelDownloadStartResult.Refused ->
+                    mutableProviderState.update { it.copy(onDeviceError = result.reason) }
+            }
+        }
     }
 
     // ── PROVIDER stage: free Gemini key card ───────────────────────────────

@@ -48,6 +48,18 @@ sealed interface ModelDownloadGate {
 }
 
 /**
+ * What the download funnel actually did with a start request, so callers can
+ * react to the truth instead of assuming success: [Enqueued] means the
+ * download was accepted and handed to WorkManager; [Refused] means it was
+ * turned away before enqueueing, with the same user-presentable reason that
+ * was recorded on the model row.
+ */
+sealed interface ModelDownloadStartResult {
+    data object Enqueued : ModelDownloadStartResult
+    data class Refused(val reason: String) : ModelDownloadStartResult
+}
+
+/**
  * The single storage/RAM fit policy for on-device model downloads (checklist A9).
  * Pure and JVM-testable: device values are passed in, never read here.
  */

@@ -134,6 +134,10 @@ class ModelRepository @Inject constructor(
     }
 
     override suspend fun download(model: OnDeviceModel) {
+        // Fire-and-forget interface entry point: the funnel's outcome is
+        // discarded here. Callers that need to know whether the download was
+        // actually enqueued (e.g. onboarding) call startDownload directly and
+        // check its ModelDownloadStartResult.
         startDownload(model)
     }
 
@@ -185,15 +189,28 @@ class ModelRepository @Inject constructor(
         return String.format(java.util.Locale.US, "%.0f MB", bytes.toDouble() / (1024.0 * 1024.0))
     }
 
-    suspend fun startDownload(model: OnDeviceModel, fitConfirmed: Boolean = false) {
-        val spec = OnDeviceModelRegistry.findById(model.id) ?: return
-        modelDao.getModelById(spec.id) ?: return
-        if (!spec.isManagedDownloadAvailable) {
-            modelDao.markDownloadFailed(
-                spec.id,
-                "In-app download is unavailable until publisher integrity metadata is recorded."
+    /**
+     * The single download funnel. Returns [ModelDownloadStartResult.Enqueued]
+     * only when the download was actually handed to WorkManager; every refusal
+     * (unknown model, missing integrity metadata, fit gate) returns
+     * [ModelDownloadStartResult.Refused] with the reason recorded on the row,
+     * so no caller has to guess whether the download started.
+     */
+    suspend fun startDownload(
+        model: OnDeviceModel,
+        fitConfirmed: Boolean = false
+    ): ModelDownloadStartResult {
+        val spec = OnDeviceModelRegistry.findById(model.id)
+            ?: return ModelDownloadStartResult.Refused("That model is not available on this device.")
+        modelDao.getModelById(spec.id)
+            ?: return ModelDownloadStartResult.Refused(
+                "That model is not ready to download yet. Please try again."
             )
-            return
+        if (!spec.isManagedDownloadAvailable) {
+            val reason =
+                "In-app download is unavailable until publisher integrity metadata is recorded."
+            modelDao.markDownloadFailed(spec.id, reason)
+            return ModelDownloadStartResult.Refused(reason)
         }
 
         // A9 gate — this is the single funnel every download traverses (fresh,
@@ -204,23 +221,19 @@ class ModelRepository @Inject constructor(
         when (val gate = evaluateDownloadGate(spec)) {
             is ModelDownloadGate.Blocked -> {
                 val a = gate.assessment
-                modelDao.markDownloadFailed(
-                    spec.id,
-                    "Not enough storage: this model needs ${humanBytes(a.modelBytes)} " +
-                        "but only ${humanBytes(a.freeBytes)} is free."
-                )
-                return
+                val reason = "Not enough storage: this model needs ${humanBytes(a.modelBytes)} " +
+                    "but only ${humanBytes(a.freeBytes)} is free."
+                modelDao.markDownloadFailed(spec.id, reason)
+                return ModelDownloadStartResult.Refused(reason)
             }
             is ModelDownloadGate.NeedsConfirmation -> {
                 if (!fitConfirmed) {
                     val a = gate.assessment
-                    modelDao.markDownloadFailed(
-                        spec.id,
-                        "Storage is tight: downloading ${humanBytes(a.modelBytes)} leaves only " +
-                            "${humanBytes(a.remainingAfterBytes)} free. Confirmation required " +
-                            "before this download can start."
-                    )
-                    return
+                    val reason = "Storage is tight: downloading ${humanBytes(a.modelBytes)} " +
+                        "leaves only ${humanBytes(a.remainingAfterBytes)} free. Confirmation " +
+                        "required before this download can start."
+                    modelDao.markDownloadFailed(spec.id, reason)
+                    return ModelDownloadStartResult.Refused(reason)
                 }
             }
             ModelDownloadGate.Proceed -> Unit
@@ -239,6 +252,7 @@ class ModelRepository @Inject constructor(
             ExistingWorkPolicy.REPLACE,
             downloadRequest
         )
+        return ModelDownloadStartResult.Enqueued
     }
 
     /**
@@ -500,9 +514,16 @@ class ModelRepository @Inject constructor(
         }
     }
 
-    suspend fun resumeDownload(model: OnDeviceModel, fitConfirmed: Boolean = false) {
-        if (modelDao.getModelById(model.id) == null) return
-        startDownload(model, fitConfirmed)
+    suspend fun resumeDownload(
+        model: OnDeviceModel,
+        fitConfirmed: Boolean = false
+    ): ModelDownloadStartResult {
+        if (modelDao.getModelById(model.id) == null) {
+            return ModelDownloadStartResult.Refused(
+                "That model is not ready to download yet. Please try again."
+            )
+        }
+        return startDownload(model, fitConfirmed)
     }
 
     override suspend fun delete(model: OnDeviceModel) {
