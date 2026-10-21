@@ -41,8 +41,16 @@ class PersonalGrowthEngine @Inject constructor(
      */
     val graphFlow: Flow<PersonalKnowledgeGraph> = memoryRepository.allMemories.map { memories ->
         val nodes = mutableMapOf<String, KnowledgeNode>()
+        var relations: List<KnowledgeRelation> = emptyList()
         for (memory in memories) {
-            if (memory.key.startsWith(PKG_NODE_PREFIX)) {
+            if (memory.key == PKG_RELATION_KEY) {
+                relations = try {
+                    json.decodeFromString<List<KnowledgeRelation>>(memory.value)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to decode knowledge relations index")
+                    emptyList()
+                }
+            } else if (memory.key.startsWith(PKG_NODE_PREFIX)) {
                 try {
                     val node = json.decodeFromString<KnowledgeNode>(memory.value)
                     nodes[node.id] = node
@@ -51,7 +59,7 @@ class PersonalGrowthEngine @Inject constructor(
                 }
             }
         }
-        PersonalKnowledgeGraph(nodes = nodes)
+        PersonalKnowledgeGraph(nodes = nodes, relations = relations)
     }
 
     /**
@@ -385,6 +393,27 @@ class PersonalGrowthEngine @Inject constructor(
             lastUpdated = System.currentTimeMillis()
         )
         saveNodeToDb(updated)
+        return true
+    }
+
+    /**
+     * Edits a node's label/summary in place (same id, so stored relations
+     * keep pointing at it) and re-saves it through the normal node row.
+     * Sensitive nodes are refused: their content lives in the
+     * Keystore-encrypted store, never in node JSON, so there is nothing
+     * plaintext here to edit — a secret is changed by deleting and
+     * re-adding the record.
+     */
+    suspend fun updateNodeContent(nodeId: String, newLabel: String, newSummary: String): Boolean {
+        val existing = getNodeFromDb(nodeId) ?: return false
+        if (existing.tier == MemoryTier.SENSITIVE) return false
+        saveNodeToDb(
+            existing.copy(
+                label = newLabel,
+                summary = newSummary,
+                lastUpdated = System.currentTimeMillis()
+            )
+        )
         return true
     }
 
