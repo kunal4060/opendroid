@@ -31,7 +31,8 @@ import com.opendroid.ai.ui.viewmodel.OnboardingViewModel
 enum class OnboardingStage {
     INTRODUCTION,
     PERMISSION_PROMPT,
-    PERMISSIONS
+    PERMISSIONS,
+    PROVIDER
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -60,6 +61,7 @@ fun OnboardingScreen(
                         OnboardingStage.INTRODUCTION -> "About You"
                         OnboardingStage.PERMISSION_PROMPT -> "Permissions"
                         OnboardingStage.PERMISSIONS -> "Grant Permissions"
+                        OnboardingStage.PROVIDER -> "AI Provider"
                     }
                     Text(titleText, color = TextPrimary, fontWeight = FontWeight.Bold)
                 },
@@ -100,7 +102,18 @@ fun OnboardingScreen(
             OnboardingStage.PERMISSIONS -> {
                 PermissionsPanel(
                     padding = padding,
-                    onFinished = { viewModel.completeOnboarding(onFinished) }
+                    onFinished = { stage = OnboardingStage.PROVIDER }
+                )
+            }
+            OnboardingStage.PROVIDER -> {
+                // Last stage: finishing here (set up or skipped) is what marks
+                // onboarding complete. Skipping leaves the app in its honest
+                // limited state — Chat keeps a setup banner until a provider
+                // exists — rather than pretending setup happened.
+                ProviderSetupPanel(
+                    viewModel = viewModel,
+                    onFinished = { viewModel.completeOnboarding(onFinished) },
+                    modifier = Modifier.padding(padding)
                 )
             }
         }

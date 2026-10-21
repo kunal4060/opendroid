@@ -88,7 +88,8 @@ import java.util.Locale
 @Composable
 fun ChatScreen(
     viewModel: ChatViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onNavigateToProviderSetup: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -105,6 +106,9 @@ fun ChatScreen(
     val runningSessionId by viewModel.runningSessionId.collectAsState()
     val sessions by viewModel.sessions.collectAsState()
     val llmConfig by viewModel.llmConfig.collectAsState()
+    // A10 limited state: no usable provider configured (e.g. onboarding's
+    // provider stage was skipped) — the banner stays until setup exists.
+    val providerSetupNeeded by viewModel.providerSetupNeeded.collectAsState()
     val currentSessionId = sessions.firstOrNull { it.isCurrent }?.id
     val runningElsewhere = runningSessionId != null && runningSessionId != currentSessionId
 
@@ -461,6 +465,10 @@ fun ChatScreen(
                     .fillMaxSize()
                     .padding(bottom = 80.dp)
             ) {
+                if (providerSetupNeeded) {
+                    ProviderSetupBanner(onSetUp = onNavigateToProviderSetup)
+                }
+
                 // Messages List
                 LazyColumn(
                     state = listState,
@@ -916,6 +924,44 @@ fun AgentStatusSubtitle(state: AgentState, runningElsewhere: Boolean = false) {
 }
 
 @OptIn(ExperimentalFoundationApi::class)
+/**
+ * The A10 limited-state banner: persistent and non-modal while no usable AI
+ * provider is configured, with the way out one tap away (Settings, where the
+ * providers live). It disappears on its own the moment setup exists — the
+ * state behind it is the live [com.opendroid.ai.core.llm.ProviderSetupReadiness].
+ */
+@Composable
+private fun ProviderSetupBanner(onSetUp: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = CardBackground)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Warning,
+                contentDescription = null,
+                tint = AccentOrange
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = "No AI provider set up yet — OpenDroid can't answer until you add one.",
+                fontSize = 13.sp,
+                color = TextPrimary,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = onSetUp) {
+                Text("Set up", color = AccentCyan, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
 @Composable
 fun ChatBubble(
     message: ChatMessage,
