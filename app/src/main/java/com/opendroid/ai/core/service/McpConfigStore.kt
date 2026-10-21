@@ -10,8 +10,14 @@ import com.opendroid.ai.core.security.SecretRecordResult
 import com.opendroid.ai.core.security.SharedPreferencesSecretRecordStorage
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.encodeToJsonElement
 import java.nio.charset.StandardCharsets
 import java.util.UUID
 import javax.inject.Inject
@@ -89,24 +95,8 @@ class McpConfigStore private constructor(
     @Synchronized
     fun list(): List<McpEndpointConfig> {
         val raw = readSecret(ENDPOINTS_KEY, ENDPOINTS_AAD) ?: "[]"
-        return try {
-            json.decodeFromString<List<StoredMcpEndpoint>>(raw).map { stored ->
-                McpEndpointConfig(
-                    name = stored.name,
-                    url = stored.url,
-                    enabled = stored.enabled,
-                    headers = stored.headers,
-                    transport = runCatching { McpTransportKind.valueOf(stored.transport) }
-                        .getOrDefault(McpTransportKind.AUTO),
-                    allowInsecureLocal = stored.allowInsecureLocal,
-                    toolSettings = stored.toolSettings.mapValues { (_, setting) ->
-                        McpToolSetting(enabled = setting.enabled, fingerprint = setting.fingerprint)
-                    }
-                )
-            }
-        } catch (_: Exception) {
-            emptyList()
-        }
+        val elements = storedElements(raw) ?: return emptyList()
+        return elements.mapNotNull { element -> decodeElement(element)?.let(::toConfig) }
     }
 
     @Synchronized
@@ -115,41 +105,107 @@ class McpConfigStore private constructor(
         require(config.url.startsWith("http://") || config.url.startsWith("https://")) {
             "url must use http or https"
         }
-        val updated = list().filterNot { it.name == config.name }.plus(config)
-        writeSecret(ENDPOINTS_KEY, ENDPOINTS_AAD, encode(updated))
+        val elements = storedElements(readSecret(ENDPOINTS_KEY, ENDPOINTS_AAD) ?: "[]")
+            ?: throw IllegalStateException(
+                "Stored MCP endpoints could not be read; refusing to overwrite them"
+            )
+        val kept = elements.filterNot { elementName(it) == config.name }
+        writeElements(kept + json.encodeToJsonElement(toStored(config)))
     }
 
     @Synchronized
     fun remove(name: String) {
-        writeSecret(ENDPOINTS_KEY, ENDPOINTS_AAD, encode(list().filterNot { it.name == name }))
+        val elements = storedElements(readSecret(ENDPOINTS_KEY, ENDPOINTS_AAD) ?: "[]")
+            ?: throw IllegalStateException(
+                "Stored MCP endpoints could not be read; refusing to overwrite them"
+            )
+        writeElements(elements.filterNot { elementName(it) == name })
     }
 
     /** Replaces one endpoint's per-tool settings (D5), leaving everything else untouched. */
     @Synchronized
     fun updateToolSettings(name: String, toolSettings: Map<String, McpToolSetting>) {
-        val current = list().firstOrNull { it.name == name } ?: return
-        val updated = list().map { config ->
-            if (config.name == name) current.copy(toolSettings = toolSettings) else config
+        val elements = storedElements(readSecret(ENDPOINTS_KEY, ENDPOINTS_AAD) ?: "[]")
+            ?: throw IllegalStateException(
+                "Stored MCP endpoints could not be read; refusing to overwrite them"
+            )
+        var changed = false
+        val updated = elements.map { element ->
+            val stored = if (elementName(element) == name) decodeElement(element) else null
+            if (stored != null) {
+                changed = true
+                json.encodeToJsonElement(
+                    stored.copy(
+                        toolSettings = toolSettings.mapValues { (_, setting) ->
+                            StoredMcpToolSetting(
+                                enabled = setting.enabled,
+                                fingerprint = setting.fingerprint
+                            )
+                        }
+                    )
+                )
+            } else {
+                element
+            }
         }
-        writeSecret(ENDPOINTS_KEY, ENDPOINTS_AAD, encode(updated))
+        if (changed) writeElements(updated)
     }
 
-    private fun encode(configs: List<McpEndpointConfig>): String =
-        json.encodeToString(
-            configs.map { config ->
-                StoredMcpEndpoint(
-                    name = config.name,
-                    url = config.url,
-                    enabled = config.enabled,
-                    headers = config.headers,
-                    transport = config.transport.name,
-                    allowInsecureLocal = config.allowInsecureLocal,
-                    toolSettings = config.toolSettings.mapValues { (_, setting) ->
-                        StoredMcpToolSetting(enabled = setting.enabled, fingerprint = setting.fingerprint)
-                    }
-                )
-            }
-        )
+    /**
+     * The stored endpoints blob as raw JSON elements — null when it is not
+     * a JSON array at all. Writes are computed over these elements (never
+     * over the decoded list), so an element this build cannot decode —
+     * corrupt, or written by a newer format — is carried through verbatim
+     * instead of being silently destroyed by the next upsert/remove, which
+     * is what used to happen when one bad element emptied the whole list.
+     * Only a blob that is not even an array refuses the write (by throwing
+     * from the mutation), because then there is nothing safe to preserve
+     * into.
+     */
+    private fun storedElements(raw: String): List<JsonElement>? = try {
+        (json.parseToJsonElement(raw) as? JsonArray)?.toList()
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun decodeElement(element: JsonElement): StoredMcpEndpoint? = try {
+        json.decodeFromJsonElement<StoredMcpEndpoint>(element)
+    } catch (_: Exception) {
+        null
+    }
+
+    /** The `name` of a stored element, read leniently even when the element as a whole no longer decodes. */
+    private fun elementName(element: JsonElement): String? =
+        ((element as? JsonObject)?.get("name") as? JsonPrimitive)?.contentOrNull
+
+    private fun writeElements(elements: List<JsonElement>) {
+        writeSecret(ENDPOINTS_KEY, ENDPOINTS_AAD, JsonArray(elements).toString())
+    }
+
+    private fun toConfig(stored: StoredMcpEndpoint): McpEndpointConfig = McpEndpointConfig(
+        name = stored.name,
+        url = stored.url,
+        enabled = stored.enabled,
+        headers = stored.headers,
+        transport = runCatching { McpTransportKind.valueOf(stored.transport) }
+            .getOrDefault(McpTransportKind.AUTO),
+        allowInsecureLocal = stored.allowInsecureLocal,
+        toolSettings = stored.toolSettings.mapValues { (_, setting) ->
+            McpToolSetting(enabled = setting.enabled, fingerprint = setting.fingerprint)
+        }
+    )
+
+    private fun toStored(config: McpEndpointConfig): StoredMcpEndpoint = StoredMcpEndpoint(
+        name = config.name,
+        url = config.url,
+        enabled = config.enabled,
+        headers = config.headers,
+        transport = config.transport.name,
+        allowInsecureLocal = config.allowInsecureLocal,
+        toolSettings = config.toolSettings.mapValues { (_, setting) ->
+            StoredMcpToolSetting(enabled = setting.enabled, fingerprint = setting.fingerprint)
+        }
+    )
 
     private fun readSecret(storageKey: String, aad: String): String? {
         when (val result = records.read(storageKey, aad)) {

@@ -179,11 +179,21 @@ class McpServersViewModel @Inject constructor(
                 // Tool prefs follow the server across edits (and renames).
                 toolSettings = existing?.toolSettings ?: emptyMap()
             )
-            withContext(Dispatchers.IO) {
-                configStore.upsert(config)
-                if (originalName != null && originalName != config.name) {
-                    configStore.remove(originalName)
+            try {
+                withContext(Dispatchers.IO) {
+                    configStore.upsert(config)
+                    if (originalName != null && originalName != config.name) {
+                        configStore.remove(originalName)
+                    }
                 }
+            } catch (error: Exception) {
+                // The store refuses to write over an endpoints blob it
+                // cannot read (corrupt / newer format) rather than wiping
+                // every server — surface that instead of crashing or
+                // pretending the save happened.
+                _message.value =
+                    "Server storage could not be read, so nothing was saved: ${error.message ?: "unknown error"}"
+                return@launch
             }
             if (originalName != null && originalName != config.name) {
                 bridge.onServerRemoved(originalName)
@@ -195,7 +205,13 @@ class McpServersViewModel @Inject constructor(
 
     fun deleteServer(name: String) {
         viewModelScope.launch {
-            withContext(Dispatchers.IO) { configStore.remove(name) }
+            try {
+                withContext(Dispatchers.IO) { configStore.remove(name) }
+            } catch (error: Exception) {
+                _message.value =
+                    "Server storage could not be read, so '$name' was not removed: ${error.message ?: "unknown error"}"
+                return@launch
+            }
             bridge.onServerRemoved(name)
             _message.value = "Removed MCP server '$name' — its tools left the agent's set"
             refresh()
@@ -207,7 +223,13 @@ class McpServersViewModel @Inject constructor(
             val config = withContext(Dispatchers.IO) {
                 configStore.list().firstOrNull { it.name == name }
             } ?: return@launch
-            withContext(Dispatchers.IO) { configStore.upsert(config.copy(enabled = enabled)) }
+            try {
+                withContext(Dispatchers.IO) { configStore.upsert(config.copy(enabled = enabled)) }
+            } catch (error: Exception) {
+                _message.value =
+                    "Server storage could not be read, so the change was not saved: ${error.message ?: "unknown error"}"
+                return@launch
+            }
             bridge.refreshServer(name)
             refresh()
         }
@@ -233,7 +255,13 @@ class McpServersViewModel @Inject constructor(
             } ?: return@launch
             val updated = config.toolSettings +
                 (toolName to (config.toolSettings[toolName] ?: McpToolSetting()).copy(enabled = enabled))
-            withContext(Dispatchers.IO) { configStore.updateToolSettings(serverName, updated) }
+            try {
+                withContext(Dispatchers.IO) { configStore.updateToolSettings(serverName, updated) }
+            } catch (error: Exception) {
+                _message.value =
+                    "Server storage could not be read, so the change was not saved: ${error.message ?: "unknown error"}"
+                return@launch
+            }
             // Re-register so the planner catalogue drops/picks up the tool at once.
             bridge.refreshServer(serverName)
             refresh()
