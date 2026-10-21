@@ -961,19 +961,10 @@ class AgentLoop @Inject constructor(
         _agentState.value = AgentState.Idle
         currentJob?.cancel()
         val job = scope.launch {
-            // "Always allow" checkboxes from the approval modal: persist BEFORE
-            // executing so a crash mid-plan can't lose an explicit user grant.
-            // Filter through isGrantable - neverAutoApprove actions can never
+            // "Always allow" checkboxes from the approval modal. Filter
+            // through isGrantable - neverAutoApprove actions can never
             // enter the allowlist no matter what the UI sends.
             val toGrant = grantActions.filter { AutoApprovalPolicy.isGrantable(it) }
-            if (toGrant.isNotEmpty()) {
-                val grantedAt = System.currentTimeMillis()
-                settingsRepository.updateConfig { current ->
-                    current.copy(
-                        grantedActions = current.effectiveGrantedActions() + toGrant.associateWith { grantedAt }
-                    )
-                }
-            }
             // Approving a proposed plan starts a new task in its own right (the plan may
             // have been proposed in an earlier, now-idle turn), so pin its session here too -
             // same rationale as processQuery, see activeTaskSessionId. Executes in the
@@ -986,11 +977,27 @@ class AgentLoop @Inject constructor(
             queryMutex.withLock {
                 // Re-validate under the lock: execute ONLY the plan that was
                 // approved, and only while it is still PROPOSED — PlanManager
-                // may have been overwritten (or the plan cancelled) while the
-                // grants above were being persisted.
+                // may have been overwritten (or the plan cancelled) since
+                // the approval signal arrived.
                 val plan = planManager.currentPlan.value ?: return@withLock
                 if (plan.planId != proposedPlan.planId || plan.status != PlanStatus.PROPOSED) {
                     return@withLock
+                }
+                // Loop-2 Area2 #10: persist the "Always allow" grants only
+                // AFTER the approval has validated, inside the same lock.
+                // The old order wrote them first, so a stale/refused
+                // approval (double-delivered voice "yes", a modal rendered
+                // from a superseded proposal) left permanent allowlist
+                // entries behind even though no plan was approved or
+                // executed. A crash between validation and execution can
+                // now lose a grant — the safe direction to lose it in.
+                if (toGrant.isNotEmpty()) {
+                    val grantedAt = System.currentTimeMillis()
+                    settingsRepository.updateConfig { current ->
+                        current.copy(
+                            grantedActions = current.effectiveGrantedActions() + toGrant.associateWith { grantedAt }
+                        )
+                    }
                 }
                 executePlanLoop(plan, context, sessionId)
             }
