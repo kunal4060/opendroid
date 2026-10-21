@@ -4,8 +4,11 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -13,6 +16,7 @@ import com.opendroid.ai.core.security.CredentialStoreResult
 import com.opendroid.ai.core.security.ProviderCredentialId
 import com.opendroid.ai.core.security.ProviderCredentialRecoveryState
 import com.opendroid.ai.core.security.ProviderCredentialStore
+import com.opendroid.ai.data.backup.BackupSettingValue
 import com.opendroid.ai.data.models.AutoReplyConfig
 import com.opendroid.ai.data.models.LLMConfig
 import java.io.IOException
@@ -23,6 +27,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -337,6 +342,61 @@ class SettingsRepository internal constructor(
      */
     suspend fun clearAllSettings() {
         dataStore.edit { preferences -> preferences.clear() }
+    }
+
+    /**
+     * Snapshot of every persisted setting for the encrypted backup (feature B2), keyed by
+     * preference name with each value tagged by kind (see [BackupSettingValue]). The
+     * `llm_config` entry travels in its stored, secret-stripped form — API keys are never
+     * in DataStore; they live in the credential store and back up only via the opt-in
+     * credentials section, restored through that store's own write API.
+     */
+    suspend fun snapshotSettingsForBackup(): Map<String, BackupSettingValue> {
+        val preferences = dataStore.data.first()
+        return preferences.asMap().entries.associate { (key, value) ->
+            key.name to BackupSettingValue.fromAny(value)
+        }
+    }
+
+    /**
+     * Replaces every persisted setting with [values] from a backup (feature B2), in one
+     * DataStore edit: the current contents are cleared and each backed-up value is written
+     * back under a key of the kind recorded at export. A value whose scalar cannot be
+     * parsed for its recorded kind aborts the whole edit — DataStore applies nothing —
+     * so a damaged settings section can never half-restore.
+     */
+    suspend fun restoreSettingsFromBackup(values: Map<String, BackupSettingValue>) {
+        dataStore.edit { preferences ->
+            preferences.clear()
+            for ((name, value) in values) {
+                when (value.kind) {
+                    BackupSettingValue.KIND_BOOLEAN ->
+                        preferences[booleanPreferencesKey(name)] =
+                            requireNotNull(value.scalar).toBooleanStrict()
+                    BackupSettingValue.KIND_INT ->
+                        preferences[intPreferencesKey(name)] =
+                            requireNotNull(value.scalar).toInt()
+                    BackupSettingValue.KIND_LONG ->
+                        preferences[longPreferencesKey(name)] =
+                            requireNotNull(value.scalar).toLong()
+                    BackupSettingValue.KIND_FLOAT ->
+                        preferences[floatPreferencesKey(name)] =
+                            requireNotNull(value.scalar).toFloat()
+                    BackupSettingValue.KIND_DOUBLE ->
+                        preferences[doublePreferencesKey(name)] =
+                            requireNotNull(value.scalar).toDouble()
+                    BackupSettingValue.KIND_STRING ->
+                        preferences[stringPreferencesKey(name)] =
+                            requireNotNull(value.scalar)
+                    BackupSettingValue.KIND_STRING_SET ->
+                        preferences[stringSetPreferencesKey(name)] =
+                            requireNotNull(value.stringSet).toSet()
+                    else -> throw IllegalArgumentException(
+                        "Unknown settings value kind in backup: ${value.kind}"
+                    )
+                }
+            }
+        }
     }
 
     suspend fun updateAutoReplyConfig(config: AutoReplyConfig) {
