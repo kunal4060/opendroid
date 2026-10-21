@@ -49,9 +49,11 @@ class GeminiProvider @Inject constructor(
             ?: throw IllegalStateException("API Key for $name is not set.")
         val startTime = System.currentTimeMillis()
 
-        // Map roles to user and model
+        // Map roles to user and model. generateContent requires the first
+        // content to be a user turn and roles to alternate, so the stored
+        // window is sanitized first (see sanitizeForRoleAlternatingApi).
         val contentsList = mutableListOf<Map<String, Any>>()
-        request.messages.forEach { msg ->
+        request.messages.sanitizeForRoleAlternatingApi().forEach { msg ->
             val role = if (msg.sender == com.opendroid.ai.data.models.ChatMessage.Sender.USER) "user" else "model"
             val partsList = mutableListOf<Map<String, Any>>()
             partsList.add(mapOf("text" to msg.text))

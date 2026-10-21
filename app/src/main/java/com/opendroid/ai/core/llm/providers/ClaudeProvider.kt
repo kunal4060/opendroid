@@ -56,8 +56,11 @@ class ClaudeProvider @Inject constructor(
                 )
         }
 
+        // The Messages API requires the first message to use the user role
+        // and roles to alternate, so the stored window is sanitized first
+        // (see sanitizeForRoleAlternatingApi).
         val messagesList = mutableListOf<Map<String, Any>>()
-        request.messages.forEach { msg ->
+        request.messages.sanitizeForRoleAlternatingApi().forEach { msg ->
             val role = if (msg.sender == com.opendroid.ai.data.models.ChatMessage.Sender.USER) "user" else "assistant"
             if (msg.imageBase64 != null && role == "user") {
                 // B1: PDFs go as a native document block; images as an image

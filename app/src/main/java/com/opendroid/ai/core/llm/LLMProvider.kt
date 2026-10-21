@@ -121,6 +121,44 @@ data class LLMResponse(
 )
 
 /**
+ * Normalizes a stored conversation for providers whose APIs enforce strict
+ * user-first role alternation (Gemini generateContent, Anthropic Messages):
+ * both reject a conversation whose first turn is not the user's, and both
+ * reject two consecutive turns with the same role.
+ *
+ * The stored history strictly alternates USER, AGENT, USER, …, so a fixed
+ * tail window that ends with the current user message starts with an AGENT
+ * message whenever the window length is even — a guaranteed HTTP 400 from
+ * the sixth exchange onward. Leading non-user turns (the tail of an older
+ * exchange) are therefore dropped, and consecutive same-sender turns —
+ * which a failed turn leaves behind (user message stored, no agent reply)
+ * — are merged into one turn, keeping both texts and any attachment.
+ */
+fun List<ChatMessage>.sanitizeForRoleAlternatingApi(): List<ChatMessage> {
+    val result = mutableListOf<ChatMessage>()
+    for (message in this) {
+        val last = result.lastOrNull()
+        when {
+            last == null -> {
+                if (message.sender == ChatMessage.Sender.USER) result.add(message)
+            }
+            last.sender == message.sender -> {
+                result[result.lastIndex] = last.mergedWithNextTurn(message)
+            }
+            else -> result.add(message)
+        }
+    }
+    return result
+}
+
+private fun ChatMessage.mergedWithNextTurn(next: ChatMessage): ChatMessage = copy(
+    text = listOf(text, next.text).filter { it.isNotBlank() }.joinToString("\n"),
+    imageBase64 = next.imageBase64 ?: imageBase64,
+    attachmentMimeType = if (next.imageBase64 != null) next.attachmentMimeType else attachmentMimeType,
+    attachmentName = if (next.imageBase64 != null) next.attachmentName else attachmentName
+)
+
+/**
  * Builds the OpenAI-shaped message list. Attachment parts (feature B1) are
  * included only for images, only when the provider this payload is being
  * built for is vision-capable ([visionCapable], from [VisionSupport] for
