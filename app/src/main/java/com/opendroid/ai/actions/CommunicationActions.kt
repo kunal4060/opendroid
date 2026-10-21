@@ -312,15 +312,26 @@ class CommunicationActions @Inject constructor(
                                    service.findAndClick("Send") ||
                                    service.findAndClick("send")
                 if (retryClicked) {
-                    // We clicked something — check if it actually sent
+                    // We clicked something — check if it actually sent.
+                    // ONLY a positive verification may claim success: an
+                    // inconclusive check (input field not found — wrong
+                    // screen, a preview, contact info) proves nothing, and
+                    // the old "verified or inconclusive → trust the click"
+                    // branch reported messages as sent that never left the
+                    // phone. Inconclusive is a non-success hand-off, exactly
+                    // like the Telegram flow.
                     kotlinx.coroutines.delay(500)
                     val verifyResult = verifySendCompleted(service)
-                    if (verifyResult != false) {
-                        // Verified or inconclusive → trust the click
+                    if (verifyResult == true) {
+                        // Verified: the input field is empty/placeholder.
                         return ActionResult(true, "Message sent to $contactLabel!", null)
                     }
-                    // Verification says input field still has text — send didn't work
-                    return ActionResult(false, null, "I tapped send but the message is still in the input field. Please send it manually.", true)
+                    if (verifyResult == false) {
+                        // Verification says input field still has text — send didn't work
+                        return ActionResult(false, null, "I tapped send but the message is still in the input field. Please send it manually.", true)
+                    }
+                    // Inconclusive — could not confirm either way.
+                    return ActionResult(false, null, "I tapped send on WhatsApp but couldn't confirm the message was sent. The chat with $contactLabel is open — please check, and tap send yourself if the message is still there.", true)
                 }
             }
 
@@ -420,9 +431,12 @@ class CommunicationActions @Inject constructor(
                 }
             }
 
-            // Non-success: the chat is open with the message ready, but
-            // nothing was sent — the user still has to tap send.
-            ActionResult(false, "I've opened the Telegram chat with $contactLabel with your message ready — just tap send!", "Telegram message was not sent automatically", true)
+            // Non-success: Telegram was opened with the message ready, but
+            // nothing was sent — the user still has to tap send. The text
+            // must NOT assert the chat with this contact is on screen: for
+            // the by-phone path the tg://msg deep link is undocumented and
+            // may have landed on Telegram's home screen instead.
+            ActionResult(false, "Telegram is open with your message for $contactLabel ready — if their chat isn't on screen, open it, then tap send!", "Telegram message was not sent automatically", true)
         } catch (e: Exception) {
             Log.e("SendTelegram", "Telegram failed: ${e.localizedMessage}")
             ActionResult(false, null, "Telegram didn't work. ${e.localizedMessage ?: "Please try again."}", true)
@@ -464,7 +478,7 @@ class CommunicationActions @Inject constructor(
 
             val service = OpenDroidAccessibilityService.getInstance()
             if (service != null) {
-                val autoSent = SmsAutomator.automateSend()
+                val autoSent = SmsAutomator.automateSend(message)
                 if (autoSent) {
                     return ActionResult(true, "Sent SMS to $contactLabel!", null)
                 }
@@ -483,7 +497,7 @@ class CommunicationActions @Inject constructor(
 
                 val service = OpenDroidAccessibilityService.getInstance()
                 if (service != null) {
-                    val autoSent = SmsAutomator.automateSend()
+                    val autoSent = SmsAutomator.automateSend(message)
                     if (autoSent) {
                         return ActionResult(true, "Sent SMS to $contactLabel!", null)
                     }
