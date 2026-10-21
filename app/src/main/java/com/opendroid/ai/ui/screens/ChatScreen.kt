@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Refresh
@@ -122,6 +123,11 @@ fun ChatScreen(
     val routingStatus by viewModel.routingStatus.collectAsState()
     val chatError by viewModel.chatError.collectAsState()
     val speakingMessageId by viewModel.speakingMessageId.collectAsState()
+    // D3 web research: composer mode toggle, in-flight indicator, and the
+    // stored citations for this chat's messages (keyed by message id).
+    val researchMode by viewModel.researchMode.collectAsState()
+    val researchInFlight by viewModel.researchInFlight.collectAsState()
+    val researchSourcesByMessage by viewModel.researchSourcesByMessage.collectAsState()
     // Id of whichever chat (if any) has a task actively running, regardless of which
     // chat is currently displayed - drives the chat-picker's "still running" indicator.
     val runningSessionId by viewModel.runningSessionId.collectAsState()
@@ -670,6 +676,13 @@ fun ChatScreen(
                         activePersona = activePersona,
                         onClick = { showPersonaPicker = true }
                     )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    // Research mode toggle (D3): while on, sends run the
+                    // cited web-research pipeline instead of the agent loop.
+                    ResearchModeChip(
+                        active = researchMode,
+                        onToggle = { viewModel.setResearchMode(!researchMode) }
+                    )
                 }
 
                 // A10 limited-state banner: shown until a usable provider
@@ -694,13 +707,14 @@ fun ChatScreen(
                             viewModel = viewModel,
                             context = context,
                             speakingMessageId = speakingMessageId,
-                            onEditRequested = { startEditingMessage(it) }
+                            onEditRequested = { startEditingMessage(it) },
+                            researchSources = researchSourcesByMessage[msg.id] ?: emptyList()
                         )
                     }
-                    
+
                     // Show a typing/thinking bubble if thinking - scoped to this chat, see
-                    // visibleAgentState.
-                    if (visibleAgentState is AgentState.Thinking) {
+                    // visibleAgentState. Research sends (D3) show it too.
+                    if (visibleAgentState is AgentState.Thinking || researchInFlight) {
                         item {
                             ThinkingBubble()
                         }
@@ -1430,13 +1444,52 @@ private fun ProviderSetupBanner(onSetUp: () -> Unit) {
     }
 }
 
+/**
+ * D3 research-mode toggle chip (sits beside the model and persona chips).
+ * While ON, the next sends run the web-research pipeline and come back as
+ * cited answers with a sources list, instead of going through the agent.
+ */
+@Composable
+private fun ResearchModeChip(
+    active: Boolean,
+    onToggle: () -> Unit
+) {
+    Surface(
+        onClick = onToggle,
+        shape = RoundedCornerShape(16.dp),
+        color = if (active) AccentCyan.copy(alpha = 0.16f) else CardBackground,
+        border = BorderStroke(1.dp, if (active) AccentCyan else BorderColor)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Language,
+                contentDescription = "Research mode",
+                tint = if (active) AccentCyan else TextSecondary,
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = if (active) "RESEARCH ON" else "RESEARCH",
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                color = if (active) AccentCyan else TextSecondary
+            )
+        }
+    }
+}
+
 @Composable
 fun ChatBubble(
     message: ChatMessage,
     viewModel: ChatViewModel? = null,
     context: android.content.Context? = null,
     speakingMessageId: String? = null,
-    onEditRequested: ((ChatMessage) -> Unit)? = null
+    onEditRequested: ((ChatMessage) -> Unit)? = null,
+    researchSources: List<com.opendroid.ai.data.db.entities.ResearchSourceEntity> = emptyList()
 ) {
     val isAgent = message.sender == ChatMessage.Sender.AGENT
     val alignment = if (isAgent) Alignment.Start else Alignment.End
@@ -1551,7 +1604,16 @@ fun ChatBubble(
                     // Agent replies render as Markdown (headings, lists, tables,
                     // code blocks with copy buttons); user messages stay plain
                     // text — they are user-typed, not documents.
-                    MarkdownMessage(text = message.text)
+                    // D3: research answers get their [n] markers linkified to
+                    // the stored sources below — a marker is only linked when
+                    // a stored source with that position exists.
+                    MarkdownMessage(
+                        text = if (researchSources.isNotEmpty()) {
+                            com.opendroid.ai.core.research.CitationText.linkify(message.text, researchSources)
+                        } else {
+                            message.text
+                        }
+                    )
                 } else {
                     Text(
                         text = message.text,
@@ -1586,6 +1648,68 @@ fun ChatBubble(
                         fontSize = 9.sp,
                         color = TextSecondary
                     )
+                }
+
+                if (isAgent && researchSources.isNotEmpty()) {
+                    // D3 sources list: the stored records behind this
+                    // answer's citations — title, host and retrieval time;
+                    // tapping a row opens the page in the browser.
+                    Spacer(modifier = Modifier.height(10.dp))
+                    HorizontalDivider(color = bubbleBorder)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "SOURCES",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        color = TextSecondary
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    researchSources.forEach { source ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    runCatching {
+                                        localContext.startActivity(
+                                            Intent(
+                                                Intent.ACTION_VIEW,
+                                                android.net.Uri.parse(source.url)
+                                            )
+                                        )
+                                    }
+                                }
+                                .padding(vertical = 3.dp),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Text(
+                                text = "[${source.position}]",
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                color = AccentCyan
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = source.title,
+                                    fontSize = 12.sp,
+                                    color = TextPrimary,
+                                    maxLines = 2
+                                )
+                                Text(
+                                    text = source.url
+                                        .removePrefix("https://")
+                                        .removePrefix("http://")
+                                        .substringBefore('/') +
+                                        " · fetched " + timeFormat.format(Date(source.fetchedAt)),
+                                    fontSize = 10.sp,
+                                    color = TextSecondary,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
                 }
             }
 

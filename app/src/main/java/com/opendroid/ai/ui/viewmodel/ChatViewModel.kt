@@ -79,7 +79,9 @@ class ChatViewModel @Inject constructor(
     private val externalIntentRouter: ExternalIntentRouter,
     private val sharedImageStore: SharedImageStore,
     private val habitRoutineEngine: com.opendroid.ai.core.routine.HabitRoutineEngine,
-    private val pendingAssistantCommand: com.opendroid.ai.core.assistant.PendingAssistantCommand
+    private val pendingAssistantCommand: com.opendroid.ai.core.assistant.PendingAssistantCommand,
+    private val researchChatRunner: com.opendroid.ai.core.research.ResearchChatRunner,
+    private val researchRepository: com.opendroid.ai.core.research.ResearchRepository
 ) : ViewModel() {
 
     val llmConfig: StateFlow<LLMConfig> = settingsRepository.llmConfig
@@ -202,6 +204,49 @@ class ChatViewModel @Inject constructor(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = null
+        )
+
+    // ── Web research mode (D3) ────────────────────────────────────────
+    // The composer's Research toggle. While on, sends run the research
+    // pipeline (live search → fetched pages → cited answer) instead of the
+    // agent loop. Mode is per-app-session UI state, not persisted: turning
+    // it on is always a deliberate act for the next question.
+
+    private val _researchMode = MutableStateFlow(false)
+    val researchMode: StateFlow<Boolean> = _researchMode
+
+    fun setResearchMode(enabled: Boolean) {
+        _researchMode.value = enabled
+    }
+
+    /** True while a research send is running (drives the thinking bubble). */
+    private val _researchInFlight = MutableStateFlow(false)
+    val researchInFlight: StateFlow<Boolean> = _researchInFlight
+
+    /**
+     * Stored citations for the messages of the current chat, keyed by
+     * message id: direct message linkage for composer-mode answers, plus
+     * the run-record containment match that links agent-loop (WEB_RESEARCH
+     * action) answers whose ids are minted inside AgentLoop. Only runs of
+     * the visible session participate.
+     */
+    val researchSourcesByMessage: StateFlow<Map<String, List<com.opendroid.ai.data.db.entities.ResearchSourceEntity>>> =
+        combine(
+            conversationHistory,
+            researchRepository.allSources,
+            researchRepository.allRuns,
+            currentSessionId
+        ) { messages, sources, runs, sessionId ->
+            val sessionRuns = runs.filter { it.sessionId == sessionId }
+            com.opendroid.ai.core.research.ResearchSourceResolver.resolve(
+                messages = messages,
+                sources = sources,
+                runsAnswerTexts = sessionRuns.associate { it.messageId to it.answerText }
+            )
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyMap()
         )
 
     // ── Per-chat model picker (A2) ─────────────────────────────────────
@@ -883,6 +928,12 @@ class ChatViewModel @Inject constructor(
         val sessionId = pinTaskSessionSnapshot()
         val session = sessions.value.firstOrNull { it.id == sessionId }
         val pendingImages = _pendingSharedImages.value
+        // Research mode (D3): the composer toggle routes this send to the
+        // research pipeline instead of the agent loop. Pending shared
+        // images keep the normal path — research has no image channel.
+        if (_researchMode.value && pendingImages.isEmpty()) {
+            return sendResearchMessage(query, sessionId, configOverrideFor(session))
+        }
         if (pendingImages.isEmpty()) {
             agentLoop.processQuery(query, context, sessionId, configOverrideFor(session))
             return true
@@ -907,6 +958,30 @@ class ChatViewModel @Inject constructor(
             )
             withContext(Dispatchers.IO) {
                 pendingImages.forEach { sharedImageStore.delete(it) }
+            }
+        }
+        return true
+    }
+
+    /**
+     * D3 research send: delegates to [ResearchChatRunner], which persists
+     * the user's question and the cited answer (or an honest failure
+     * message) directly into the chat. [researchInFlight] drives the
+     * thinking bubble while the pipeline searches and reads pages.
+     */
+    private fun sendResearchMessage(
+        query: String,
+        pinnedSessionId: String?,
+        configOverride: com.opendroid.ai.data.models.LLMConfig?
+    ): Boolean {
+        _researchInFlight.value = true
+        viewModelScope.launch {
+            try {
+                val sessionId = pinnedSessionId
+                    ?: conversationRepository.ensureCurrentSessionId()
+                researchChatRunner.run(sessionId, query, configOverride)
+            } finally {
+                _researchInFlight.value = false
             }
         }
         return true

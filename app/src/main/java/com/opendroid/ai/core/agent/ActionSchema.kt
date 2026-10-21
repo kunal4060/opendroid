@@ -618,6 +618,23 @@ object ActionSchema {
             category = ActionCategory.INFORMATION
         ),
         ActionDefinition(
+            name = "WEB_RESEARCH",
+            description = """Researches a question on the live web and returns a written,
+                source-cited answer: it runs a real search, reads the top pages, and
+                answers only from what it fetched, with numbered [n] citations to
+                those pages. Prefer this over WEB_SEARCH whenever the user asks a
+                question needing current or external information, facts, or sources —
+                WEB_SEARCH only opens a browser tab and returns no answer. Fails
+                honestly (no answer) when web research is not set up in Settings.""",
+            params = listOf(ParamDefinition("query", ParamType.STRING, true, "The research question or topic")),
+            examples = listOf(
+                "research the latest Android 16 features",
+                "what happened in the match yesterday, with sources",
+                "look into solid-state battery progress and cite your sources"
+            ),
+            category = ActionCategory.INFORMATION
+        ),
+        ActionDefinition(
             name = "GET_WEATHER",
             description = "Gets current weather for a location",
             params = listOf(

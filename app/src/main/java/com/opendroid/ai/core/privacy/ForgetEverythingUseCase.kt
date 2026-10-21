@@ -61,7 +61,8 @@ class ForgetEverythingUseCase @Inject constructor(
     private val userProfileStore: UserProfileStore,
     private val sensitiveMemoryStore: SensitiveMemoryStore,
     private val socialCredentialStore: SocialCredentialStore,
-    private val learnedActionStore: LearnedActionStore
+    private val learnedActionStore: LearnedActionStore,
+    private val researchSettingsStore: com.opendroid.ai.core.research.ResearchSettingsStore
 ) {
 
     /** Runs the full wipe off the main thread and streams each finished step to [onStepFinished]. */
@@ -142,6 +143,14 @@ class ForgetEverythingUseCase @Inject constructor(
             title = "AI provider API keys",
             remainingDescription = "Your AI provider API keys are still stored on this device.",
             clear = { clearProviderCredentials() }
+        ),
+        WipeTarget(
+            id = "research-settings",
+            title = "Web research API keys",
+            remainingDescription = "Your web research settings (search API keys, SearXNG instance) are still stored on this device.",
+            clear = {
+                check(researchSettingsStore.clearAll()) { "Research settings store did not clear" }
+            }
         ),
         WipeTarget(
             id = "social-credentials",

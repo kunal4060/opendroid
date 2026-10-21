@@ -2595,6 +2595,11 @@ fun SettingsScreen(
                 ExternalAutomationSettingsSection()
             }
 
+            // Web research (D3): search provider + API key for cited research answers
+            item {
+                ResearchSettingsSection()
+            }
+
             // Privacy Policy link card
             item {
                 Card(

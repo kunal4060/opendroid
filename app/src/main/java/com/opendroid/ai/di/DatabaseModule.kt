@@ -46,7 +46,8 @@ object DatabaseModule {
             OpenDroidDatabase.MIGRATION_7_8,
             OpenDroidDatabase.MIGRATION_8_9,
             OpenDroidDatabase.MIGRATION_9_10,
-            OpenDroidDatabase.MIGRATION_10_11
+            OpenDroidDatabase.MIGRATION_10_11,
+            OpenDroidDatabase.MIGRATION_11_12
         )
         .build()
     }
@@ -139,4 +140,9 @@ object DatabaseModule {
     @Singleton
     fun provideSocialAuditLogDao(db: OpenDroidDatabase): com.opendroid.ai.data.db.dao.SocialAuditLogDao =
         db.socialAuditLogDao()
+
+    @Provides
+    @Singleton
+    fun provideResearchDao(db: OpenDroidDatabase): com.opendroid.ai.data.db.dao.ResearchDao =
+        db.researchDao()
 }

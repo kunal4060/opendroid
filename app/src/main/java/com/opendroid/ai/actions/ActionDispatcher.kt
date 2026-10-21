@@ -37,6 +37,7 @@ class ActionDispatcher @Inject constructor(
     private val calendarActions: CalendarActions,
     private val transportActions: TransportActions,
     private val informationActions: InformationActions,
+    private val researchActions: ResearchActions,
     private val mediaActions: MediaActions,
     private val foodShoppingActions: FoodShoppingActions,
     private val smartHomeActions: SmartHomeActions,
@@ -59,6 +60,7 @@ class ActionDispatcher @Inject constructor(
         // Actions that require internet connectivity
         private val internetRequiredActions = setOf(
             "WEB_SEARCH",
+            "WEB_RESEARCH",
             "GET_WEATHER",
             "GET_NEWS",
             "OPEN_BROWSER",
@@ -82,6 +84,7 @@ class ActionDispatcher @Inject constructor(
         putAll(calendarActions.getActions().associateBy { it.name })
         putAll(transportActions.getActions().associateBy { it.name })
         putAll(informationActions.getActions().associateBy { it.name })
+        putAll(researchActions.getActions().associateBy { it.name })
         putAll(mediaActions.getActions().associateBy { it.name })
         putAll(foodShoppingActions.getActions().associateBy { it.name })
         putAll(smartHomeActions.getActions().associateBy { it.name })
