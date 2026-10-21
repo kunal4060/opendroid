@@ -25,6 +25,14 @@ object DynamicActionRegistry {
     private val handlers = ConcurrentHashMap<String, Action>()
     private val namesByOwner = ConcurrentHashMap<String, MutableSet<String>>()
 
+    // Audit-2 #20: action name → the owner that currently owns it. The
+    // name-keyed maps alone couldn't tell whose registration a name was, so
+    // a second owner registering the same tool name silently overwrote the
+    // first owner's handler — and when EITHER owner later withdrew, the
+    // name was deleted outright, unregistering the still-connected owner's
+    // tool mid-conversation.
+    private val ownerByName = ConcurrentHashMap<String, String>()
+
     private val _revision = MutableStateFlow(0)
 
     /** Bumps on every mutation; observers (prompts, Settings) can react. */
@@ -44,6 +52,11 @@ object DynamicActionRegistry {
     /**
      * Atomically replaces everything [owner] had registered (a server's
      * whole tool set) with [entries] of action name → (definition, handler).
+     *
+     * Collision rule (audit-2 #20): a name currently owned by a DIFFERENT
+     * owner is never overwritten — that entry is rejected (skipped) and the
+     * incumbent owner keeps the name until it withdraws. First registrant
+     * wins, deterministically, instead of last-writer-wins corruption.
      */
     fun replaceForOwner(owner: String, entries: Map<String, Pair<ActionDefinition, Action>>) {
         synchronized(this) {
@@ -54,11 +67,21 @@ object DynamicActionRegistry {
             }
             val names = mutableSetOf<String>()
             entries.forEach { (actionName, entry) ->
+                val currentOwner = ownerByName[actionName]
+                if (currentOwner != null && currentOwner != owner) {
+                    // Another owner holds this name — reject the collision.
+                    return@forEach
+                }
                 definitions[actionName] = entry.first
                 handlers[actionName] = entry.second
+                ownerByName[actionName] = owner
                 names += actionName
             }
-            namesByOwner[owner] = names
+            if (names.isEmpty()) {
+                namesByOwner.remove(owner)
+            } else {
+                namesByOwner[owner] = names
+            }
             _revision.value += 1
         }
     }
@@ -85,13 +108,25 @@ object DynamicActionRegistry {
             definitions.clear()
             handlers.clear()
             namesByOwner.clear()
+            ownerByName.clear()
             _revision.value += 1
         }
     }
 
     private fun removeForOwnerLocked(owner: String): Boolean {
         val names = namesByOwner.remove(owner) ?: return false
-        names.forEach { definitions.remove(it); handlers.remove(it) }
-        return names.isNotEmpty()
+        var removedAny = false
+        names.forEach { name ->
+            // Audit-2 #20: remove only names this owner actually owns —
+            // a name another owner holds (collision survivor) must stay
+            // registered for its real owner.
+            if (ownerByName[name] == owner) {
+                ownerByName.remove(name)
+                definitions.remove(name)
+                handlers.remove(name)
+                removedAny = true
+            }
+        }
+        return removedAny
     }
 }
