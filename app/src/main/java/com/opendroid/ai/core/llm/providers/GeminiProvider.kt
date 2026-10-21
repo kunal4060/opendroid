@@ -26,7 +26,10 @@ class GeminiProvider @Inject constructor(
 ) : LLMProvider {
 
     override val name: String = "Google Gemini"
-    override val availableModels: List<String> = listOf("gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-nano")
+    // Fallback only (the live list replaces it when the fetch succeeds):
+    // dated snapshots get retired for new accounts, so lead with the
+    // family-tracking alias. "gemini-nano" stays for the on-device mock path.
+    override val availableModels: List<String> = listOf("gemini-flash-latest", "gemini-3.8-flash", "gemini-nano")
 
     private val gson = Gson()
     private val mediaType = "application/json; charset=utf-8".toMediaType()
@@ -111,11 +114,22 @@ class GeminiProvider @Inject constructor(
                 throw IOException("Empty response body from Gemini")
             }
             val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
-            val candidates = jsonResponse.getAsJsonArray("candidates")
-            val firstCandidate = candidates[0].asJsonObject
-            val contentObj = firstCandidate.getAsJsonObject("content")
-            val parts = contentObj.getAsJsonArray("parts")
-            val text = parts[0].asJsonObject.get("text").asString
+            // A safety-blocked prompt returns 200 with NO candidates (only
+            // promptFeedback), and a candidate's first part may be a function
+            // call or inline data rather than text. Walk the parts for the
+            // first text part; no text anywhere is an empty/blocked result,
+            // not a crash.
+            val candidates = jsonResponse.get("candidates")
+                ?.takeIf { it.isJsonArray }?.asJsonArray
+            val firstCandidate = candidates?.firstOrNull()
+                ?.takeIf { it.isJsonObject }?.asJsonObject
+            val parts = firstCandidate?.get("content")
+                ?.takeIf { it.isJsonObject }?.asJsonObject
+                ?.get("parts")?.takeIf { it.isJsonArray }?.asJsonArray
+            val text = parts?.firstNotNullOfOrNull { part ->
+                part.takeIf { it.isJsonObject }?.asJsonObject
+                    ?.get("text")?.takeIf { it.isJsonPrimitive }?.asString
+            } ?: ""
 
             val usageMetadata = jsonResponse.getAsJsonObject("usageMetadata")
             // Gemini reports the split in usageMetadata; keep it split for
