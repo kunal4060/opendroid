@@ -10,6 +10,7 @@ import com.opendroid.ai.core.security.SensitiveMemoryStore
 import com.opendroid.ai.core.settings.AppSettingsStore
 import com.opendroid.ai.data.backup.AppSettingsBackup
 import com.opendroid.ai.data.backup.BackupPayload
+import com.opendroid.ai.data.backup.BackupSettingValue
 import com.opendroid.ai.data.backup.BackupSummary
 import com.opendroid.ai.data.backup.ChatSessionBackup
 import com.opendroid.ai.data.backup.ConversationBackup
@@ -301,6 +302,34 @@ class BackupManager @Inject constructor(
                 "The backup is inconsistent (a routine has an unknown status). It was not restored."
             )
         }
+        // The settings section is validated too (audit2-4 #5): it is
+        // applied last — after credentials and Room have already been
+        // replaced — and restoreSettingsFromBackup parses each scalar
+        // strictly, throwing raw on a malformed one. Checking the same
+        // parses here refuses a bad settings section in phase 1, before
+        // anything is replaced, instead of failing a half-applied
+        // restore with an unwrapped exception.
+        payload.settings?.let { settings ->
+            val invalid = settings.entries.firstOrNull { (_, value) -> !value.isRestorable() }
+            if (invalid != null) {
+                throw BackupRestoreException(
+                    "The backup is inconsistent (the setting '${invalid.key}' has an invalid " +
+                        "value). It was not restored."
+                )
+            }
+        }
+    }
+
+    /** Mirrors exactly the parsing restoreSettingsFromBackup performs per entry. */
+    private fun BackupSettingValue.isRestorable(): Boolean = when (kind) {
+        BackupSettingValue.KIND_BOOLEAN -> scalar?.toBooleanStrictOrNull() != null
+        BackupSettingValue.KIND_INT -> scalar?.toIntOrNull() != null
+        BackupSettingValue.KIND_LONG -> scalar?.toLongOrNull() != null
+        BackupSettingValue.KIND_FLOAT -> scalar?.toFloatOrNull() != null
+        BackupSettingValue.KIND_DOUBLE -> scalar?.toDoubleOrNull() != null
+        BackupSettingValue.KIND_STRING -> scalar != null
+        BackupSettingValue.KIND_STRING_SET -> stringSet != null
+        else -> false
     }
 
     private fun restoreCredentials(credentials: CredentialsBackup) {
