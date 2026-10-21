@@ -1,141 +1,113 @@
 package com.opendroid.ai.core.voice
 
 import android.content.Context
-import android.content.Intent
-import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
-import java.util.Locale
+import com.opendroid.ai.core.voice.kws.KeywordSpotterEngine
+import com.opendroid.ai.core.voice.kws.LegacySpeechWakeEngine
+import com.opendroid.ai.core.voice.kws.SherpaKwsEngine
+import com.opendroid.ai.core.voice.kws.WakeEngineKind
+import com.opendroid.ai.core.voice.kws.WakeEnginePolicy
+import com.opendroid.ai.core.voice.kws.WakeKeywordFactory
+import com.opendroid.ai.core.voice.kws.WakeWordEngineState
+import com.opendroid.ai.core.voice.kws.WakeWordStatus
 
+/**
+ * Wake-word entry point used by `OpenDroidService` — public contract
+ * unchanged from the original implementation ([startListening],
+ * [stopListening], [destroy]), but the listening itself is delegated to
+ * a [KeywordSpotterEngine] (D1):
+ *
+ * - Default: [SherpaKwsEngine] — sherpa-onnx keyword spotting running
+ *   fully on-device (mic → AudioRecord → native inference → callback).
+ *   No network is involved in the idle listening path.
+ * - [LegacySpeechWakeEngine] — the old SpeechRecognizer loop, used only
+ *   when the user explicitly picks it in Settings.
+ *
+ * If the offline engine was requested but its model is unavailable, the
+ * detector publishes an error state and does NOT listen — silently
+ * falling back to the network recogniser would fake the feature.
+ *
+ * Settings arrive via [applySettings] (the service forwards every
+ * `LLMConfig` update); a change while listening restarts the engine with
+ * the new configuration.
+ */
 class WakeWordDetector(private val context: Context) {
 
-    private var speechRecognizer: SpeechRecognizer? = null
-    private var intent: Intent? = null
+    private data class SettingsSnapshot(
+        val kind: WakeEngineKind,
+        val keywordPhrase: String,
+        val sensitivity: Float
+    )
+
+    private var settings = SettingsSnapshot(
+        kind = WakeEngineKind.OFFLINE_SHERPA,
+        keywordPhrase = WakeKeywordFactory.DEFAULT_PHRASE,
+        sensitivity = 0.5f
+    )
+
+    private var engine: KeywordSpotterEngine? = null
+
+    @Volatile private var listening = false
     private var onWakeWordDetectedCallback: (() -> Unit)? = null
-    private var isListening = false
 
-    private val handler = Handler(Looper.getMainLooper())
-    private val restartRunnable = Runnable {
-        startSpeechListening()
-    }
-
-    init {
-        initializeRecognizer()
-    }
-
-    private fun initializeRecognizer() {
-        intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+    /** Forwards the user's wake-word settings; restarts a live engine on change. */
+    fun applySettings(engineId: String, keywordPhrase: String, sensitivity: Float) {
+        val updated = SettingsSnapshot(
+            kind = WakeEngineKind.fromSettingsId(engineId),
+            keywordPhrase = keywordPhrase.trim().ifEmpty { WakeKeywordFactory.DEFAULT_PHRASE },
+            sensitivity = sensitivity.coerceIn(0f, 1f)
+        )
+        if (updated == settings) return
+        settings = updated
+        if (listening) {
+            engine?.destroy()
+            engine = null
+            startEngine()
         }
     }
 
     fun startListening(onWakeWordDetected: () -> Unit) {
-        if (isListening) return
-        this.onWakeWordDetectedCallback = onWakeWordDetected
-        isListening = true
-        startSpeechListening()
+        onWakeWordDetectedCallback = onWakeWordDetected
+        if (listening) return
+        listening = true
+        startEngine()
     }
 
-    private fun startSpeechListening() {
-        if (!isListening) return
-
-        // Clean up previous instance before creating a new one
-        cleanupRecognizer()
-
-        if (SpeechRecognizer.isRecognitionAvailable(context)) {
-            try {
-                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
-            } catch (e: Exception) {
-                scheduleRestart()
-                return
-            }
-        } else {
-            scheduleRestart()
+    private fun startEngine() {
+        val resolved = WakeEnginePolicy.resolve(
+            requested = settings.kind,
+            offlineModelAvailable = SherpaKwsEngine.isModelBundled(context)
+        )
+        if (resolved == null) {
+            WakeWordStatus.publish(
+                WakeWordEngineState.Error(
+                    "The offline wake-word model is missing from this build, so wake-word " +
+                        "listening is off. Reinstall the full app, or pick the Legacy engine " +
+                        "in Settings → Wake Word."
+                ),
+                settings.kind
+            )
             return
         }
-
-        speechRecognizer?.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) {}
-            override fun onBeginningOfSpeech() {}
-            override fun onRmsChanged(rmsdB: Float) {}
-            override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() {}
-            
-            override fun onError(error: Int) {
-                // Restart listening loop on error or timeout after a delay
-                scheduleRestart()
-            }
-
-            override fun onResults(results: Bundle?) {
-                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                if (matches != null) {
-                    for (match in matches) {
-                        if (match.contains("opendroid", ignoreCase = true) || match.contains("open droid", ignoreCase = true)) {
-                            triggerWakeWord()
-                            break
-                        }
-                    }
-                }
-                scheduleRestart()
-            }
-
-            override fun onPartialResults(partialResults: Bundle?) {
-                val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                if (matches != null) {
-                    for (match in matches) {
-                        if (match.contains("opendroid", ignoreCase = true) || match.contains("open droid", ignoreCase = true)) {
-                            triggerWakeWord()
-                            break
-                        }
-                    }
-                }
-            }
-
-            override fun onEvent(eventType: Int, params: Bundle?) {}
-        })
-
-        try {
-            speechRecognizer?.startListening(intent)
-        } catch (e: Exception) {
-            scheduleRestart()
+        val newEngine = when (resolved) {
+            WakeEngineKind.OFFLINE_SHERPA -> SherpaKwsEngine(context)
+            WakeEngineKind.LEGACY_SPEECH -> LegacySpeechWakeEngine(context)
         }
-    }
-
-    private fun triggerWakeWord() {
-        onWakeWordDetectedCallback?.invoke()
-    }
-
-    private fun scheduleRestart() {
-        handler.removeCallbacks(restartRunnable)
-        if (isListening) {
-            // Post restart with 1000ms delay to let the audio system settle and prevent rapid flickering/beeping
-            handler.postDelayed(restartRunnable, 1000)
+        engine = newEngine
+        newEngine.configure(settings.keywordPhrase, settings.sensitivity)
+        newEngine.start {
+            if (listening) onWakeWordDetectedCallback?.invoke()
         }
-    }
-
-    private fun cleanupRecognizer() {
-        try {
-            speechRecognizer?.stopListening()
-        } catch (e: Exception) {}
-        try {
-            speechRecognizer?.destroy()
-        } catch (e: Exception) {}
-        speechRecognizer = null
     }
 
     fun stopListening() {
-        isListening = false
-        handler.removeCallbacks(restartRunnable)
-        cleanupRecognizer()
-        onWakeWordDetectedCallback = null
+        listening = false
+        engine?.stop()
     }
 
     fun destroy() {
-        stopListening()
+        listening = false
+        onWakeWordDetectedCallback = null
+        engine?.destroy()
+        engine = null
     }
 }

@@ -113,6 +113,7 @@ class SettingsViewModel @Inject constructor(
     private var elevenLabsApiKeyJob: Job? = null
     private var elevenLabsVoiceIdJob: Job? = null
     private var ollamaUrlJob: Job? = null
+    private var wakeKeywordJob: Job? = null
     private var copilotUrlJob: Job? = null
     private var customEndpointJob: Job? = null
 
@@ -709,6 +710,45 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             settingsRepository.updateConfig { current ->
                 current.copy(showFloatingButton = enabled)
+            }
+        }
+    }
+
+    /** D1: selects the wake-word engine ("OFFLINE" sherpa KWS / "LEGACY" system recogniser). */
+    fun updateWakeWordEngine(engineId: String) {
+        _llmConfig.value = _llmConfig.value.copy(wakeWordEngine = engineId)
+        viewModelScope.launch {
+            settingsRepository.updateConfig { current ->
+                current.copy(wakeWordEngine = engineId)
+            }
+        }
+    }
+
+    /** D1: the wake phrase. Local state updates per keystroke; persistence is debounced like the URL fields. */
+    fun updateWakeWordKeyword(keyword: String) {
+        _llmConfig.value = _llmConfig.value.copy(wakeWordKeyword = keyword)
+        wakeKeywordJob?.cancel()
+        wakeKeywordJob = viewModelScope.launch {
+            try {
+                delay(1000)
+                settingsRepository.updateConfig { current ->
+                    current.copy(wakeWordKeyword = keyword)
+                }
+            } catch (e: Exception) {
+                if (e !is kotlinx.coroutines.CancellationException) {
+                    android.util.Log.e("SettingsViewModel", "Failed to update wake keyword: ${e.message}", e)
+                }
+            }
+        }
+    }
+
+    /** D1: wake-word sensitivity, 0 (strict) … 1 (eager). */
+    fun updateWakeWordSensitivity(sensitivity: Float) {
+        val clamped = sensitivity.coerceIn(0f, 1f)
+        _llmConfig.value = _llmConfig.value.copy(wakeWordSensitivity = clamped)
+        viewModelScope.launch {
+            settingsRepository.updateConfig { current ->
+                current.copy(wakeWordSensitivity = clamped)
             }
         }
     }

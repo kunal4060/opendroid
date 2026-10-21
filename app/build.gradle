@@ -22,6 +22,15 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+        ndk {
+            // D1: the vendored sherpa-onnx AAR ships four ABIs of native
+            // libraries (~124 MB total). Ship only the two phone ABIs in
+            // the single APK; x86/x86_64 emulator images are excluded on
+            // purpose (relax this filter for emulator debugging). Full
+            // ABI splits were considered and deferred — see
+            // feature-d1-report.md.
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
     }
 
     // Release signing — credentials come from ~/.gradle/gradle.properties or
@@ -299,6 +308,11 @@ dependencies {
     // without native PDF support. Android's PdfRenderer only rasterises
     // pages - it cannot extract text. Apache-2.0.
     implementation 'com.tom-roush:pdfbox-android:1.8.10.0'
+
+    // sherpa-onnx 1.13.8 (D1): offline keyword spotting for the wake word.
+    // Vendored official release AAR (Apache-2.0) - no Maven/JitPack artifact
+    // is used; version + SHA-256 are recorded in app/libs/README.md.
+    implementation files('libs/sherpa-onnx-1.13.8.aar')
 
     // Testing
     testImplementation 'junit:junit:4.13.2'
