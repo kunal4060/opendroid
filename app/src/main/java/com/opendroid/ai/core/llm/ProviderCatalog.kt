@@ -23,7 +23,9 @@ object ProviderCatalog {
      * rather than a dated snapshot, so a seed stays valid between releases.
      */
     val providers: List<ProviderSpec> = listOf(
-        ProviderSpec("Google Gemini", "gemini-2.5-flash"),
+        // Family-tracking alias, not a dated snapshot: the dated 2.5 seed was
+        // retired for new Google accounts (404 despite a valid key).
+        ProviderSpec("Google Gemini", "gemini-flash-latest"),
         ProviderSpec("OpenAI", "gpt-4o"),
         ProviderSpec("Anthropic Claude", ClaudeModelCatalog.defaultModelId),
         ProviderSpec("Mistral AI", "mistral-large-latest"),
