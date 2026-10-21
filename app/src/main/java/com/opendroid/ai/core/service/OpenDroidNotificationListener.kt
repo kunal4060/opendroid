@@ -299,6 +299,15 @@ class OpenDroidNotificationListener : NotificationListenerService() {
      */
     fun getActiveNotification(packageName: String, contactName: String?): StatusBarNotification? {
         return try {
+            // Loop-2 Area2 #12: a null contact name must NOT match. The old
+            // predicate (contactName == null || title == contactName)
+            // short-circuited the title check, so the first reply-capable
+            // notification of the package won — quietly re-admitting the
+            // package-only fallback this function deliberately does not
+            // have, and risking a reply into the wrong conversation.
+            // Callers fall back to the original SBN (which by construction
+            // belongs to the right conversation) when this returns null.
+            val name = contactName ?: return null
             val activeNotifications = getActiveNotifications() ?: return null
             // Find a matching notification by package and sender name. There
             // is deliberately NO package-only fallback: when the intended
@@ -310,7 +319,7 @@ class OpenDroidNotificationListener : NotificationListenerService() {
                 sbn.notification?.extras?.let { extras ->
                     val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: ""
                     val convTitle = extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)?.toString() ?: ""
-                    contactName == null || title == contactName || convTitle == contactName
+                    title == name || convTitle == name
                 } == true &&
                 sbn.notification?.actions?.any { it.remoteInputs?.isNotEmpty() == true } == true
             }
