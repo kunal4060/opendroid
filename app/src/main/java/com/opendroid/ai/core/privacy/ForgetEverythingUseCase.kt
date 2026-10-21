@@ -19,6 +19,7 @@ import com.opendroid.ai.core.security.ProviderCredentialStore
 import com.opendroid.ai.core.security.SensitiveMemoryStore
 import com.opendroid.ai.core.security.SocialCredentialStore
 import com.opendroid.ai.core.learning.LearnedActionStore
+import com.opendroid.ai.core.rag.RagIndexStore
 import com.opendroid.ai.core.security.UserProfileStore
 import com.opendroid.ai.core.service.McpConfigStore
 import com.opendroid.ai.core.service.OpenDroidService
@@ -61,7 +62,8 @@ class ForgetEverythingUseCase @Inject constructor(
     private val userProfileStore: UserProfileStore,
     private val sensitiveMemoryStore: SensitiveMemoryStore,
     private val socialCredentialStore: SocialCredentialStore,
-    private val learnedActionStore: LearnedActionStore
+    private val learnedActionStore: LearnedActionStore,
+    private val ragIndexStore: RagIndexStore
 ) {
 
     /** Runs the full wipe off the main thread and streams each finished step to [onStepFinished]. */
@@ -128,6 +130,12 @@ class ForgetEverythingUseCase @Inject constructor(
             title = "Personas & quick commands",
             remainingDescription = "Your saved personas and quick commands are still stored on this device.",
             clear = { personaRepository.clearAllPersonas() }
+        ),
+        WipeTarget(
+            id = "knowledge-base",
+            title = "Document knowledge base",
+            remainingDescription = "Your imported documents' indexed text is still stored on this device.",
+            clear = { ragIndexStore.clearAll() }
         ),
         WipeTarget(
             id = "sensitive-memory",
