@@ -25,14 +25,21 @@ class TransportActions @Inject constructor() {
     private class BookUberAction : Action {
         override val name: String = "BOOK_UBER"
         override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
-            val pickup = params["pickup"] ?: "Current Location"
+            val pickup = params["pickup"]?.trim()?.takeIf { it.isNotEmpty() }
             val destination = params["destination"] ?: return ActionResult(false, null, "destination is missing")
-            val rideType = params["rideType"] ?: "UberGo"
             return try {
-                // Try Uber deep link
-                val encPickup = URLEncoder.encode(pickup, "UTF-8")
+                // No pickup given → Uber's my_location token. Passing the
+                // literal string "Current Location" as a formatted address
+                // made Uber geocode a place of that name. The ride-type name
+                // ("UberGo") is not a product UUID, so product_id is omitted
+                // entirely instead of sending a value Uber ignores.
+                val pickupParam = if (pickup != null) {
+                    "pickup[formatted_address]=${URLEncoder.encode(pickup, "UTF-8")}"
+                } else {
+                    "pickup=my_location"
+                }
                 val encDest = URLEncoder.encode(destination, "UTF-8")
-                val uri = "uber://?action=setPickup&pickup[formatted_address]=$encPickup&dropoff[formatted_address]=$encDest&product_id=$rideType".toUri()
+                val uri = "uber://?action=setPickup&$pickupParam&dropoff[formatted_address]=$encDest".toUri()
                 val intent = Intent(Intent.ACTION_VIEW, uri).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
@@ -42,7 +49,7 @@ class TransportActions @Inject constructor() {
                     ActionResult(true, "Getting you an Uber to $destination!", null)
                 } else {
                     // Fallback to web link
-                    val webUri = "https://m.uber.com/ul/?action=setPickup&pickup[formatted_address]=$encPickup&dropoff[formatted_address]=$encDest".toUri()
+                    val webUri = "https://m.uber.com/ul/?action=setPickup&$pickupParam&dropoff[formatted_address]=$encDest".toUri()
                     val webIntent = Intent(Intent.ACTION_VIEW, webUri).apply {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
@@ -90,11 +97,14 @@ class TransportActions @Inject constructor() {
             val from = params["from"] ?: ""
             val modeStr = params["mode"] ?: "drive"
             
+            // The Maps URLs API accepts only these full words — the old
+            // single-letter values were ignored and Maps silently defaulted
+            // to driving directions for every mode.
             val travelMode = when (modeStr.lowercase()) {
-                "walk" -> "w"
-                "bike" -> "b"
-                "transit" -> "r"
-                else -> "d"
+                "walk", "walking", "on foot" -> "walking"
+                "bike", "bicycle", "bicycling", "cycle", "cycling" -> "bicycling"
+                "transit", "public transit", "bus", "train", "metro" -> "transit"
+                else -> "driving"
             }
             
             return try {

@@ -26,7 +26,12 @@ class BootReceiver : BroadcastReceiver() {
         if (context == null) return
         when (intent?.action) {
             Intent.ACTION_BOOT_COMPLETED -> {
-                OpenDroidService.start(context)
+                // Never start OpenDroidService here: it declares a
+                // microphone FGS type, and starting that type from
+                // BOOT_COMPLETED is prohibited on Android 15 — it throws
+                // ForegroundServiceStartNotAllowedException inside
+                // onReceive and crashes on every boot. Boot work is
+                // WorkManager/alarms only, like the schedule re-arm below.
                 rearmSchedules(context)
             }
             // Wall-clock schedules are stored as local time + zone, so a

@@ -323,7 +323,6 @@ class SystemActions @Inject constructor(
         override val name: String = "SET_VOLUME"
         override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
             val typeStr = params["type"] ?: "media"
-            val level = params["level"]?.toIntOrNull()?.coerceIn(0, 100) ?: 50
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             val streamType = when (typeStr.lowercase().trim()) {
                 "ring", "ringtone", "ringer" -> AudioManager.STREAM_RING
@@ -331,6 +330,21 @@ class SystemActions @Inject constructor(
                 "notification", "notif" -> AudioManager.STREAM_NOTIFICATION
                 "system" -> AudioManager.STREAM_SYSTEM
                 else -> AudioManager.STREAM_MUSIC
+            }
+            // Relative adjustment ("adjust" delta, injected by the mapper for
+            // VOLUME_UP / VOLUME_DOWN): move from the CURRENT level instead
+            // of jumping to an absolute default — "volume up" at 80% must
+            // never lower the volume to 50.
+            val adjust = params["adjust"]?.toIntOrNull()
+            val explicitLevel = params["level"]?.toIntOrNull()?.coerceIn(0, 100)
+            val level = when {
+                explicitLevel != null -> explicitLevel
+                adjust != null -> {
+                    val max = audioManager.getStreamMaxVolume(streamType).coerceAtLeast(1)
+                    val currentPercent = audioManager.getStreamVolume(streamType) * 100 / max
+                    (currentPercent + adjust).coerceIn(0, 100)
+                }
+                else -> 50
             }
             val streamLabel = when (streamType) {
                 AudioManager.STREAM_RING -> "Ringtone"
