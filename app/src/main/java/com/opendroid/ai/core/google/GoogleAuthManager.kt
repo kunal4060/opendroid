@@ -142,7 +142,10 @@ class GoogleAuthManager @Inject constructor(
         }
         val token = result.accessToken
             ?: return GoogleAuthorizeResult.Failed("Authorization returned no access token.")
-        val granted = result.grantedScopes.map { it.scopeUri }.toSet()
+        // AuthorizationResult.getGrantedScopes() returns List<String> (the scope
+        // URIs themselves) in play-services-auth 21.3.0 — unlike the request side,
+        // which takes List<Scope>. There is no Scope object / scopeUri here.
+        val granted = result.grantedScopes.orEmpty().toSet()
         store.addGrantedScopes(granted)
         store.saveAccessToken(token, System.currentTimeMillis() + TOKEN_TTL_MILLIS)
         return GoogleAuthorizeResult.Authorized(token, granted)

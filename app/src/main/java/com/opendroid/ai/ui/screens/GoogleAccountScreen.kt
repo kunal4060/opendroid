@@ -116,7 +116,7 @@ fun GoogleAccountScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
-    val activity = remember(context) { context.findActivity() }
+    val activity = remember(context) { context.findGoogleActivity() }
 
     val resolutionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -970,8 +970,14 @@ private fun CreateGoogleEventDialog(
     }
 }
 
-private tailrec fun Context.findActivity(): Activity? = when (this) {
+// Named findGoogleActivity, not findActivity: PermissionsScreen.kt in this
+// same package already declares `fun Context.findActivity(): ComponentActivity?`.
+// Return type is not part of a JVM/Kotlin overload signature, so a second
+// Context.findActivity() here (returning Activity?) was a conflicting overload
+// and made every call site ambiguous — which in turn made `activity`'s type
+// uninferable and cascaded into every `activity?.let { … }` in this file.
+private tailrec fun Context.findGoogleActivity(): Activity? = when (this) {
     is Activity -> this
-    is ContextWrapper -> baseContext.findActivity()
+    is ContextWrapper -> baseContext.findGoogleActivity()
     else -> null
 }
