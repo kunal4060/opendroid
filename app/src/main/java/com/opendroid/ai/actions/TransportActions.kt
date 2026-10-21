@@ -46,7 +46,14 @@ class TransportActions @Inject constructor() {
                 
                 if (intent.resolveActivity(context.packageManager) != null) {
                     context.startActivity(intent)
-                    ActionResult(true, "Getting you an Uber to $destination!", null)
+                    // Non-success hand-off: the ride is only pre-filled —
+                    // nothing is booked until the user confirms in Uber.
+                    // The old full Success let the agent report the ride
+                    // as arranged when it was merely staged (the Loop-1
+                    // UPI/smart-home standard applies here too).
+                    ActionResult.UserActionRequired(
+                        "I've opened Uber with your trip to $destination filled in — review it and confirm in the app to actually book. No ride is booked yet."
+                    )
                 } else {
                     // Fallback to web link
                     val webUri = "https://m.uber.com/ul/?action=setPickup&$pickupParam&dropoff[formatted_address]=$encDest".toUri()
@@ -54,7 +61,9 @@ class TransportActions @Inject constructor() {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
                     context.startActivity(webIntent)
-                    ActionResult(true, "Uber isn't installed, but I opened the website for you!", null, true)
+                    ActionResult.UserActionRequired(
+                        "Uber isn't installed, so I opened its website with your trip to $destination filled in — review it and confirm there to actually book. No ride is booked yet."
+                    )
                 }
             } catch (e: Exception) {
                 Log.e("BookUber", "Uber failed: ${e.localizedMessage}")
@@ -75,13 +84,20 @@ class TransportActions @Inject constructor() {
                 }
                 if (intent.resolveActivity(context.packageManager) != null) {
                     context.startActivity(intent)
-                    ActionResult(true, "Getting you an Ola to $destination!", null)
+                    // Non-success hand-off, same as Uber: the trip is only
+                    // pre-filled — no ride exists until the user confirms
+                    // in Ola.
+                    ActionResult.UserActionRequired(
+                        "I've opened Ola with your trip to $destination filled in — review it and confirm in the app to actually book. No ride is booked yet."
+                    )
                 } else {
                     val storeIntent = Intent(Intent.ACTION_VIEW, "market://details?id=com.olacabs.customer".toUri()).apply {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
                     context.startActivity(storeIntent)
-                    ActionResult(true, "Ola isn't installed — I'll take you to the Play Store to get it!", null, true)
+                    ActionResult.UserActionRequired(
+                        "Ola isn't installed — I opened its Play Store page so you can install it. No ride is booked."
+                    )
                 }
             } catch (e: Exception) {
                 Log.e("BookOla", "Ola failed: ${e.localizedMessage}")
