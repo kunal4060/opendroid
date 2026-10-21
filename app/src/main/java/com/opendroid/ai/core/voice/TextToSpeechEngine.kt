@@ -36,6 +36,16 @@ class TextToSpeechEngine(
     @Volatile
     private var destroyed = false
     private var mediaPlayer: MediaPlayer? = null
+
+    /**
+     * Serialises every [mediaPlayer] hand-off against [destroy]. The
+     * destroyed re-check and the player creation in [playElevenLabsTts]
+     * must be atomic with respect to destroy()'s release: a bare
+     * check-then-create lets destroy() slip into the gap, after which
+     * the in-flight speak assigns and starts a player on a destroyed
+     * engine that nothing ever releases (finding #10).
+     */
+    private val mediaPlayerLock = Any()
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     var onCompletionListener: (() -> Unit)? = null
@@ -185,37 +195,43 @@ class TextToSpeechEngine(
             }
 
             // destroy() may have run while the (blocking) download was in
-            // flight — never create a player on a destroyed engine.
-            if (destroyed) return false
+            // flight — never create a player on a destroyed engine. The
+            // check and the creation happen under mediaPlayerLock, and
+            // destroy() takes the same lock to release, so the check
+            // cannot go stale between test and assignment (finding #10).
+            synchronized(mediaPlayerLock) {
+                if (destroyed) return false
 
-            mediaPlayer?.release()
-            mediaPlayer = MediaPlayer().apply {
-                setDataSource(tempFile.absolutePath)
-                prepare()
-                // Capture THIS utterance's id in the closure: the speech
-                // that actually played is what completed. Reading a
-                // shared field at completion time mis-attributes the
-                // event to any interleaved speak() — with an approval
-                // prompt in flight that either never arms approval
-                // listening or arms it for unrelated speech (finding #3).
-                setOnCompletionListener {
-                    mainHandler.post {
-                        notifyCompletion(utteranceId)
+                mediaPlayer?.release()
+                mediaPlayer = null
+                mediaPlayer = MediaPlayer().apply {
+                    setDataSource(tempFile.absolutePath)
+                    prepare()
+                    // Capture THIS utterance's id in the closure: the speech
+                    // that actually played is what completed. Reading a
+                    // shared field at completion time mis-attributes the
+                    // event to any interleaved speak() — with an approval
+                    // prompt in flight that either never arms approval
+                    // listening or arms it for unrelated speech (finding #3).
+                    setOnCompletionListener {
+                        mainHandler.post {
+                            notifyCompletion(utteranceId)
+                        }
                     }
-                }
-                // Without an error listener a failed playback leaves the
-                // player in the Error state — where stop() throws — and
-                // no completion ever fires. Report the error as this
-                // utterance's completion (the platform's own fallback
-                // when no listener is installed) so listeners advance
-                // and the player leaves the error path handled.
-                setOnErrorListener { _, _, _ ->
-                    mainHandler.post {
-                        notifyCompletion(utteranceId)
+                    // Without an error listener a failed playback leaves the
+                    // player in the Error state — where stop() throws — and
+                    // no completion ever fires. Report the error as this
+                    // utterance's completion (the platform's own fallback
+                    // when no listener is installed) so listeners advance
+                    // and the player leaves the error path handled.
+                    setOnErrorListener { _, _, _ ->
+                        mainHandler.post {
+                            notifyCompletion(utteranceId)
+                        }
+                        true
                     }
-                    true
+                    start()
                 }
-                start()
             }
             return true
         }
@@ -232,7 +248,7 @@ class TextToSpeechEngine(
         // in one of those states is not playing anything stop() could
         // silence, so the exception is safe to swallow.
         try {
-            mediaPlayer?.stop()
+            synchronized(mediaPlayerLock) { mediaPlayer?.stop() }
         } catch (_: IllegalStateException) {
             // Player already released or in the Error state: nothing to stop.
         }
@@ -250,7 +266,13 @@ class TextToSpeechEngine(
         scope.cancel()
         tts?.shutdown()
         tts = null
-        mediaPlayer?.release()
-        mediaPlayer = null
+        // Same lock as the creation path: either an in-flight speak
+        // created its player first (and it is released here), or this
+        // release runs first and the speak's in-lock destroyed check
+        // refuses to create one at all (finding #10).
+        synchronized(mediaPlayerLock) {
+            mediaPlayer?.release()
+            mediaPlayer = null
+        }
     }
 }
