@@ -6,6 +6,7 @@ import android.content.ContextWrapper
 import android.content.Intent
 import android.content.IntentFilter
 import androidx.test.core.app.ApplicationProvider
+import com.opendroid.ai.actions.base.ActionResult
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -27,13 +28,20 @@ class FinanceActionsTest {
 
         val result = payUpi(context, app = "gpay", note = "Lunch")
 
-        assertTrue(result.success)
+        // Opening the payment app is a hand-off, not a completed payment.
+        assertTrue(result is ActionResult.UserActionRequired)
+        assertFalse(result.success)
         assertEquals(GPAY_PACKAGE, context.startedIntent?.`package`)
         assertEquals(
-            "upi://pay?pa=alice@upi&pn=Recipient&tn=Lunch&am=100&cu=INR",
+            "upi://pay?pa=alice%40upi&pn=alice&tn=Lunch&am=100&cu=INR",
             context.startedIntent?.dataString
         )
-        assertEquals("Sending \u20B9100 to alice@upi!", result.data)
+        assertNull(result.data)
+        assertEquals(
+            "Payment app opened for \u20B9100 to alice@upi \u2014 complete the payment in the app. " +
+                "It isn't sent until you confirm there.",
+            result.error
+        )
     }
 
     @Test
@@ -42,9 +50,19 @@ class FinanceActionsTest {
 
         val result = payUpi(context, app = "phonepe")
 
-        assertTrue(result.success)
+        assertTrue(result is ActionResult.UserActionRequired)
+        assertFalse(result.success)
         assertEquals(PHONEPE_PACKAGE, context.startedIntent?.`package`)
-        assertEquals("Sending \u20B9100 to alice@upi!", result.data)
+        assertEquals(
+            "upi://pay?pa=alice%40upi&pn=alice&tn=Sent+via+OpenDroid&am=100&cu=INR",
+            context.startedIntent?.dataString
+        )
+        assertNull(result.data)
+        assertEquals(
+            "Payment app opened for \u20B9100 to alice@upi \u2014 complete the payment in the app. " +
+                "It isn't sent until you confirm there.",
+            result.error
+        )
     }
 
     @Test
@@ -53,9 +71,19 @@ class FinanceActionsTest {
 
         val result = payUpi(context, app = "paytm")
 
-        assertTrue(result.success)
+        assertTrue(result is ActionResult.UserActionRequired)
+        assertFalse(result.success)
         assertEquals(PAYTM_PACKAGE, context.startedIntent?.`package`)
-        assertEquals("Sending \u20B9100 to alice@upi!", result.data)
+        assertEquals(
+            "upi://pay?pa=alice%40upi&pn=alice&tn=Sent+via+OpenDroid&am=100&cu=INR",
+            context.startedIntent?.dataString
+        )
+        assertNull(result.data)
+        assertEquals(
+            "Payment app opened for \u20B9100 to alice@upi \u2014 complete the payment in the app. " +
+                "It isn't sent until you confirm there.",
+            result.error
+        )
     }
 
     @Test
@@ -86,12 +114,18 @@ class FinanceActionsTest {
 
         val result = payUpi(context, app = "phonepe")
 
-        assertTrue(result.success)
-        assertEquals("phonepe isn't installed, so I opened the default payment app.", result.data)
+        assertTrue(result is ActionResult.UserActionRequired)
+        assertFalse(result.success)
+        assertNull(result.data)
+        assertEquals(
+            "phonepe isn't installed, so I opened your default payment app for \u20B9100 to alice@upi \u2014 " +
+                "complete the payment there. It isn't sent until you confirm.",
+            result.error
+        )
         assertEquals(Intent.ACTION_VIEW, context.startedIntent?.action)
         assertNull(context.startedIntent?.`package`)
         assertEquals(
-            "upi://pay?pa=alice@upi&pn=Recipient&tn=Sent+via+OpenDroid&am=100&cu=INR",
+            "upi://pay?pa=alice%40upi&pn=alice&tn=Sent+via+OpenDroid&am=100&cu=INR",
             context.startedIntent?.dataString
         )
     }
@@ -102,8 +136,9 @@ class FinanceActionsTest {
 
         val result = payUpi(context)
 
+        assertTrue(result is ActionResult.Failure)
         assertFalse(result.success)
-        assertEquals("Payment didn't go through. Try again?", result.error)
+        assertEquals("Couldn't open the payment app. Try again?", result.error)
         assertNull(context.startedIntent)
     }
 

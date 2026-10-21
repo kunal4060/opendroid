@@ -47,10 +47,15 @@ class SmartHomeActionsTest {
             context
         )
 
-        assertTrue(result.success)
+        // No device is controlled: the command is handed off to the user
+        // inside Google Home, so the result is non-success.
+        assertTrue(result is ActionResult.UserActionRequired)
+        assertFalse(result.success)
+        assertNull(result.data)
         assertEquals(
-            "Got it \u2014 telling Google Home to toggle the living room fan!",
-            result.data
+            "I can't control smart devices directly \u2014 no smart-home integration is set up. " +
+                "I opened Google Home; please toggle the living room fan there.",
+            result.error
         )
         assertEquals(
             GOOGLE_HOME_PACKAGE,
@@ -59,7 +64,7 @@ class SmartHomeActionsTest {
     }
 
     @Test
-    fun `general smart home searches when Google Home is not installed`() = runBlocking {
+    fun `general smart home reports unsupported failure when Google Home is not installed`() = runBlocking {
         val context = RecordingContext(baseContext)
 
         val result = execute(
@@ -68,17 +73,18 @@ class SmartHomeActionsTest {
             context
         )
 
-        assertTrue(result.success)
-        assertEquals("Google Home isn't installed, so I searched for it instead.", result.data)
-        assertEquals(Intent.ACTION_WEB_SEARCH, context.lastStartedIntent?.action)
+        assertTrue(result is ActionResult.Failure)
+        assertFalse(result.success)
         assertEquals(
-            "turn off kitchen light now",
-            context.lastStartedIntent?.getStringExtra("query")
+            "Smart-home control isn't supported (no device integration) and Google Home isn't installed, " +
+                "so I couldn't off the kitchen light.",
+            result.error
         )
+        assertNull(context.lastStartedIntent)
     }
 
     @Test
-    fun `toggle light includes optional details and reports on or off state`() = runBlocking {
+    fun `toggle light reports unsupported failure for on and off when Google Home is not installed`() = runBlocking {
         val context = RecordingContext(baseContext)
 
         val onResult = execute(
@@ -92,12 +98,14 @@ class SmartHomeActionsTest {
             context
         )
 
-        assertTrue(onResult.success)
-        assertEquals("Turning the bedroom light on!", onResult.data)
+        assertTrue(onResult is ActionResult.Failure)
+        assertFalse(onResult.success)
         assertEquals(
-            "turn light on in bedroom to 40 percent color blue",
-            context.lastStartedIntent?.getStringExtra("query")
+            "Smart-home control isn't supported (no device integration) and Google Home isn't installed, " +
+                "so I couldn't turn the bedroom light on.",
+            onResult.error
         )
+        assertNull(context.lastStartedIntent)
 
         val offResult = execute(
             "TOGGLE_LIGHT",
@@ -105,12 +113,14 @@ class SmartHomeActionsTest {
             context
         )
 
-        assertTrue(offResult.success)
-        assertEquals("Turning the hallway light off!", offResult.data)
+        assertTrue(offResult is ActionResult.Failure)
+        assertFalse(offResult.success)
         assertEquals(
-            "turn light off in hallway ",
-            context.lastStartedIntent?.getStringExtra("query")
+            "Smart-home control isn't supported (no device integration) and Google Home isn't installed, " +
+                "so I couldn't turn the hallway light off.",
+            offResult.error
         )
+        assertNull(context.lastStartedIntent)
     }
 
     @Test
@@ -126,28 +136,35 @@ class SmartHomeActionsTest {
     }
 
     @Test
-    fun `set thermostat dispatches the requested temperature`() = runBlocking {
+    fun `set thermostat reports unsupported failure when Google Home is not installed`() = runBlocking {
         val context = RecordingContext(baseContext)
 
         val result = execute("SET_THERMOSTAT", mapOf("temperature" to "22"), context)
 
-        assertTrue(result.success)
-        assertEquals("Setting thermostat to 22!", result.data)
+        assertTrue(result is ActionResult.Failure)
+        assertFalse(result.success)
         assertEquals(
-            "set thermostat temperature to 22",
-            context.lastStartedIntent?.getStringExtra("query")
+            "Smart-home control isn't supported (no device integration) and Google Home isn't installed, " +
+                "so I couldn't set the thermostat to 22.",
+            result.error
         )
+        assertNull(context.lastStartedIntent)
     }
 
     @Test
-    fun `lock door defaults to the front door and accepts an explicit location`() = runBlocking {
+    fun `lock door reports unsupported failure for the default and an explicit location`() = runBlocking {
         val context = RecordingContext(baseContext)
 
         val defaultResult = execute("LOCK_DOOR", emptyMap(), context)
 
-        assertTrue(defaultResult.success)
-        assertEquals("Locking the front door!", defaultResult.data)
-        assertEquals("lock front door", context.lastStartedIntent?.getStringExtra("query"))
+        assertTrue(defaultResult is ActionResult.Failure)
+        assertFalse(defaultResult.success)
+        assertEquals(
+            "Smart-home control isn't supported (no device integration) and Google Home isn't installed, " +
+                "so I couldn't lock the front door.",
+            defaultResult.error
+        )
+        assertNull(context.lastStartedIntent)
 
         val explicitResult = execute(
             "LOCK_DOOR",
@@ -155,13 +172,21 @@ class SmartHomeActionsTest {
             context
         )
 
-        assertTrue(explicitResult.success)
-        assertEquals("Locking the garage door!", explicitResult.data)
-        assertEquals("lock garage door", context.lastStartedIntent?.getStringExtra("query"))
+        assertTrue(explicitResult is ActionResult.Failure)
+        assertFalse(explicitResult.success)
+        assertEquals(
+            "Smart-home control isn't supported (no device integration) and Google Home isn't installed, " +
+                "so I couldn't lock the garage door.",
+            explicitResult.error
+        )
+        assertNull(context.lastStartedIntent)
     }
 
     @Test
     fun `lock door reports a truthful failure when launching fails`() = runBlocking {
+        // Google Home must be installed for the hand-off launch to be
+        // attempted at all; the recording context then makes it throw.
+        installGoogleHomeLauncher()
         val context = RecordingContext(
             baseContext,
             IllegalStateException("launcher unavailable")
@@ -171,7 +196,7 @@ class SmartHomeActionsTest {
 
         assertTrue(result is ActionResult.Failure)
         assertFalse(result.success)
-        assertEquals("Couldn't lock the door right now.", result.error)
+        assertEquals("Couldn't open Google Home to lock the front door.", result.error)
         assertNull(context.lastStartedIntent)
     }
 

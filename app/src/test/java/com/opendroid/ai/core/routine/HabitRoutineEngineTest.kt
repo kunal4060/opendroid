@@ -444,8 +444,36 @@ class FakeMemoryDao : MemoryDao {
     override suspend fun clearMemoryByType(type: String) { memories.values.removeAll { it.type == type } }
     override suspend fun deleteExpiredMemories(now: Long) {}
     override suspend fun deleteMemoryEntity(memory: MemoryEntity) { memories.remove(memory.key) }
-    override suspend fun getMemoriesByKeyPrefix(prefix: String): List<MemoryEntity> = memories.values.filter { it.key.startsWith(prefix) }
+
+    // Same semantics as the Room query (`key LIKE :prefix || '%' ESCAPE '\'`,
+    // MemoryDao): the argument arrives pre-escaped by MemoryRepository via
+    // LikeEscaping (audit-4 #5), so `\_`/`\%`/`\\` must match literally and a
+    // bare `_` is a single-char wildcard — a plain startsWith() on the escaped
+    // pattern matches nothing, which silently emptied every prefix read.
+    override suspend fun getMemoriesByKeyPrefix(prefix: String): List<MemoryEntity> =
+        memories.values.filter { likePatternToRegex(prefix).containsMatchIn(it.key) }
+
     override suspend fun clearAllMemories() { memories.clear() }
+
+    /** Translates an ESCAPE-'\' LIKE pattern to an anchored regex; the SQL appends a trailing '%'. */
+    private fun likePatternToRegex(pattern: String): Regex {
+        val sb = StringBuilder("^")
+        var i = 0
+        while (i < pattern.length) {
+            val ch = pattern[i]
+            when {
+                ch == '\\' && i + 1 < pattern.length -> {
+                    sb.append(Regex.escape(pattern[i + 1].toString()))
+                    i += 2
+                }
+                ch == '_' -> { sb.append('.'); i++ }
+                ch == '%' -> { sb.append(".*"); i++ }
+                else -> { sb.append(Regex.escape(ch.toString())); i++ }
+            }
+        }
+        sb.append(".*") // the query's implicit trailing '%'
+        return Regex(sb.toString(), RegexOption.DOT_MATCHES_ALL)
+    }
 }
 
 class FakeTaskHistoryDao : TaskHistoryDao {

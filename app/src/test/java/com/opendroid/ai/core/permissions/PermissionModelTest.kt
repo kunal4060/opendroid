@@ -39,9 +39,23 @@ class PermissionModelTest {
             PermissionCardId.ACCESSIBILITY,
         )
 
-        listOf(26, 29, 30, 32).forEach { sdkInt ->
+        listOf(26, 29, 30).forEach { sdkInt ->
             assertEquals("SDK $sdkInt", expected, visibleCards(sdkInt))
         }
+
+        // The Bluetooth card joins at API 31, still without notifications.
+        val expected32 = listOf(
+            PermissionCardId.MICROPHONE,
+            PermissionCardId.LOCATION,
+            PermissionCardId.SMS_TELEPHONY,
+            PermissionCardId.CONTACTS_CALENDAR,
+            PermissionCardId.CAMERA,
+            PermissionCardId.BLUETOOTH,
+            PermissionCardId.STORAGE,
+            PermissionCardId.WRITE_SETTINGS,
+            PermissionCardId.ACCESSIBILITY,
+        )
+        assertEquals("SDK 32", expected32, visibleCards(32))
     }
 
     @Test
@@ -52,6 +66,7 @@ class PermissionModelTest {
             PermissionCardId.SMS_TELEPHONY,
             PermissionCardId.CONTACTS_CALENDAR,
             PermissionCardId.CAMERA,
+            PermissionCardId.BLUETOOTH,
             PermissionCardId.NOTIFICATIONS,
             PermissionCardId.STORAGE,
             PermissionCardId.WRITE_SETTINGS,
@@ -133,6 +148,26 @@ class PermissionModelTest {
                 "SDK $sdkInt",
                 listOf("android.permission.CAMERA"),
                 runtimePermissions(PermissionCardId.CAMERA, sdkInt),
+            )
+        }
+    }
+
+    @Test
+    fun `bluetooth route changes exactly at API 31`() {
+        listOf(26, 29, 30).forEach { sdkInt ->
+            assertTrue(
+                "SDK $sdkInt",
+                runtimePermissions(PermissionCardId.BLUETOOTH, sdkInt).isEmpty(),
+            )
+        }
+        listOf(31, 32, 33, 35).forEach { sdkInt ->
+            assertEquals(
+                "SDK $sdkInt",
+                listOf(
+                    "android.permission.BLUETOOTH_CONNECT",
+                    "android.permission.BLUETOOTH_SCAN",
+                ),
+                runtimePermissions(PermissionCardId.BLUETOOTH, sdkInt),
             )
         }
     }
@@ -262,6 +297,8 @@ class PermissionModelTest {
                 "android.permission.WRITE_CONTACTS",
                 "android.permission.READ_CALENDAR",
                 "android.permission.CAMERA",
+                "android.permission.BLUETOOTH_CONNECT",
+                "android.permission.BLUETOOTH_SCAN",
                 "android.permission.POST_NOTIFICATIONS",
             ),
             requestPlan(emptySet(), 35),
@@ -288,6 +325,8 @@ class PermissionModelTest {
                 "android.permission.WRITE_CONTACTS",
                 "android.permission.READ_CALENDAR",
                 "android.permission.CAMERA",
+                "android.permission.BLUETOOTH_CONNECT",
+                "android.permission.BLUETOOTH_SCAN",
             ),
             requestPlan(granted, 35),
         )
@@ -500,7 +539,7 @@ class PermissionModelTest {
         assertFalse(isBlocked(permission, granted = false, asked = false, showRationale = false))
         assertFalse(isBlocked(permission, granted = false, asked = true, showRationale = true))
         assertTrue(isBlocked(permission, granted = false, asked = true, showRationale = false))
-        assertTrue(isBlocked(permission, granted = false, asked = true, showRationale = null))
+        assertFalse(isBlocked(permission, granted = false, asked = true, showRationale = null))
         assertFalse(isBlocked(permission, granted = false, asked = false, showRationale = null))
     }
 
@@ -517,7 +556,7 @@ class PermissionModelTest {
             grantAllButton(snapshot),
         )
         assertEquals(
-            "13 runtime permissions still needed. Android asks for them in one dialog.",
+            "15 runtime permissions still needed. Android asks for them in one dialog.",
             summaryLine(snapshot),
         )
     }
@@ -586,7 +625,7 @@ class PermissionModelTest {
         val permissions = allRuntimePermissions(35).toSet()
 
         assertEquals(
-            "All 13 permissions granted.",
+            "All 15 permissions granted.",
             summaryLine(
                 snapshot(
                     granted = permissions,
@@ -604,7 +643,7 @@ class PermissionModelTest {
         val declined = permissions.drop(8)
 
         assertEquals(
-            "8 of 13 granted. 5 declined → tap Grant on a card to ask again.",
+            "8 of 15 granted. 7 declined → tap Grant on a card to ask again.",
             summaryLine(
                 snapshot(
                     granted = granted,
@@ -626,7 +665,7 @@ class PermissionModelTest {
             grantAll = GrantAllState.Returned(permissions.toSet()),
         )
         assertEquals(
-            "None granted. 13 blocked in system settings → use App info below.",
+            "None granted. 15 blocked in system settings → use App info below.",
             summaryLine(snapshot),
         )
         assertTrue(summaryHasBlocked(snapshot))
@@ -646,7 +685,7 @@ class PermissionModelTest {
             grantAll = GrantAllState.Returned(permissions.toSet()),
         )
         assertEquals(
-            "8 of 13 granted. 1 declined, 4 blocked → use App info below.",
+            "8 of 15 granted. 1 declined, 6 blocked → use App info below.",
             summaryLine(snapshot),
         )
         assertTrue(summaryHasBlocked(snapshot))
@@ -666,7 +705,7 @@ class PermissionModelTest {
         )
 
         assertEquals(
-            "10 of 13 granted. 1 declined, 2 blocked → use App info below.",
+            "10 of 15 granted. 1 declined, 4 blocked → use App info below.",
             summaryLine(base.copy(granted = firstEight + blocked.take(2))),
         )
     }
