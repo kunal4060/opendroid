@@ -183,6 +183,15 @@ class ChatViewModel @Inject constructor(
     /** Clears the parked assistant command; returns it so the caller can send it exactly once. */
     fun consumePendingAssistantQuery(): String? = pendingAssistantCommand.consume()
 
+    /**
+     * Audit-2 #11: clears the parked command only after it was actually
+     * dispatched, and only if the slot still holds that same command (a
+     * newer invocation may have replaced it meanwhile). A refused send
+     * leaves the command parked for a later retry instead of losing it.
+     */
+    fun clearPendingAssistantQueryAfterDispatch(query: String): Boolean =
+        pendingAssistantCommand.consumeIf(query)
+
     // Scoped to whichever session is current; re-collects automatically when the
     // user switches chats since the repository's flow is driven off the same
     // reactive "current session" pointer that switchToSession() flips.
@@ -1032,11 +1041,17 @@ class ChatViewModel @Inject constructor(
      * current session so the conversation visibly rewinds, then sends the edited text
      * as a fresh query.
      */
-    fun editAndResend(messageId: String, newText: String, context: Context) {
-        if (newText.isBlank()) return
+    /**
+     * Returns whether the resend was actually dispatched (audit-2 #13) —
+     * false when the text is blank or the no-route guard refuses, so the
+     * caller can keep the user's draft and edit session instead of clearing
+     * them for a send that never happened.
+     */
+    fun editAndResend(messageId: String, newText: String, context: Context): Boolean {
+        if (newText.isBlank()) return false
         // Same no-route guard as sendMessage: never rewind the conversation
         // for a resend that cannot be answered right now.
-        if (routingStatus.value is RoutingStatus.OfflineNoRoute) return
+        if (routingStatus.value is RoutingStatus.OfflineNoRoute) return false
         agentLoop.cancelCurrentTask()
         viewModelScope.launch {
             val sessionId = conversationRepository.ensureCurrentSessionId()
@@ -1046,6 +1061,7 @@ class ChatViewModel @Inject constructor(
                 .firstOrNull { it.id == sessionId }
             agentLoop.processQuery(newText, context, sessionId, configOverrideFor(session))
         }
+        return true
     }
 
     fun approvePlan(context: Context, grants: Set<String> = emptySet()) {

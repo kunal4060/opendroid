@@ -176,11 +176,15 @@ fun ChatScreen(
     // dashboard, so consuming here keeps the command behind the A5 lock
     // and on the exact same send path as typed input.
     val pendingAssistantQuery by viewModel.pendingAssistantQuery.collectAsState()
-    LaunchedEffect(pendingAssistantQuery) {
-        if (pendingAssistantQuery != null) {
-            viewModel.consumePendingAssistantQuery()?.let { query ->
-                viewModel.sendMessage(query, context)
-            }
+    // Audit-2 #11: dispatch FIRST, clear the parked slot only on success.
+    // Previously the slot was consumed before sendMessage ran and its
+    // Boolean result ignored, so a send refused by the offline guard
+    // silently destroyed the parked voice command. Keyed on routingStatus
+    // too, so when a route comes back the still-parked command is retried.
+    LaunchedEffect(pendingAssistantQuery, routingStatus) {
+        val query = pendingAssistantQuery ?: return@LaunchedEffect
+        if (viewModel.sendMessage(query, context)) {
+            viewModel.clearPendingAssistantQueryAfterDispatch(query)
         }
     }
     val currentSessionId = sessions.firstOrNull { it.isCurrent }?.id
@@ -254,10 +258,16 @@ fun ChatScreen(
         if (routingStatus is RoutingStatus.OfflineNoRoute) return
         val editing = editingMessageId
         if (editing != null) {
-            viewModel.editAndResend(editing, text, context)
-            editingMessageId = null
-            textBeforeEdit = ""
-            inputQuery = ""
+            // Audit-2 #13: clear the edit session and draft only when the
+            // resend was actually dispatched — editAndResend re-checks the
+            // no-route guard itself, and a refusal must leave the user
+            // exactly what they typed (the attachment branch below already
+            // honoured its Boolean this way).
+            if (viewModel.editAndResend(editing, text, context)) {
+                editingMessageId = null
+                textBeforeEdit = ""
+                inputQuery = ""
+            }
         } else if (hasAttachment) {
             // When this returns false the capability gate owns the outcome:
             // its dialog explains and offers a model switch while the draft
@@ -266,8 +276,12 @@ fun ChatScreen(
                 inputQuery = ""
             }
         } else {
-            viewModel.sendMessage(text, context)
-            inputQuery = ""
+            // Audit-2 #13: same rule for a plain send — a refused dispatch
+            // (routing flipped to OfflineNoRoute after the guard above ran)
+            // keeps the draft instead of discarding it without feedback.
+            if (viewModel.sendMessage(text, context)) {
+                inputQuery = ""
+            }
         }
     }
 
