@@ -31,6 +31,7 @@ import com.opendroid.ai.ui.theme.AppTheme
 import com.opendroid.ai.ui.theme.OpenDroidTheme
 import com.opendroid.ai.ui.theme.enableOpenDroidEdgeToEdge
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.MutableStateFlow
 import javax.inject.Inject
 
 // FragmentActivity (a ComponentActivity subclass) so BiometricPrompt can be
@@ -47,9 +48,18 @@ class MainActivity : FragmentActivity() {
 
     @Inject lateinit var pendingAssistantCommand: PendingAssistantCommand
 
+    /**
+     * C4 deep link: a scheduled-task notification carries the id of the
+     * chat session its run wrote into; when present, the dashboard opens
+     * that session. Held in a StateFlow so both the cold-start intent and
+     * onNewIntent (singleTask) reach the already-composed UI.
+     */
+    private val pendingOpenSessionId = MutableStateFlow<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableOpenDroidEdgeToEdge(isDarkTheme = true)
         super.onCreate(savedInstanceState)
+        pendingOpenSessionId.value = intent?.getStringExtra(EXTRA_OPEN_SESSION_ID)
 
         // Cold start: hand any external intent — an inbound share (C2) or a
         // widget/shortcut launch (C1); C7 rides the same path — to the one
@@ -78,6 +88,7 @@ class MainActivity : FragmentActivity() {
                 initial = com.opendroid.ai.data.models.LLMConfig()
             )
             val locked by appLockManager.isLocked.collectAsState()
+            val sessionToOpen by pendingOpenSessionId.collectAsState()
 
             // While locked, keep the recents thumbnail and screenshots blank.
             // The lock state is known before the first frame composes (cold
@@ -107,7 +118,7 @@ class MainActivity : FragmentActivity() {
                         // the gate (A5).
                         LockGate(appLockManager = appLockManager)
                     } else {
-                        OpenDroidNavigation()
+                        OpenDroidNavigation(initialSessionId = sessionToOpen)
                     }
                 }
             }
@@ -123,6 +134,7 @@ class MainActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        pendingOpenSessionId.value = intent.getStringExtra(EXTRA_OPEN_SESSION_ID)
         routeLaunchIntent(intent)
         handleAssistantLaunch(intent)
     }
@@ -178,6 +190,9 @@ class MainActivity : FragmentActivity() {
 
     companion object {
         private const val EXTRA_LAUNCH_ROUTED = "com.opendroid.ai.extra.LAUNCH_ROUTED"
+
+        /** Intent extra: open this chat session (used by C4 scheduled-task notifications). */
+        const val EXTRA_OPEN_SESSION_ID = "com.opendroid.ai.extra.OPEN_SESSION_ID"
     }
 }
 

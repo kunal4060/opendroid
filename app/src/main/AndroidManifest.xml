@@ -58,7 +58,9 @@
     <!-- Alarm Permissions -->
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
+    <!-- USE_EXACT_ALARM removed by C4: it is Play-policy restricted to
+         alarm-clock/calendar core-function apps. Scheduled tasks are built
+         on the grantable SCHEDULE_EXACT_ALARM + an inexact fallback. -->
 
     <application
         android:name=".OpenDroidApp"
@@ -238,6 +240,21 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- C4: scheduled-task alarm lane. Not exported: only this app's own
+             PendingIntents (and the system's exact-alarm permission-state
+             broadcast) can reach it. -->
+        <receiver
+            android:name=".core.schedule.ScheduledTaskReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.opendroid.ai.action.SCHEDULED_TASK_FIRE" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
             </intent-filter>
         </receiver>
 

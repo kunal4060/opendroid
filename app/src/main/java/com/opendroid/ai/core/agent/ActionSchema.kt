@@ -1003,6 +1003,37 @@ object ActionSchema {
             isSimple = false
         ),
         ActionDefinition(
+            name = "SCHEDULE_AGENT_TASK",
+            description = "Schedules an instruction (or a saved macro) to run automatically at a future time. The task really fires: it runs through the agent at that time and reports back. Use when the user asks for something to happen later or repeatedly (e.g. 'tomorrow at 7 AM check the rain', 'every day at 9 remind me...').",
+            params = listOf(
+                ParamDefinition("instruction", ParamType.STRING, false, "The instruction the agent should carry out when the task fires (omit when macroName is given)"),
+                ParamDefinition("macroName", ParamType.STRING, false, "Name of a saved macro to run instead of an instruction"),
+                ParamDefinition("time", ParamType.STRING, true, "Local fire time in HH:mm 24-hour format"),
+                ParamDefinition("recurrence", ParamType.STRING, false, "once (default), daily, weekdays, or weekly"),
+                ParamDefinition("date", ParamType.STRING, false, "For recurrence=once: the date as yyyy-MM-dd (defaults to today if the time is ahead, else tomorrow)"),
+                ParamDefinition("dayOfWeek", ParamType.STRING, false, "For recurrence=weekly: day of week, 1=Monday .. 7=Sunday")
+            ),
+            examples = listOf("tomorrow at 7 AM check if it will rain", "schedule a daily briefing at 9"),
+            category = ActionCategory.MACRO,
+            isSimple = false
+        ),
+        ActionDefinition(
+            name = "LIST_SCHEDULED_TASKS",
+            description = "Lists the user's scheduled agent tasks and when they next run",
+            params = emptyList(),
+            examples = listOf("what tasks have I scheduled", "list my scheduled tasks"),
+            category = ActionCategory.MACRO
+        ),
+        ActionDefinition(
+            name = "CANCEL_SCHEDULED_TASK",
+            description = "Cancels a scheduled agent task so it will not fire",
+            params = listOf(ParamDefinition("task", ParamType.STRING, true, "The scheduled task's id or label")),
+            examples = listOf("cancel my 7 AM rain check", "stop the scheduled briefing"),
+            category = ActionCategory.MACRO,
+            isSimple = false,
+            neverAutoApprove = true
+        ),
+        ActionDefinition(
             name = "DELETE_MACRO",
             description = "Deletes a saved macro",
             params = listOf(ParamDefinition("macroName", ParamType.STRING, true, "Macro name")),
