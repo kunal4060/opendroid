@@ -6,6 +6,7 @@ import android.speech.tts.TextToSpeech
 import com.opendroid.ai.data.repository.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
@@ -25,6 +26,15 @@ class TextToSpeechEngine(
     private var isInitialized = false
     private val client = OkHttpClient()
     private val scope = CoroutineScope(Dispatchers.IO)
+
+    /**
+     * Set by [destroy]. The blocking ElevenLabs download cannot be
+     * interrupted by scope cancellation alone, so in-flight work re-checks
+     * this before creating a player — otherwise speech would start
+     * playing from an engine whose owner believes it is gone (finding #3).
+     */
+    @Volatile
+    private var destroyed = false
     private var mediaPlayer: MediaPlayer? = null
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
@@ -82,6 +92,7 @@ class TextToSpeechEngine(
 
     fun speak(text: String) {
         scope.launch {
+            if (destroyed) return@launch
             val config = settingsRepository.llmConfig.first()
             val apiKey = config.elevenLabsApiKey
             val voiceId = config.elevenLabsVoiceId.ifEmpty { "21m00Tcm4TlvDq8ikWAM" } // default Rachel voice
@@ -94,6 +105,10 @@ class TextToSpeechEngine(
                     // Fallback to local TTS if ElevenLabs fails
                 }
             }
+
+            // Destroyed while the ElevenLabs attempt was in flight: the
+            // fallback must not speak either.
+            if (destroyed) return@launch
 
             // Local fallback — must run on main thread
             if (isInitialized) {
@@ -150,6 +165,10 @@ class TextToSpeechEngine(
                 body.byteStream().copyTo(fos)
             }
 
+            // destroy() may have run while the (blocking) download was in
+            // flight — never create a player on a destroyed engine.
+            if (destroyed) return false
+
             mediaPlayer?.release()
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(tempFile.absolutePath)
@@ -171,6 +190,11 @@ class TextToSpeechEngine(
     }
 
     fun destroy() {
+        destroyed = true
+        // Cancel pending speaks; an in-flight blocking download still
+        // finishes its network call but hits the destroyed checks above
+        // and never reaches a MediaPlayer.
+        scope.cancel()
         tts?.shutdown()
         tts = null
         mediaPlayer?.release()

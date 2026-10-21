@@ -36,6 +36,14 @@ class LegacySpeechWakeEngine(private val context: Context) : KeywordSpotterEngin
 
     @Volatile private var isListening = false
 
+    /**
+     * Consecutive times listening could not even start (no recognition
+     * service / recogniser creation failed). Past a small bound the
+     * engine gives up into the Error state instead of polling forever
+     * while claiming to be "Listening" (finding #4).
+     */
+    private var consecutiveStartFailures = 0
+
     private val handler = Handler(Looper.getMainLooper())
     private val restartRunnable = Runnable { startSpeechListening() }
 
@@ -55,6 +63,7 @@ class LegacySpeechWakeEngine(private val context: Context) : KeywordSpotterEngin
         if (isListening) return
         this.onDetected = onDetected
         isListening = true
+        consecutiveStartFailures = 0
         WakeWordStatus.publish(
             WakeWordEngineState.Listening, kind,
             "Legacy engine: the system speech recogniser does the listening — " +
@@ -68,13 +77,13 @@ class LegacySpeechWakeEngine(private val context: Context) : KeywordSpotterEngin
         cleanupRecognizer()
 
         if (!SpeechRecognizer.isRecognitionAvailable(context)) {
-            scheduleRestart()
+            noteStartFailure()
             return
         }
         speechRecognizer = try {
             SpeechRecognizer.createSpeechRecognizer(context)
         } catch (_: Exception) {
-            scheduleRestart()
+            noteStartFailure()
             return
         }
 
@@ -102,9 +111,36 @@ class LegacySpeechWakeEngine(private val context: Context) : KeywordSpotterEngin
 
         try {
             speechRecognizer?.startListening(intent)
+            // Listening actually started — earlier start failures were
+            // transient, so the give-up counter starts over.
+            consecutiveStartFailures = 0
         } catch (_: Exception) {
-            scheduleRestart()
+            noteStartFailure()
         }
+    }
+
+    /**
+     * Counts a failure to even start listening. The first few retry on
+     * the usual 1 s loop (a recogniser can be briefly unavailable while
+     * another app holds it); past [MAX_START_FAILURES] the failure is
+     * clearly permanent on this device, so the engine stops retrying and
+     * says so instead of polling silently forever.
+     */
+    private fun noteStartFailure() {
+        consecutiveStartFailures++
+        if (consecutiveStartFailures < MAX_START_FAILURES) {
+            scheduleRestart()
+            return
+        }
+        isListening = false
+        handler.removeCallbacks(restartRunnable)
+        cleanupRecognizer()
+        WakeWordStatus.publish(
+            WakeWordEngineState.Error(
+                "Legacy wake word unavailable: this device has no working speech recognition service"
+            ),
+            kind
+        )
     }
 
     private fun handleMatches(matches: ArrayList<String>?) {
@@ -158,5 +194,8 @@ class LegacySpeechWakeEngine(private val context: Context) : KeywordSpotterEngin
 
     private companion object {
         const val RESTART_DELAY_MS = 1000L
+
+        /** Start failures tolerated (with 1 s retries) before giving up. */
+        const val MAX_START_FAILURES = 3
     }
 }
