@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,6 +37,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Share
@@ -68,6 +70,7 @@ import com.opendroid.ai.core.agent.ChatErrorUiState
 import com.opendroid.ai.core.agent.guidance
 import com.opendroid.ai.core.agent.primaryAction
 import com.opendroid.ai.core.agent.title
+import com.opendroid.ai.core.intent.ExternalLaunch
 import com.opendroid.ai.core.llm.RoutingStatus
 import com.opendroid.ai.core.voice.SpeechRecognitionEngine
 import com.opendroid.ai.data.export.ChatExportFormat
@@ -122,6 +125,11 @@ fun ChatScreen(
     // A10 limited state: no usable provider configured (e.g. onboarding's
     // provider stage was skipped) — the banner stays until setup exists.
     val providerSetupNeeded by viewModel.providerSetupNeeded.collectAsState()
+    // C2 inbound shares: draft staged by an accepted share, its pending
+    // image attachments, and the notice for a share that carried nothing.
+    val pendingComposerDraft by viewModel.pendingComposerDraft.collectAsState()
+    val pendingSharedImages by viewModel.pendingSharedImages.collectAsState()
+    val shareNotice by viewModel.shareNotice.collectAsState()
     val currentSessionId = sessions.firstOrNull { it.isCurrent }?.id
     val runningElsewhere = runningSessionId != null && runningSessionId != currentSessionId
 
@@ -191,6 +199,39 @@ fun ChatScreen(
             viewModel.sendMessage(text, context)
         }
         inputQuery = ""
+    }
+
+    // Inbound shares (C2): MainActivity publishes share intents to the
+    // intent router; this screen collects them. ChatScreen only composes
+    // once MainActivity has unlocked (A5) and the NavHost has routed past
+    // splash/onboarding, so a share can never stage content behind the lock
+    // or fight the entry flow — the router's replay holds it until then.
+    // The claim keeps a recomposition from handling one share twice.
+    LaunchedEffect(viewModel) {
+        viewModel.externalLaunches.collect { launch ->
+            if (viewModel.claimExternalLaunch(launch)) {
+                when (launch) {
+                    is ExternalLaunch.SharedContent -> viewModel.acceptSharedContent(launch)
+                }
+            }
+        }
+    }
+
+    // Moves a staged share draft into the composer: fills an empty composer
+    // outright, appends below anything the user already typed rather than
+    // clobbering it.
+    var lastAppliedShareDraft by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(pendingComposerDraft) {
+        val draft = pendingComposerDraft ?: return@LaunchedEffect
+        if (draft != lastAppliedShareDraft) {
+            inputQuery = if (inputQuery.isBlank()) {
+                draft
+            } else {
+                inputQuery.trimEnd() + "\n" + draft
+            }
+            lastAppliedShareDraft = draft
+        }
+        viewModel.consumeComposerDraft()
     }
 
     // System file picker for the export destination (SAF — no storage
@@ -625,6 +666,76 @@ fun ChatScreen(
                                 modifier = Modifier
                                     .size(16.dp)
                                     .clickable { cancelEditingMessage() }
+                            )
+                        }
+                    }
+                    // C2: shared images staged as pending attachments for
+                    // the next sent message; each chip can be removed (which
+                    // also deletes the private copy).
+                    if (pendingSharedImages.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 4.dp, bottom = 6.dp)
+                                .horizontalScroll(rememberScrollState()),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Image,
+                                contentDescription = null,
+                                tint = AccentCyan,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            pendingSharedImages.forEach { image ->
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(CardBackground)
+                                        .border(1.dp, BorderColor, RoundedCornerShape(12.dp))
+                                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = image.displayName,
+                                        fontSize = 11.sp,
+                                        color = TextPrimary,
+                                        maxLines = 1
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Remove shared image",
+                                        tint = TextSecondary,
+                                        modifier = Modifier
+                                            .size(14.dp)
+                                            .clickable { viewModel.removePendingSharedImage(image) }
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(6.dp))
+                            }
+                        }
+                    }
+                    if (shareNotice != null) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 4.dp, bottom = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = shareNotice.orEmpty(),
+                                fontSize = 11.sp,
+                                color = AccentCyan,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Dismiss",
+                                tint = TextSecondary,
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .clickable { viewModel.dismissShareNotice() }
                             )
                         }
                     }

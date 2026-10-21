@@ -79,15 +79,36 @@
             android:foregroundServiceType="dataSync"
             tools:node="merge" />
 
+        <!-- singleTask: warm external intents (shares, widget taps, assistant
+             invocations) arrive via onNewIntent on the one running instance
+             instead of stacking duplicate activities (Batch C plumbing). -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize"
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Inbound share target (C2): "Share to OpenDroid" for text,
+                 links (browsers send the URL as text + the page title as the
+                 subject) and images. Received shares land in a new chat as a
+                 prefilled draft plus pending attachments — never auto-sent.
+                 One filter lists both actions; the platform matches any
+                 listed action against any listed mime type. -->
+            <intent-filter android:label="Ask OpenDroid">
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <!-- App shortcuts + the Direct Share target (res/xml/shortcuts.xml). -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
         <provider

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    App shortcuts + share targets for MainActivity (referenced by the
+    android.app.shortcuts meta-data in AndroidManifest.xml).
+
+    This file currently carries only C2's Direct Share target. C1 owns the
+    static <shortcut> entries (voice command / new chat / morning briefing)
+    and adds them here — merge as a union of both.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Direct Share target (C2): pairs with the long-lived dynamic shortcut
+         published by SharingShortcutPublisher (same category) so OpenDroid can
+         surface in the Direct Share row of other apps' share sheets. -->
+    <share-target android:targetClass="com.opendroid.ai.MainActivity">
+        <data android:mimeType="text/plain" />
+        <category android:name="com.opendroid.ai.category.ASK_AGENT" />
+    </share-target>
+
+</shortcuts>

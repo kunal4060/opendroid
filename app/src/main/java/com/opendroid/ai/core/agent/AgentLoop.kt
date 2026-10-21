@@ -230,7 +230,8 @@ class AgentLoop @Inject constructor(
         query: String,
         context: Context,
         explicitSessionId: String? = null,
-        configOverride: LLMConfig? = null
+        configOverride: LLMConfig? = null,
+        attachedImageBase64: String? = null
     ) {
         // processQuery is also the delivery path for a reply to a pending
         // awaitUserResponse() prompt (see below). That's ONLY true when this message comes
@@ -292,13 +293,16 @@ class AgentLoop @Inject constructor(
                     null
                 }
 
-                // Save user message
+                // Save user message. An image the user explicitly attached
+                // (today: a shared image staged by C2) wins over the
+                // on-demand screenshot — it is the attachment they meant to
+                // send; the two never combine into one message.
                 val userMsg = ChatMessage(
                     id = UUID.randomUUID().toString(),
                     text = query,
                     sender = ChatMessage.Sender.USER,
                     modelBadge = null,
-                    imageBase64 = screenshotBase64
+                    imageBase64 = attachedImageBase64 ?: screenshotBase64
                 )
                 memoryManager.storeMessage(userMsg, sessionId)
                 conversationRepository.insertMessage(sessionId, userMsg)

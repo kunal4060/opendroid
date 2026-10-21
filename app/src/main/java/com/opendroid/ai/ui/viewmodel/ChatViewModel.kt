@@ -11,11 +11,16 @@ import com.opendroid.ai.core.llm.RoutingStatusRepository
 import com.opendroid.ai.core.agent.ChatErrorPrimaryAction
 import com.opendroid.ai.core.agent.ChatErrorUiState
 import com.opendroid.ai.core.agent.primaryAction
+import com.opendroid.ai.core.intent.ExternalIntentRouter
+import com.opendroid.ai.core.intent.ExternalLaunch
 import com.opendroid.ai.core.llm.ModelFetchOutcome
 import com.opendroid.ai.core.llm.ModelFetcher
 import com.opendroid.ai.core.llm.OnDeviceBackend
 import com.opendroid.ai.core.llm.OnDeviceModelRegistry
 import com.opendroid.ai.core.llm.ProviderCatalog
+import com.opendroid.ai.core.share.SharedContent
+import com.opendroid.ai.core.share.SharedImageRef
+import com.opendroid.ai.core.share.SharedImageStore
 import com.opendroid.ai.data.db.entities.ModelEntity
 import com.opendroid.ai.data.db.entities.ModelStatus
 import com.opendroid.ai.data.models.AutoMode
@@ -36,7 +41,9 @@ import com.opendroid.ai.ui.components.ModelPickerUiState
 import com.opendroid.ai.ui.components.PickerModelOption
 import com.opendroid.ai.ui.components.PickerProviderOption
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.StateFlow
@@ -44,6 +51,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltViewModel
@@ -55,7 +63,9 @@ class ChatViewModel @Inject constructor(
     private val modelFetcher: dagger.Lazy<ModelFetcher>,
     private val routingStatusRepository: RoutingStatusRepository,
     private val providerSetupReadiness: ProviderSetupReadiness,
-    private val textToSpeechEngine: com.opendroid.ai.core.voice.TextToSpeechEngine
+    private val textToSpeechEngine: com.opendroid.ai.core.voice.TextToSpeechEngine,
+    private val externalIntentRouter: ExternalIntentRouter,
+    private val sharedImageStore: SharedImageStore
 ) : ViewModel() {
 
     val llmConfig: StateFlow<LLMConfig> = settingsRepository.llmConfig
@@ -71,6 +81,77 @@ class ChatViewModel @Inject constructor(
     val providerSetupNeeded: StateFlow<Boolean> = providerSetupReadiness.canAnswer
         .map { canAnswer -> !canAnswer }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    // ── Inbound shares (C2) ────────────────────────────────────────────
+    // MainActivity publishes share intents to the router; ChatScreen
+    // collects this flow — and ChatScreen only composes once the A5 lock
+    // gate and the splash/onboarding routing have resolved, so shared
+    // content can never be staged behind the lock or ahead of onboarding.
+
+    /** External launches to consume (shares today; C1/C3/C7 ride the same router). */
+    val externalLaunches: SharedFlow<ExternalLaunch> = externalIntentRouter.launches
+
+    /** Claims [launch] for handling; false when another consumer already took it. */
+    fun claimExternalLaunch(launch: ExternalLaunch): Boolean =
+        externalIntentRouter.claim(launch)
+
+    /** Draft staged by an accepted share; ChatScreen moves it into the composer once. */
+    private val _pendingComposerDraft = MutableStateFlow<String?>(null)
+    val pendingComposerDraft: StateFlow<String?> = _pendingComposerDraft
+
+    /** Shared images waiting to ride the user's next sent message in this chat. */
+    private val _pendingSharedImages = MutableStateFlow<List<SharedImageRef>>(emptyList())
+    val pendingSharedImages: StateFlow<List<SharedImageRef>> = _pendingSharedImages
+
+    /** One-line notice about a share (e.g. a share that carried no content at all). */
+    private val _shareNotice = MutableStateFlow<String?>(null)
+    val shareNotice: StateFlow<String?> = _shareNotice
+
+    /**
+     * Stages a share into a brand-new chat: image streams are copied into
+     * app-private storage first (the sender's grant is temporary), then the
+     * chat is created and the share's text becomes the composer draft with
+     * the images pending as attachments. Nothing is sent — the user still
+     * writes (or edits) the instruction and hits send themselves, and the
+     * usual approval modes apply to whatever the agent then does.
+     */
+    fun acceptSharedContent(launch: ExternalLaunch.SharedContent) {
+        val parsed = launch.parsed
+        viewModelScope.launch {
+            val images = withContext(Dispatchers.IO) {
+                parsed.streamUris.mapNotNull { uri ->
+                    sharedImageStore.importImage(uri, parsed.declaredMimeType)
+                }
+            }
+            val content = SharedContent.fromRaw(parsed.text, parsed.subject, images)
+            if (content.isEmpty) {
+                _shareNotice.value = "That share didn't include any text or images."
+                return@launch
+            }
+            conversationRepository.createSession(content.suggestedSessionTitle())
+            // A second share arriving before the first is sent keeps the
+            // earlier images pending too rather than silently dropping them.
+            _pendingSharedImages.value = _pendingSharedImages.value + images
+            _pendingComposerDraft.value = content.composerPrefill()
+        }
+    }
+
+    /** Marks the staged draft as moved into the composer. */
+    fun consumeComposerDraft() {
+        _pendingComposerDraft.value = null
+    }
+
+    /** Removes a pending shared image (chip dismissed) and deletes its private copy. */
+    fun removePendingSharedImage(image: SharedImageRef) {
+        _pendingSharedImages.value = _pendingSharedImages.value - image
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { sharedImageStore.delete(image) }
+        }
+    }
+
+    fun dismissShareNotice() {
+        _shareNotice.value = null
+    }
 
     // Scoped to whichever session is current; re-collects automatically when the
     // user switches chats since the repository's flow is driven off the same
@@ -613,7 +694,33 @@ class ChatViewModel @Inject constructor(
         if (routingStatus.value is RoutingStatus.OfflineNoRoute) return false
         val sessionId = pinTaskSessionSnapshot()
         val session = sessions.value.firstOrNull { it.id == sessionId }
-        agentLoop.processQuery(query, context, sessionId, configOverrideFor(session))
+        val pendingImages = _pendingSharedImages.value
+        if (pendingImages.isEmpty()) {
+            agentLoop.processQuery(query, context, sessionId, configOverrideFor(session))
+            return true
+        }
+        // Shared images are pending (C2): the first rides this message
+        // through the providers' existing imageBase64 channel; any others
+        // are named in an appended note so the transcript stays honest about
+        // what was shared. The private copies exist only to serve this send
+        // and are deleted once it has consumed them. (Multi-image and
+        // persisted attachments are B1's attachment-persistence work.)
+        _pendingSharedImages.value = emptyList()
+        val configOverride = configOverrideFor(session)
+        viewModelScope.launch {
+            val base64 = withContext(Dispatchers.IO) {
+                sharedImageStore.loadBase64(pendingImages.first())
+            }
+            val note = SharedContent.additionalImagesNote(pendingImages)
+            val finalQuery = if (note != null) "$query\n$note" else query
+            agentLoop.processQuery(
+                finalQuery, context, sessionId, configOverride,
+                attachedImageBase64 = base64
+            )
+            withContext(Dispatchers.IO) {
+                pendingImages.forEach { sharedImageStore.delete(it) }
+            }
+        }
         return true
     }
 
