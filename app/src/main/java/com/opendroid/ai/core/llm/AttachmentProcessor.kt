@@ -8,7 +8,7 @@ import android.provider.OpenableColumns
 import android.util.Base64
 import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
-import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.util.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import dagger.hilt.android.qualifiers.ApplicationContext
