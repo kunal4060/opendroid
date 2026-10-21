@@ -253,7 +253,11 @@ object GraphRenderModel {
                 it.sourceId in keptIds && it.targetId in keptIds &&
                     it.sourceId != it.targetId
             }
-            .distinct()
+            // Dedup by (source, target, type) — the same identity
+            // PersonalKnowledgeGraph.addRelation uses. Full-object distinct()
+            // let an imported triple with two different weights through as
+            // two edges (duplicate "Connections" rows, double-drawn edges).
+            .distinctBy { Triple(it.sourceId, it.targetId, it.relationType) }
         return VisibleGraph(
             nodes = kept,
             edges = edges,
