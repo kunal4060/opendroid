@@ -10,6 +10,8 @@ import com.opendroid.ai.data.repository.SettingsRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
@@ -43,6 +45,14 @@ class LiteRTLMProvider @Inject constructor(
 ) : LLMProvider {
 
     private var cachedEngine: Engine? = null
+
+    /**
+     * Serializes conversation use on the shared cached engine across the
+     * synchronous ([invokeLiteRTInference]) and streaming paths. A coroutine
+     * Mutex, not the monitor: the streaming path suspends while collecting,
+     * which a synchronized block cannot span.
+     */
+    private val conversationMutex = Mutex()
     private var cachedModelPath: String? = null
     private val artifactVerifier = ModelArtifactVerifier(
         hashVerifier = CachingFileHashVerifier()
@@ -152,7 +162,9 @@ class LiteRTLMProvider @Inject constructor(
                         ?: emptyList()
                 )
 
-                val outputText = invokeLiteRTInference(modelPath, spec, prompt, request.maxTokens, request.temperature)
+                val outputText = conversationMutex.withLock {
+                    invokeLiteRTInference(modelPath, spec, prompt, request.maxTokens, request.temperature)
+                }
 
                 LLMResponse(
                     content = outputText,
@@ -199,10 +211,10 @@ class LiteRTLMProvider @Inject constructor(
             )
             val conversationConfig = ConversationConfig(samplerConfig = samplerConfig)
 
-            // Conversation use on the shared cached engine must hold the same
-            // monitor as the @Synchronized synchronous path: two live
+            // Conversation use on the shared cached engine is serialized
+            // with the synchronous path through conversationMutex: two live
             // conversations on one native engine can crash the runtime.
-            synchronized(this) {
+            conversationMutex.withLock {
                 val conversation = engine.createConversation(conversationConfig)
                 try {
                     conversation.sendMessageAsync(prompt).collect { msg ->
@@ -238,7 +250,9 @@ class LiteRTLMProvider @Inject constructor(
             val systemPrompt = "You are an autonomous AI agent for Android."
             val prompt = buildPrompt(systemPrompt, messages, tools)
 
-            val result = invokeLiteRTInference(modelPath, spec, prompt, 2000, 0.7f)
+            val result = conversationMutex.withLock {
+                invokeLiteRTInference(modelPath, spec, prompt, 2000, 0.7f)
+            }
             emit(StreamChunk.Content(result))
 
             // Attempt tool call extraction from JSON response
