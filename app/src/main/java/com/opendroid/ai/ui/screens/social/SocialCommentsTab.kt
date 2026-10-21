@@ -16,12 +16,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.opendroid.ai.social.core.ai.SuggestedReply
 import com.opendroid.ai.social.domain.model.*
+import com.opendroid.ai.ui.components.StatusBadge
 import com.opendroid.ai.ui.theme.AppTheme
 import java.text.SimpleDateFormat
 import java.util.*
@@ -64,8 +64,8 @@ fun SocialCommentsTab(
                         onClick = { showOnlyUnanswered = true },
                         label = { Text("Unanswered (${unansweredComments.size})", fontSize = 12.sp) },
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = theme.accentCyan.copy(alpha = 0.2f),
-                            selectedLabelColor = theme.accentCyan
+                            selectedContainerColor = theme.accentContainer,
+                            selectedLabelColor = theme.onAccentContainer
                         )
                     )
 
@@ -74,8 +74,8 @@ fun SocialCommentsTab(
                         onClick = { showOnlyUnanswered = false },
                         label = { Text("All Comments (${comments.size})", fontSize = 12.sp) },
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = theme.accentCyan.copy(alpha = 0.2f),
-                            selectedLabelColor = theme.accentCyan
+                            selectedContainerColor = theme.accentContainer,
+                            selectedLabelColor = theme.onAccentContainer
                         )
                     )
                 }
@@ -91,8 +91,8 @@ fun SocialCommentsTab(
                             onClick = { selectedPlatform = null },
                             label = { Text("All Platforms", fontSize = 11.sp) },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = theme.surface,
-                                selectedLabelColor = theme.textPrimary
+                                selectedContainerColor = theme.accentContainer,
+                                selectedLabelColor = theme.onAccentContainer
                             )
                         )
                     }
@@ -105,8 +105,8 @@ fun SocialCommentsTab(
                                 onClick = { selectedPlatform = platform },
                                 label = { Text("${platform.displayName} ($count)", fontSize = 11.sp) },
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = theme.surface,
-                                    selectedLabelColor = theme.textPrimary
+                                    selectedContainerColor = theme.accentContainer,
+                                    selectedLabelColor = theme.onAccentContainer
                                 )
                             )
                         }
@@ -126,21 +126,20 @@ fun SocialCommentsTab(
                         Icon(
                             Icons.Default.QuestionAnswer,
                             contentDescription = null,
-                            tint = theme.textSecondary.copy(alpha = 0.4f),
+                            tint = theme.textTertiary,
                             modifier = Modifier.size(52.dp)
                         )
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
                             if (showOnlyUnanswered) "All Caught Up!" else "No Comments Found",
                             color = theme.textPrimary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
+                            style = MaterialTheme.typography.titleSmall
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             if (showOnlyUnanswered) "Every audience comment has been answered or reviewed." else "No comments matching selected filter.",
                             color = theme.textSecondary,
-                            fontSize = 12.sp
+                            style = MaterialTheme.typography.bodySmall
                         )
                     }
                 }
@@ -176,8 +175,8 @@ private fun CommentReviewCard(
 
     Card(
         modifier = Modifier.fillMaxWidth()
-            .border(1.dp, theme.borderColor, RoundedCornerShape(16.dp)),
-        shape = RoundedCornerShape(16.dp),
+            .border(1.dp, theme.borderColor, RoundedCornerShape(18.dp)),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -187,13 +186,13 @@ private fun CommentReviewCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
-                    modifier = Modifier.size(32.dp).clip(CircleShape).background(theme.surface)
+                    modifier = Modifier.size(32.dp).clip(CircleShape).background(theme.surfaceRaised)
                         .border(0.5.dp, theme.borderColor, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         comment.authorName.take(1).uppercase(),
-                        color = theme.accentCyan,
+                        color = theme.accentNeonGreen,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp
                     )
@@ -205,17 +204,24 @@ private fun CommentReviewCard(
                     Text(
                         comment.authorName,
                         color = theme.textPrimary,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.sp
+                        style = MaterialTheme.typography.titleSmall
                     )
                     Text(
                         "${comment.platform.displayName} • $timeFormatted",
-                        color = theme.textSecondary,
-                        fontSize = 10.sp
+                        color = theme.textTertiary,
+                        style = MaterialTheme.typography.labelMedium
                     )
                 }
 
-                CommentStatusBadge(comment.replyStatus)
+                // Shared badge (unit 5A): same label -> colour meaning, mapped to tokens.
+                val (badgeLabel, badgeColor) = when (comment.replyStatus) {
+                    CommentReplyStatus.NONE -> "PENDING" to theme.textSecondary
+                    CommentReplyStatus.SUGGESTED -> "SUGGESTED" to theme.accentOrange
+                    CommentReplyStatus.APPROVED -> "APPROVED" to theme.success
+                    CommentReplyStatus.REPLIED -> "REPLIED" to theme.success
+                    CommentReplyStatus.IGNORED -> "DISMISSED" to theme.textSecondary
+                }
+                StatusBadge(label = badgeLabel, color = badgeColor)
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -224,8 +230,7 @@ private fun CommentReviewCard(
             Text(
                 comment.content,
                 color = theme.textPrimary,
-                fontSize = 13.sp,
-                lineHeight = 18.sp
+                style = MaterialTheme.typography.bodyMedium
             )
 
             // If already answered, show the reply
@@ -235,13 +240,13 @@ private fun CommentReviewCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
-                        .background(theme.surface)
+                        .background(theme.surfaceSunken)
                         .padding(10.dp)
                 ) {
                     Column {
-                        Text("Replied:", color = theme.textSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Text("Replied:", color = theme.textTertiary, style = MaterialTheme.typography.labelMedium)
                         Spacer(modifier = Modifier.height(2.dp))
-                        Text(comment.actualReply, color = theme.textPrimary, fontSize = 12.sp)
+                        Text(comment.actualReply, color = theme.textPrimary, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -255,8 +260,8 @@ private fun CommentReviewCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(10.dp))
-                        .background(theme.surface)
-                        .border(0.5.dp, theme.accentCyan.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                        .background(theme.surfaceSunken)
+                        .border(0.5.dp, theme.borderStrong, RoundedCornerShape(10.dp))
                         .padding(10.dp)
                 ) {
                     Column {
@@ -266,18 +271,18 @@ private fun CommentReviewCard(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = theme.accentCyan, modifier = Modifier.size(13.dp))
+                                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = theme.accentNeonGreen, modifier = Modifier.size(13.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Grounded AI Reply Draft", color = theme.accentCyan, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("Grounded AI Reply Draft", color = theme.accentNeonGreen, style = MaterialTheme.typography.labelMedium)
                             }
 
                             if (isGeneratingReply) {
-                                CircularProgressIndicator(modifier = Modifier.size(14.dp), color = theme.accentCyan, strokeWidth = 1.5.dp)
+                                CircularProgressIndicator(modifier = Modifier.size(14.dp), color = theme.accentNeonGreen, strokeWidth = 1.5.dp)
                             } else {
                                 Text(
                                     "Regenerate",
                                     color = theme.textSecondary,
-                                    fontSize = 10.sp,
+                                    style = MaterialTheme.typography.labelMedium,
                                     modifier = Modifier.clickable {
                                         isGeneratingReply = true
                                         onGenerateReply { suggested ->
@@ -300,16 +305,18 @@ private fun CommentReviewCard(
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = theme.textPrimary,
                                 unfocusedTextColor = theme.textPrimary,
-                                focusedBorderColor = theme.accentCyan,
-                                unfocusedBorderColor = theme.borderColor
+                                focusedBorderColor = theme.accentNeonGreen,
+                                unfocusedBorderColor = theme.borderColor,
+                                focusedContainerColor = theme.surfaceRaised,
+                                unfocusedContainerColor = theme.surfaceRaised
                             )
                         )
 
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             "Grounded strictly in verified OpenDroid facts. Anti-hallucination active.",
-                            color = theme.textSecondary,
-                            fontSize = 9.sp
+                            color = theme.textTertiary,
+                            style = MaterialTheme.typography.labelSmall
                         )
                     }
                 }
@@ -336,35 +343,14 @@ private fun CommentReviewCard(
                             }
                         },
                         enabled = replyText.isNotBlank(),
-                        colors = ButtonDefaults.buttonColors(containerColor = theme.accentCyan),
+                        colors = ButtonDefaults.buttonColors(containerColor = theme.accentGreenButton, contentColor = theme.onAccent),
                         shape = RoundedCornerShape(12.dp),
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)
                     ) {
-                        Text("Approve & Reply", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("Approve & Reply", color = theme.onAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun CommentStatusBadge(status: CommentReplyStatus) {
-    val theme = AppTheme.colors
-    val (color, text) = when (status) {
-        CommentReplyStatus.NONE -> theme.textSecondary to "PENDING"
-        CommentReplyStatus.SUGGESTED -> theme.accentOrange to "SUGGESTED"
-        CommentReplyStatus.APPROVED -> theme.accentCyan to "APPROVED"
-        CommentReplyStatus.REPLIED -> theme.accentCyan to "REPLIED"
-        CommentReplyStatus.IGNORED -> theme.textSecondary to "DISMISSED"
-    }
-
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(color.copy(alpha = 0.15f))
-            .padding(horizontal = 6.dp, vertical = 2.dp)
-    ) {
-        Text(text, color = color, fontSize = 8.sp, fontWeight = FontWeight.Bold)
     }
 }

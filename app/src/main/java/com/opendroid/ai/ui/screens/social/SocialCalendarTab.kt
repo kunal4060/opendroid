@@ -22,6 +22,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.opendroid.ai.social.domain.model.*
 import com.opendroid.ai.ui.theme.AppTheme
+import com.opendroid.ai.ui.theme.JetBrainsMonoFamily
+import com.opendroid.ai.ui.theme.MonoMedium
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -88,8 +90,8 @@ fun SocialCalendarTab(
         item {
             Card(
                 modifier = Modifier.fillMaxWidth()
-                    .border(1.dp, theme.borderColor, RoundedCornerShape(16.dp)),
-                shape = RoundedCornerShape(16.dp),
+                    .border(1.dp, theme.borderColor, RoundedCornerShape(18.dp)),
+                shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
@@ -98,9 +100,9 @@ fun SocialCalendarTab(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Schedule Horizon", color = theme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text("Schedule Horizon", color = theme.textPrimary, style = MaterialTheme.typography.titleSmall)
                         val totalScheduled = posts.count { it.status == PostStatus.SCHEDULED }
-                        Text("$totalScheduled total queued", color = theme.accentCyan, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        Text("$totalScheduled total queued", color = theme.accentNeonGreen, style = MonoMedium)
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -140,25 +142,24 @@ fun SocialCalendarTab(
                     Text(
                         if (selectedDay.isToday) "Today's Schedule" else "${selectedDay.dayOfWeek}, ${selectedDay.dayOfMonth}",
                         color = theme.textPrimary,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
+                        style = MaterialTheme.typography.titleMedium
                     )
                     Text(
                         "${scheduledPosts.size} posts scheduled for this day",
-                        color = theme.textSecondary,
-                        fontSize = 11.sp
+                        color = theme.textTertiary,
+                        style = MaterialTheme.typography.labelMedium
                     )
                 }
 
                 Button(
                     onClick = onNavigateToComposer,
-                    colors = ButtonDefaults.buttonColors(containerColor = theme.accentCyan),
+                    colors = ButtonDefaults.buttonColors(containerColor = theme.accentGreenButton, contentColor = theme.onAccent),
                     shape = RoundedCornerShape(16.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Add, contentDescription = null, tint = theme.onAccent, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Schedule Post", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("Schedule Post", color = theme.onAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -174,21 +175,20 @@ fun SocialCalendarTab(
                         Icon(
                             Icons.Default.EventNote,
                             contentDescription = null,
-                            tint = theme.textSecondary.copy(alpha = 0.4f),
+                            tint = theme.textTertiary,
                             modifier = Modifier.size(52.dp)
                         )
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
                             "No Posts Scheduled",
                             color = theme.textPrimary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
+                            style = MaterialTheme.typography.titleSmall
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             "Tap 'Schedule Post' to queue content for this date.",
                             color = theme.textSecondary,
-                            fontSize = 12.sp
+                            style = MaterialTheme.typography.bodySmall
                         )
                     }
                 }
@@ -240,11 +240,11 @@ private fun DayCard(
             .width(52.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(
-                if (isSelected) theme.accentCyan else theme.surface
+                if (isSelected) theme.accentContainer else theme.surface
             )
             .border(
                 1.dp,
-                if (isSelected) theme.accentCyan else theme.borderColor,
+                if (isSelected) theme.accentNeonGreen else theme.borderColor,
                 RoundedCornerShape(12.dp)
             )
             .clickable { onClick() }
@@ -254,14 +254,14 @@ private fun DayCard(
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 day.dayOfWeek,
-                color = if (isSelected) Color.Black else theme.textSecondary,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium
+                color = if (isSelected) theme.onAccentContainer else theme.textTertiary,
+                style = MaterialTheme.typography.labelMedium
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 day.dayOfMonth,
-                color = if (isSelected) Color.Black else theme.textPrimary,
+                color = if (isSelected) theme.onAccentContainer else theme.textPrimary,
+                fontFamily = JetBrainsMonoFamily,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -275,8 +275,8 @@ private fun DayCard(
                     .clip(CircleShape)
                     .background(
                         when {
-                            hasPosts && isSelected -> Color.Black
-                            hasPosts -> theme.accentCyan
+                            hasPosts && isSelected -> theme.onAccentContainer
+                            hasPosts -> theme.accentNeonGreen
                             else -> Color.Transparent
                         }
                     )
@@ -298,8 +298,8 @@ private fun ScheduledPostCard(
 
     Card(
         modifier = Modifier.fillMaxWidth()
-            .border(1.dp, theme.borderColor, RoundedCornerShape(16.dp)),
-        shape = RoundedCornerShape(16.dp),
+            .border(1.dp, theme.borderColor, RoundedCornerShape(18.dp)),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -311,14 +311,13 @@ private fun ScheduledPostCard(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
-                        .background(theme.accentCyan.copy(alpha = 0.15f))
+                        .background(theme.accentContainer)
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Text(
                         timeString,
-                        color = theme.accentCyan,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
+                        color = theme.onAccentContainer,
+                        style = MonoMedium
                     )
                 }
 
@@ -327,8 +326,7 @@ private fun ScheduledPostCard(
                 Text(
                     post.platform.displayName,
                     color = theme.textPrimary,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp
+                    style = MaterialTheme.typography.titleSmall
                 )
 
                 Spacer(modifier = Modifier.weight(1f))
@@ -340,16 +338,16 @@ private fun ScheduledPostCard(
                             .background(theme.accentOrange.copy(alpha = 0.15f))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
-                        Text("APPROVAL NEEDED", color = theme.accentOrange, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                        Text("APPROVAL NEEDED", color = theme.accentOrange, style = MaterialTheme.typography.labelSmall)
                     }
                 } else {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
-                            .background(theme.accentCyan.copy(alpha = 0.15f))
+                            .background(theme.accentContainer)
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
-                        Text("AUTO PUBLISH", color = theme.accentCyan, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                        Text("AUTO PUBLISH", color = theme.onAccentContainer, style = MaterialTheme.typography.labelSmall)
                     }
                 }
             }
@@ -359,7 +357,7 @@ private fun ScheduledPostCard(
             Text(
                 post.content,
                 color = theme.textPrimary,
-                fontSize = 12.sp,
+                style = MaterialTheme.typography.bodySmall,
                 lineHeight = 17.sp,
                 maxLines = 4
             )
@@ -391,10 +389,10 @@ private fun ScheduledPostCard(
                     Button(
                         onClick = onPublishNow,
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = theme.accentCyan),
+                        colors = ButtonDefaults.buttonColors(containerColor = theme.accentGreenButton, contentColor = theme.onAccent),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                     ) {
-                        Text("Publish Now", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("Publish Now", color = theme.onAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

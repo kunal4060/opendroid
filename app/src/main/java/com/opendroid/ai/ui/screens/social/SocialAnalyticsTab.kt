@@ -26,6 +26,7 @@ import com.opendroid.ai.ui.components.DonutChart
 import com.opendroid.ai.ui.components.SimpleBarChart
 import com.opendroid.ai.ui.components.SimpleLineChart
 import com.opendroid.ai.ui.theme.AppTheme
+import com.opendroid.ai.ui.theme.JetBrainsMonoFamily
 
 @Composable
 fun SocialAnalyticsTab(
@@ -49,7 +50,7 @@ fun SocialAnalyticsTab(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Performance Analytics", color = theme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text("Performance Analytics", color = theme.textPrimary, style = MaterialTheme.typography.titleMedium)
 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(7 to "7D", 30 to "30D", 90 to "90D").forEach { (days, label) ->
@@ -58,8 +59,8 @@ fun SocialAnalyticsTab(
                             onClick = { selectedRangeDays = days },
                             label = { Text(label, fontSize = 11.sp) },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = theme.accentCyan.copy(alpha = 0.2f),
-                                selectedLabelColor = theme.accentCyan
+                                selectedContainerColor = theme.accentContainer,
+                                selectedLabelColor = theme.onAccentContainer
                             )
                         )
                     }
@@ -112,14 +113,14 @@ fun SocialAnalyticsTab(
         item {
             Card(
                 modifier = Modifier.fillMaxWidth()
-                    .border(1.dp, theme.borderColor, RoundedCornerShape(16.dp)),
-                shape = RoundedCornerShape(16.dp),
+                    .border(1.dp, theme.borderColor, RoundedCornerShape(18.dp)),
+                shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Audience Growth Trend", color = theme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Audience Growth Trend", color = theme.textPrimary, style = MaterialTheme.typography.titleSmall)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("Daily follower trajectory over the period", color = theme.textSecondary, fontSize = 11.sp)
+                    Text("Daily follower trajectory over the period", color = theme.textTertiary, style = MaterialTheme.typography.labelMedium)
                     Spacer(modifier = Modifier.height(16.dp))
 
                     val trendPoints = listOf(120f, 135f, 150f, 175f, 210f, 240f, 290f)
@@ -129,7 +130,8 @@ fun SocialAnalyticsTab(
                         dataPoints = trendPoints,
                         labels = trendLabels,
                         modifier = Modifier.fillMaxWidth().height(140.dp),
-                        lineColor = theme.accentCyan
+                        lineColor = theme.accentNeonGreen,
+                        gridColor = theme.borderColor
                     )
                 }
             }
@@ -139,14 +141,14 @@ fun SocialAnalyticsTab(
         item {
             Card(
                 modifier = Modifier.fillMaxWidth()
-                    .border(1.dp, theme.borderColor, RoundedCornerShape(16.dp)),
-                shape = RoundedCornerShape(16.dp),
+                    .border(1.dp, theme.borderColor, RoundedCornerShape(18.dp)),
+                shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Daily Impressions & Reach", color = theme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Daily Impressions & Reach", color = theme.textPrimary, style = MaterialTheme.typography.titleSmall)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("Organic post visibility across all channels", color = theme.textSecondary, fontSize = 11.sp)
+                    Text("Organic post visibility across all channels", color = theme.textTertiary, style = MaterialTheme.typography.labelMedium)
                     Spacer(modifier = Modifier.height(16.dp))
 
                     val barValues = listOf(450f, 620f, 890f, 1200f, 950f, 1400f, 1800f)
@@ -156,7 +158,7 @@ fun SocialAnalyticsTab(
                         values = barValues,
                         labels = barLabels,
                         modifier = Modifier.fillMaxWidth().height(140.dp),
-                        barColor = theme.textPrimary
+                        barColor = theme.accentInfo
                     )
                 }
             }
@@ -166,12 +168,12 @@ fun SocialAnalyticsTab(
         item {
             Card(
                 modifier = Modifier.fillMaxWidth()
-                    .border(1.dp, theme.borderColor, RoundedCornerShape(16.dp)),
-                shape = RoundedCornerShape(16.dp),
+                    .border(1.dp, theme.borderColor, RoundedCornerShape(18.dp)),
+                shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Audience Share by Platform", color = theme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Audience Share by Platform", color = theme.textPrimary, style = MaterialTheme.typography.titleSmall)
                     Spacer(modifier = Modifier.height(14.dp))
 
                     Row(
@@ -179,9 +181,10 @@ fun SocialAnalyticsTab(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceAround
                     ) {
+                        // Series palette: accent / info / warning / neutral only.
                         val donutColors = listOf(
-                            theme.accentCyan,
-                            theme.accentPurple,
+                            theme.accentNeonGreen,
+                            theme.accentInfo,
                             theme.accentOrange,
                             theme.textSecondary
                         )
@@ -193,8 +196,8 @@ fun SocialAnalyticsTab(
                         )
 
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            LegendItem("X (Twitter)", "45%", theme.accentCyan)
-                            LegendItem("Telegram", "25%", theme.accentPurple)
+                            LegendItem("X (Twitter)", "45%", theme.accentNeonGreen)
+                            LegendItem("Telegram", "25%", theme.accentInfo)
                             LegendItem("LinkedIn", "20%", theme.accentOrange)
                             LegendItem("Discord / Others", "10%", theme.textSecondary)
                         }
@@ -205,20 +208,20 @@ fun SocialAnalyticsTab(
 
         // ── 6. PLATFORM BREAKDOWN CARDS ──────────────────────────────
         item {
-            Text("Channel Breakdown", color = theme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            Text("Channel Breakdown", color = theme.textPrimary, style = MaterialTheme.typography.titleMedium)
         }
 
         if (accounts.isEmpty()) {
             item {
-                Text("No accounts connected yet.", color = theme.textSecondary, fontSize = 12.sp)
+                Text("No accounts connected yet.", color = theme.textSecondary, style = MaterialTheme.typography.bodySmall)
             }
         } else {
             items(accounts) { account ->
                 val accountPosts = posts.filter { it.accountId == account.id || it.platform == account.platform }
                 Card(
                     modifier = Modifier.fillMaxWidth()
-                        .border(1.dp, theme.borderColor, RoundedCornerShape(14.dp)),
-                    shape = RoundedCornerShape(14.dp),
+                        .border(1.dp, theme.borderColor, RoundedCornerShape(18.dp)),
+                    shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
                 ) {
                     Row(
@@ -226,27 +229,27 @@ fun SocialAnalyticsTab(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box(
-                            modifier = Modifier.size(36.dp).clip(CircleShape).background(theme.surface)
+                            modifier = Modifier.size(36.dp).clip(CircleShape).background(theme.surfaceRaised)
                                 .border(0.5.dp, theme.borderColor, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(account.platform.displayName.take(1), color = theme.accentCyan, fontWeight = FontWeight.Bold)
+                            Text(account.platform.displayName.take(1), color = theme.accentNeonGreen, fontWeight = FontWeight.Bold)
                         }
 
                         Spacer(modifier = Modifier.width(12.dp))
 
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(account.platform.displayName, color = theme.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            Text(account.platform.displayName, color = theme.textPrimary, style = MaterialTheme.typography.titleSmall)
                             Text(
                                 if (account.username.isNotBlank()) "@${account.username}" else account.displayName,
-                                color = theme.textSecondary,
-                                fontSize = 11.sp
+                                color = theme.textTertiary,
+                                style = MaterialTheme.typography.labelMedium
                             )
                         }
 
                         Column(horizontalAlignment = Alignment.End) {
-                            Text("${accountPosts.size} posts", color = theme.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
-                            Text("Active sync", color = theme.accentCyan, fontSize = 10.sp)
+                            Text("${accountPosts.size} posts", color = theme.textPrimary, fontFamily = JetBrainsMonoFamily, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                            Text("Active sync", color = theme.accentNeonGreen, style = MaterialTheme.typography.labelMedium)
                         }
                     }
                 }
@@ -264,16 +267,16 @@ private fun AnalyticsMetricBox(
 ) {
     val theme = AppTheme.colors
     Card(
-        modifier = modifier.border(1.dp, theme.borderColor, RoundedCornerShape(14.dp)),
-        shape = RoundedCornerShape(14.dp),
+        modifier = modifier.border(1.dp, theme.borderColor, RoundedCornerShape(18.dp)),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            Text(title, color = theme.textSecondary, fontSize = 11.sp)
+            Text(title, color = theme.textTertiary, style = MaterialTheme.typography.labelMedium)
             Spacer(modifier = Modifier.height(4.dp))
-            Text(value, color = theme.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text(value, color = theme.textPrimary, fontFamily = JetBrainsMonoFamily, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(4.dp))
-            Text(delta, color = theme.accentCyan, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+            Text(delta, color = theme.accentNeonGreen, fontFamily = JetBrainsMonoFamily, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -286,7 +289,7 @@ private fun LegendItem(label: String, percent: String, color: Color) {
         Spacer(modifier = Modifier.width(8.dp))
         Text(label, color = theme.textPrimary, fontSize = 11.sp)
         Spacer(modifier = Modifier.width(6.dp))
-        Text(percent, color = theme.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        Text(percent, color = theme.textSecondary, fontFamily = JetBrainsMonoFamily, fontSize = 11.sp, fontWeight = FontWeight.Bold)
     }
 }
 

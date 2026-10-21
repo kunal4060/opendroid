@@ -15,12 +15,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.opendroid.ai.social.domain.model.*
 import com.opendroid.ai.ui.theme.AppTheme
+import com.opendroid.ai.ui.theme.JetBrainsMonoFamily
+import com.opendroid.ai.ui.theme.MonoMedium
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -45,8 +46,8 @@ fun SocialSettingsTab(
         // ── 1. AUTOMATION LEVEL SELECTOR ─────────────────────────────
         item {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Automation Guardrails", color = theme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Text("Configure autonomy boundaries and approval workflows.", color = theme.textSecondary, fontSize = 11.sp)
+                Text("Automation Guardrails", color = theme.textPrimary, style = MaterialTheme.typography.titleMedium)
+                Text("Configure autonomy boundaries and approval workflows.", color = theme.textTertiary, style = MaterialTheme.typography.labelMedium)
             }
         }
 
@@ -86,19 +87,19 @@ fun SocialSettingsTab(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("Custom Automation Rules", color = theme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Text("Custom trigger criteria and confidence gates", color = theme.textSecondary, fontSize = 11.sp)
+                    Text("Custom Automation Rules", color = theme.textPrimary, style = MaterialTheme.typography.titleMedium)
+                    Text("Custom trigger criteria and confidence gates", color = theme.textTertiary, style = MaterialTheme.typography.labelMedium)
                 }
 
                 Button(
                     onClick = { showAddRuleDialog = true },
-                    colors = ButtonDefaults.buttonColors(containerColor = theme.accentCyan),
+                    colors = ButtonDefaults.buttonColors(containerColor = theme.accentGreenButton, contentColor = theme.onAccent),
                     shape = RoundedCornerShape(16.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Add, contentDescription = null, tint = theme.onAccent, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Add Rule", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("Add Rule", color = theme.onAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -107,12 +108,12 @@ fun SocialSettingsTab(
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth()
-                        .border(1.dp, theme.borderColor, RoundedCornerShape(14.dp)),
-                    shape = RoundedCornerShape(14.dp),
+                        .border(1.dp, theme.borderColor, RoundedCornerShape(18.dp)),
+                    shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
                 ) {
                     Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
-                        Text("No custom rules defined yet. Default guardrails are active.", color = theme.textSecondary, fontSize = 12.sp)
+                        Text("No custom rules defined yet. Default guardrails are active.", color = theme.textSecondary, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -129,29 +130,29 @@ fun SocialSettingsTab(
         // ── 3. KEYSTORE ENCRYPTION & AUDIT LOG ───────────────────────
         item {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Security & Audit Trail", color = theme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Text("Hardware-isolated cryptographic logs and agent activity", color = theme.textSecondary, fontSize = 11.sp)
+                Text("Security & Audit Trail", color = theme.textPrimary, style = MaterialTheme.typography.titleMedium)
+                Text("Hardware-isolated cryptographic logs and agent activity", color = theme.textTertiary, style = MaterialTheme.typography.labelMedium)
             }
         }
 
         item {
             Card(
                 modifier = Modifier.fillMaxWidth()
-                    .border(1.dp, theme.borderColor, RoundedCornerShape(14.dp)),
-                shape = RoundedCornerShape(14.dp),
+                    .border(1.dp, theme.borderColor, RoundedCornerShape(18.dp)),
+                shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
             ) {
                 Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(
-                        modifier = Modifier.size(36.dp).clip(CircleShape).background(theme.accentCyan.copy(alpha = 0.15f)),
+                        modifier = Modifier.size(36.dp).clip(CircleShape).background(theme.accentContainer),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.VerifiedUser, contentDescription = null, tint = theme.accentCyan, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.VerifiedUser, contentDescription = null, tint = theme.onAccentContainer, modifier = Modifier.size(20.dp))
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
-                        Text("Android KeyStore Protected", color = theme.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                        Text("AES-256-GCM AEAD encrypted. Strict zero-plaintext policy.", color = theme.textSecondary, fontSize = 11.sp)
+                        Text("Android KeyStore Protected", color = theme.textPrimary, style = MaterialTheme.typography.titleSmall)
+                        Text("AES-256-GCM AEAD encrypted. Strict zero-plaintext policy.", color = theme.textSecondary, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -159,7 +160,7 @@ fun SocialSettingsTab(
 
         if (auditLogs.isEmpty()) {
             item {
-                Text("No recent audit log entries.", color = theme.textSecondary, fontSize = 12.sp)
+                Text("No recent audit log entries.", color = theme.textSecondary, style = MaterialTheme.typography.bodySmall)
             }
         } else {
             items(auditLogs.take(10), key = { it.id }) { log ->
@@ -194,13 +195,13 @@ private fun AutomationLevelCard(
         modifier = Modifier.fillMaxWidth()
             .border(
                 1.dp,
-                if (isSelected) theme.accentCyan else theme.borderColor,
-                RoundedCornerShape(16.dp)
+                if (isSelected) theme.accentNeonGreen else theme.borderColor,
+                RoundedCornerShape(18.dp)
             )
             .clickable { onSelect() },
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) theme.accentCyan.copy(alpha = 0.05f) else theme.cardBackground
+            containerColor = if (isSelected) theme.accentContainer else theme.cardBackground
         )
     ) {
         Row(
@@ -210,15 +211,15 @@ private fun AutomationLevelCard(
             RadioButton(
                 selected = isSelected,
                 onClick = onSelect,
-                colors = RadioButtonDefaults.colors(selectedColor = theme.accentCyan)
+                colors = RadioButtonDefaults.colors(selectedColor = theme.accentNeonGreen, unselectedColor = theme.textTertiary)
             )
 
             Spacer(modifier = Modifier.width(12.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(title, color = theme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text(title, color = if (isSelected) theme.onAccentContainer else theme.textPrimary, style = MaterialTheme.typography.titleSmall)
                 Spacer(modifier = Modifier.height(3.dp))
-                Text(subtitle, color = theme.textSecondary, fontSize = 11.sp, lineHeight = 15.sp)
+                Text(subtitle, color = theme.textSecondary, style = MaterialTheme.typography.bodySmall)
             }
         }
     }
@@ -234,8 +235,8 @@ private fun RuleCard(
 
     Card(
         modifier = Modifier.fillMaxWidth()
-            .border(1.dp, theme.borderColor, RoundedCornerShape(14.dp)),
-        shape = RoundedCornerShape(14.dp),
+            .border(1.dp, theme.borderColor, RoundedCornerShape(18.dp)),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -244,16 +245,16 @@ private fun RuleCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(rule.name, color = theme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Text(rule.name, color = theme.textPrimary, style = MaterialTheme.typography.titleSmall)
 
                 Switch(
                     checked = rule.isEnabled,
                     onCheckedChange = onToggle,
                     colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.Black,
-                        checkedTrackColor = theme.accentCyan,
+                        checkedThumbColor = theme.onAccent,
+                        checkedTrackColor = theme.accentGreenButton,
                         uncheckedThumbColor = theme.textSecondary,
-                        uncheckedTrackColor = theme.surface
+                        uncheckedTrackColor = theme.surfaceSunken
                     )
                 )
             }
@@ -261,15 +262,15 @@ private fun RuleCard(
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 "Trigger: ${rule.triggerType} • Action: ${rule.actionType}",
-                color = theme.textSecondary,
-                fontSize = 11.sp
+                color = theme.textTertiary,
+                style = MaterialTheme.typography.labelMedium,
+                fontFamily = JetBrainsMonoFamily
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 "Confidence Threshold: ${(rule.confidenceThreshold * 100).toInt()}%",
-                color = theme.accentCyan,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.SemiBold
+                color = theme.accentNeonGreen,
+                style = MonoMedium
             )
 
             Spacer(modifier = Modifier.height(6.dp))
@@ -292,9 +293,9 @@ private fun AuditLogItem(log: SocialAuditEntry) {
 
     Card(
         modifier = Modifier.fillMaxWidth()
-            .border(0.5.dp, theme.borderColor, RoundedCornerShape(10.dp)),
-        shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = theme.surface)
+            .border(1.dp, theme.borderColor, RoundedCornerShape(18.dp)),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = theme.cardBackground)
     ) {
         Row(
             modifier = Modifier.padding(10.dp),
@@ -302,22 +303,22 @@ private fun AuditLogItem(log: SocialAuditEntry) {
         ) {
             Box(
                 modifier = Modifier.size(6.dp).clip(CircleShape)
-                    .background(if (log.status == "SUCCESS") theme.accentCyan else theme.accentRed)
+                    .background(if (log.status == "SUCCESS") theme.success else theme.accentRed)
             )
 
             Spacer(modifier = Modifier.width(10.dp))
 
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(log.action, color = theme.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
+                    Text(log.action, color = theme.textPrimary, fontFamily = JetBrainsMonoFamily, fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
                     log.platform?.let { p ->
-                        Text(" • ${p.displayName}", color = theme.accentCyan, fontSize = 10.sp)
+                        Text(" • ${p.displayName}", color = theme.accentInfo, fontFamily = JetBrainsMonoFamily, fontSize = 10.sp)
                     }
                 }
-                Text(log.details, color = theme.textSecondary, fontSize = 10.sp, maxLines = 1)
+                Text(log.details, color = theme.textSecondary, style = MaterialTheme.typography.bodySmall, maxLines = 1)
             }
 
-            Text(timeFormat.format(Date(log.timestamp)), color = theme.textSecondary, fontSize = 9.sp)
+            Text(timeFormat.format(Date(log.timestamp)), color = theme.textTertiary, style = MonoMedium)
         }
     }
 }
@@ -335,8 +336,9 @@ private fun AddRuleDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = theme.cardBackground,
-        title = { Text("Add Automation Rule", color = theme.textPrimary, fontWeight = FontWeight.Bold) },
+        containerColor = theme.surfaceRaised,
+        shape = RoundedCornerShape(24.dp),
+        title = { Text("Add Automation Rule", color = theme.textPrimary, style = MaterialTheme.typography.titleMedium) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
@@ -349,20 +351,22 @@ private fun AddRuleDialog(
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = theme.textPrimary,
                         unfocusedTextColor = theme.textPrimary,
-                        focusedBorderColor = theme.accentCyan,
-                        unfocusedBorderColor = theme.borderColor
+                        focusedBorderColor = theme.accentNeonGreen,
+                        unfocusedBorderColor = theme.borderColor,
+                        focusedContainerColor = theme.surface,
+                        unfocusedContainerColor = theme.surface
                     )
                 )
 
-                Text("Confidence Threshold: ${(confidence * 100).toInt()}%", color = theme.textPrimary, fontSize = 12.sp)
+                Text("Confidence Threshold: ${(confidence * 100).toInt()}%", color = theme.textPrimary, style = MonoMedium)
                 Slider(
                     value = confidence,
                     onValueChange = { confidence = it },
                     valueRange = 0.5f..0.99f,
                     colors = SliderDefaults.colors(
-                        thumbColor = theme.accentCyan,
-                        activeTrackColor = theme.accentCyan,
-                        inactiveTrackColor = theme.surface
+                        thumbColor = theme.accentNeonGreen,
+                        activeTrackColor = theme.accentGreenButton,
+                        inactiveTrackColor = theme.surfaceSunken
                     )
                 )
             }
@@ -387,9 +391,9 @@ private fun AddRuleDialog(
                     }
                 },
                 enabled = ruleName.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(containerColor = theme.accentCyan)
+                colors = ButtonDefaults.buttonColors(containerColor = theme.accentGreenButton, contentColor = theme.onAccent)
             ) {
-                Text("Save Rule", color = Color.Black, fontWeight = FontWeight.Bold)
+                Text("Save Rule", color = theme.onAccent, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
