@@ -11,6 +11,7 @@ import com.opendroid.ai.core.schedule.ScheduledTaskScheduler
 import com.opendroid.ai.core.schedule.ScheduledTaskSweepWorker
 import com.opendroid.ai.core.security.AppLockManager
 import com.opendroid.ai.core.security.LegacyPreferenceMigration
+import com.opendroid.ai.core.wear.WearStatusPublisher
 import com.opendroid.ai.widget.WidgetStateSync
 import com.opendroid.ai.data.crash.CrashLogRepository
 import dagger.hilt.android.HiltAndroidApp
@@ -43,6 +44,9 @@ class OpenDroidApp : Application() {
 
     @Inject
     lateinit var mcpToolBridge: McpToolBridge
+
+    @Inject
+    lateinit var wearStatusPublisher: WearStatusPublisher
 
     private val appScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -82,6 +86,12 @@ class OpenDroidApp : Application() {
                 // Silently ignore cleanup errors to not block app startup
             }
         }
+
+        // Wear OS companion (D7): publish agent status + pending plan
+        // approvals to a paired watch for the whole process lifetime. The
+        // publisher guards its own writes (best-effort like the widget sync),
+        // so a missing Play-services/Wear stack never blocks startup.
+        wearStatusPublisher.start()
 
         // C4: make sure the scheduled-task sweep exists and every alarm is
         // registered, even when the process was started by the user rather

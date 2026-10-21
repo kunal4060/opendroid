@@ -1,0 +1,134 @@
+plugins {
+    id 'com.android.application'
+    id 'kotlinx-serialization'
+    id 'org.jetbrains.kotlin.plugin.compose'
+}
+
+android {
+    namespace = 'com.opendroid.ai.wear'
+    compileSdk 36
+
+    defaultConfig {
+        // HARD PLATFORM CONSTRAINT (D7): the Wearable Data Layer only
+        // connects apps with an IDENTICAL package name and signing
+        // certificate across devices. This must stay equal to :app's
+        // applicationId ("com.opendroid.aiagent") — the namespace differs
+        // on purpose; the package name may not.
+        applicationId "com.opendroid.aiagent"
+        // Wear OS 3+ (research decision). The phone app stays minSdk 26.
+        minSdk 30
+        targetSdk 36
+        // Mirrors :app's versioning; the embedded wear APK ships inside the
+        // phone APK/AAB via `wearApp project(':wear')`.
+        versionCode 8
+        versionName "1.0.7"
+
+        vectorDrawables {
+            useSupportLibrary = true
+        }
+    }
+
+    // Release signing — the SAME env-driven config as :app (same properties,
+    // same keystore at the project root). Data Layer pairing silently fails
+    // if the watch APK is ever signed with a different certificate than the
+    // phone APK, so the two modules must never drift apart here. Debug
+    // builds share the standard debug keystore automatically.
+    def hasSigningConfig = project.hasProperty('RELEASE_STORE_PASSWORD') &&
+            project.hasProperty('RELEASE_KEY_ALIAS') &&
+            project.hasProperty('RELEASE_KEY_PASSWORD') &&
+            file("${rootProject.projectDir}/opendroid-release.keystore").exists()
+    def allowUnsignedRelease = project.hasProperty('allowUnsignedRelease')
+
+    if (!hasSigningConfig) {
+        logger.warn("WARNING: Release signing not configured for :wear. Set credentials in ~/.gradle/gradle.properties (see gradle.properties.example in :app).")
+    }
+
+    signingConfigs {
+        if (hasSigningConfig) {
+            release {
+                storeFile file("${rootProject.projectDir}/opendroid-release.keystore")
+                storePassword project.findProperty('RELEASE_STORE_PASSWORD')
+                keyAlias project.findProperty('RELEASE_KEY_ALIAS')
+                keyPassword project.findProperty('RELEASE_KEY_PASSWORD')
+                enableV1Signing true
+                enableV2Signing true
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            // Mirroring :app: never fall back to the debug key for release.
+            if (hasSigningConfig) {
+                signingConfig signingConfigs.release
+            }
+            // Deliberately NOT minified for now (deviation from :app, noted
+            // in feature-d7-report.md): the module is a thin client, and the
+            // phone's R8 rules are tuned for the phone classpath; shrinking
+            // is revisited once the module has device-pass coverage.
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    // Same release guard as :app, scoped to this module: refuse to produce
+    // a silently unsigned/debug-signed release artifact.
+    gradle.taskGraph.whenReady { graph ->
+        def releaseBuildRequested = graph.allTasks.any { t ->
+            t.project == project && t.name ==~ /(assemble|bundle|package)Release.*/
+        }
+        if (releaseBuildRequested && !hasSigningConfig && !allowUnsignedRelease) {
+            throw new GradleException(
+                "Release signing is not configured for :wear. The watch APK MUST be signed " +
+                "with the same certificate as the phone app or the Wearable Data Layer will " +
+                "silently refuse to connect them. Set RELEASE_* properties in " +
+                "~/.gradle/gradle.properties and place opendroid-release.keystore at the " +
+                "project root, or pass -PallowUnsignedRelease=true for a compile check only."
+            )
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+    buildFeatures {
+        compose = true
+    }
+}
+
+// Same Kotlin setup shape as :app under AGP 9's built-in Kotlin support.
+kotlin {
+    jvmToolchain(21)
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21
+    }
+}
+
+dependencies {
+    // Data Layer clients (Message/Data/Capability/Node) — same version as :app.
+    implementation 'com.google.android.gms:play-services-wearable:20.0.1'
+
+    implementation 'androidx.core:core-ktx:1.18.0'
+    implementation 'androidx.activity:activity-compose:1.13.0'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.7'
+
+    // Wear Compose (Material 1.x — the stable Scaffold/ScalingLazyColumn API
+    // surface this thin client needs; versions verified against Google Maven
+    // during implementation). Not part of the phone's compose-bom, so the
+    // BOM platform is applied only for the shared compose-ui artifacts.
+    implementation platform('androidx.compose:compose-bom:2026.06.01')
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.foundation:foundation'
+    implementation 'androidx.wear.compose:compose-material:1.7.1'
+    implementation 'androidx.wear.compose:compose-foundation:1.7.1'
+    // RemoteInputIntent for the dictation/text-entry intent (research's
+    // lightest reliable voice path on Wear OS).
+    implementation 'androidx.wear:wear:1.3.0'
+
+    // Payloads (JSON) + coroutines, aligned with :app's versions.
+    implementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
+
+    testImplementation 'junit:junit:4.13.2'
+}
