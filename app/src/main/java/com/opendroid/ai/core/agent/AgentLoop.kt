@@ -4,6 +4,7 @@ import android.content.Context
 import com.opendroid.ai.actions.ActionDispatcher
 import com.opendroid.ai.actions.base.ActionResult
 import com.opendroid.ai.core.llm.LLMProviderFactory
+import com.opendroid.ai.core.llm.PreparedAttachment
 import com.opendroid.ai.core.llm.LLMRequest
 import com.opendroid.ai.core.llm.LLMResponse
 import com.opendroid.ai.core.llm.LatencyBudgetStatus
@@ -230,7 +231,8 @@ class AgentLoop @Inject constructor(
         query: String,
         context: Context,
         explicitSessionId: String? = null,
-        configOverride: LLMConfig? = null
+        configOverride: LLMConfig? = null,
+        attachment: PreparedAttachment? = null
     ) {
         // processQuery is also the delivery path for a reply to a pending
         // awaitUserResponse() prompt (see below). That's ONLY true when this message comes
@@ -292,16 +294,31 @@ class AgentLoop @Inject constructor(
                     null
                 }
 
-                // Save user message
+                // Save user message. A composer attachment (B1) supplies the
+                // payload instead of a screenshot when present; its mime/name
+                // ride along so providers and the history bubble know what
+                // the payload is.
                 val userMsg = ChatMessage(
                     id = UUID.randomUUID().toString(),
                     text = query,
                     sender = ChatMessage.Sender.USER,
                     modelBadge = null,
-                    imageBase64 = screenshotBase64
+                    imageBase64 = if (attachment != null) attachment.imageBase64 else screenshotBase64,
+                    attachmentMimeType = attachment?.attachmentMimeType,
+                    attachmentName = attachment?.attachmentName
                 )
                 memoryManager.storeMessage(userMsg, sessionId)
-                conversationRepository.insertMessage(sessionId, userMsg)
+                // What lands in Room can differ from the in-memory message:
+                // attachment payloads persist only up to the storage cap
+                // (large PDFs are send-once), and screenshot payloads stay
+                // send-only, exactly as they behaved before the v11 columns
+                // existed (the old mapper dropped them).
+                val persistedMsg = if (attachment != null) {
+                    userMsg.copy(imageBase64 = attachment.persistedImageBase64)
+                } else {
+                    userMsg.copy(imageBase64 = null)
+                }
+                conversationRepository.insertMessage(sessionId, persistedMsg)
 
                 if (isAnsweringPendingQuestion) {
                     // Re-validate at delivery time, not just at schedule time: only
@@ -544,7 +561,13 @@ class AgentLoop @Inject constructor(
 
             val lastMsgs = conversationRepository.getLastMessages(sessionId, 10).map { msg ->
                 val withImage = if (msg.id == userMsg.id) {
-                    msg.copy(imageBase64 = userMsg.imageBase64)
+                    // The in-memory message carries the full send payload
+                    // (history may hold a send-once attachment without it).
+                    msg.copy(
+                        imageBase64 = userMsg.imageBase64,
+                        attachmentMimeType = userMsg.attachmentMimeType,
+                        attachmentName = userMsg.attachmentName
+                    )
                 } else {
                     msg
                 }
@@ -711,7 +734,9 @@ class AgentLoop @Inject constructor(
                                     id = UUID.randomUUID().toString(),
                                     text = "Merge the plan and critique into the final JSON plan.",
                                     sender = ChatMessage.Sender.USER,
-                                    imageBase64 = userMsg.imageBase64
+                                    imageBase64 = userMsg.imageBase64,
+                                    attachmentMimeType = userMsg.attachmentMimeType,
+                                    attachmentName = userMsg.attachmentName
                                 )
                             ),
                             temperature = 0.1f,
