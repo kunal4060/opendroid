@@ -80,6 +80,12 @@ class NotificationActions @Inject constructor(
 
                 val currentConfig = settingsRepository.autoReplyConfig.first()
 
+                // An unrecognised app value used to fall through to a no-op
+                // copy that was saved and reported as success. Fail instead.
+                if (app != null && app !in setOf("whatsapp", "sms", "email")) {
+                    return ActionResult(false, null, "Unknown app '$app' for auto-reply. Supported: WhatsApp, SMS, Email.")
+                }
+
                 val newConfig = when {
                     // Toggle specific app
                     app != null -> when (app) {
@@ -89,10 +95,9 @@ class NotificationActions @Inject constructor(
                         "sms" -> currentConfig.copy(
                             smsEnabled = state == "on" || (state != "off" && !currentConfig.smsEnabled)
                         )
-                        "email" -> currentConfig.copy(
+                        else -> currentConfig.copy(
                             emailEnabled = state == "on" || (state != "off" && !currentConfig.emailEnabled)
                         )
-                        else -> currentConfig
                     }
                     // Toggle global
                     else -> currentConfig.copy(
@@ -102,17 +107,33 @@ class NotificationActions @Inject constructor(
 
                 settingsRepository.updateAutoReplyConfig(newConfig)
 
-                val statusText = buildString {
-                    append("Auto-reply is now ${if (newConfig.globalEnabled) "ON" else "OFF"}")
-                    if (newConfig.globalEnabled) {
-                        val apps = mutableListOf<String>()
-                        if (newConfig.whatsappEnabled) apps.add("WhatsApp")
-                        if (newConfig.smsEnabled) apps.add("SMS")
-                        if (newConfig.emailEnabled) apps.add("Email")
-                        if (apps.isNotEmpty()) {
-                            append(" for ${apps.joinToString(", ")}")
+                // Report the state of the thing actually toggled — for a
+                // per-app toggle that is the app's state, not the global one.
+                val statusText = if (app != null) {
+                    val (label, enabled) = when (app) {
+                        "whatsapp" -> "WhatsApp" to newConfig.whatsappEnabled
+                        "sms" -> "SMS" to newConfig.smsEnabled
+                        else -> "Email" to newConfig.emailEnabled
+                    }
+                    buildString {
+                        append("Auto-reply for $label is now ${if (enabled) "ON" else "OFF"}.")
+                        if (!newConfig.globalEnabled) {
+                            append(" Note: auto-reply is globally OFF, so this takes effect once you turn it on.")
                         }
-                        append(". Reply delay: ${newConfig.replyDelayMinutes} minutes.")
+                    }
+                } else {
+                    buildString {
+                        append("Auto-reply is now ${if (newConfig.globalEnabled) "ON" else "OFF"}")
+                        if (newConfig.globalEnabled) {
+                            val apps = mutableListOf<String>()
+                            if (newConfig.whatsappEnabled) apps.add("WhatsApp")
+                            if (newConfig.smsEnabled) apps.add("SMS")
+                            if (newConfig.emailEnabled) apps.add("Email")
+                            if (apps.isNotEmpty()) {
+                                append(" for ${apps.joinToString(", ")}")
+                            }
+                            append(". Reply delay: ${newConfig.replyDelayMinutes} minutes.")
+                        }
                     }
                 }
 

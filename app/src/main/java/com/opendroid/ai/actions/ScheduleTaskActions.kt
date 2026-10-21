@@ -66,14 +66,20 @@ class ScheduleTaskActions @Inject constructor(
 
             val zone = ZoneId.systemDefault()
             val today = LocalDate.now(zone)
+            // Parse an explicit date for every recurrence that can use one:
+            // previously only the ONCE branch read it, so a WEEKLY task's
+            // "every week on Friday" date was silently dropped and today's
+            // weekday was used instead (#28).
+            val explicitDate: LocalDate? = params["date"]?.trim()?.takeIf { it.isNotEmpty() }?.let {
+                try {
+                    LocalDate.parse(it)
+                } catch (e: Exception) {
+                    return ActionResult(false, null, "date must be yyyy-MM-dd")
+                }
+            }
             val dateEpochDay: Long? = if (recurrence == ScheduleRecurrence.ONCE) {
-                val explicit = params["date"]?.trim()?.takeIf { it.isNotEmpty() }
-                if (explicit != null) {
-                    try {
-                        LocalDate.parse(explicit).toEpochDay()
-                    } catch (e: Exception) {
-                        return ActionResult(false, null, "date must be yyyy-MM-dd")
-                    }
+                if (explicitDate != null) {
+                    explicitDate.toEpochDay()
                 } else {
                     // No date given: today if the time is still ahead, else tomorrow.
                     val candidate = today.atTime(hour, minute).atZone(zone).toInstant().toEpochMilli()
@@ -83,10 +89,21 @@ class ScheduleTaskActions @Inject constructor(
             } else {
                 null
             }
+            // Reject a ONCE date/time that can never fire: one-shots may run
+            // late by design up to NextFireCalculator.ONE_SHOT_STALE_MILLIS,
+            // but beyond that window the task is dead on arrival and must
+            // not be stored/reported as a successful schedule (#27).
+            if (recurrence == ScheduleRecurrence.ONCE && dateEpochDay != null) {
+                val occurrenceMillis = LocalDate.ofEpochDay(dateEpochDay)
+                    .atTime(hour, minute).atZone(zone).toInstant().toEpochMilli()
+                if (System.currentTimeMillis() - occurrenceMillis > NextFireCalculator.ONE_SHOT_STALE_MILLIS) {
+                    return ActionResult(false, null, "That date and time is in the past — a one-time task set for then could never run. Please pick a future time.")
+                }
+            }
             val dayOfWeek: Int? = if (recurrence == ScheduleRecurrence.WEEKLY) {
                 params["dayOfWeek"]?.trim()?.toIntOrNull()?.takeIf { it in 1..7 }
-                    ?: (dateEpochDay?.let { LocalDate.ofEpochDay(it).dayOfWeek.value }
-                        ?: today.dayOfWeek.value)
+                    ?: explicitDate?.dayOfWeek?.value
+                    ?: today.dayOfWeek.value
             } else {
                 null
             }
@@ -185,10 +202,20 @@ class ScheduleTaskActions @Inject constructor(
             val query = params["task"]?.trim()?.takeIf { it.isNotEmpty() }
                 ?: return ActionResult(false, null, "task parameter missing (id or label)")
             val tasks = store.snapshot()
-            val match = tasks.firstOrNull { it.id == query }
+            val exact = tasks.firstOrNull { it.id == query }
                 ?: tasks.firstOrNull { it.label.equals(query, ignoreCase = true) }
-                ?: tasks.firstOrNull { it.label.contains(query, ignoreCase = true) }
-                ?: return ActionResult(false, null, "No scheduled task matching '$query'.")
+            val match = exact ?: run {
+                val partialMatches = tasks.filter { it.label.contains(query, ignoreCase = true) }
+                // A fragment matching several tasks must not cancel
+                // whichever happens to be listed first — ask instead.
+                if (partialMatches.size > 1) {
+                    return ActionResult(
+                        false, null,
+                        "'$query' matches ${partialMatches.size} scheduled tasks (${partialMatches.joinToString(", ") { it.label }}). Please name the exact task to cancel."
+                    )
+                }
+                partialMatches.firstOrNull()
+            } ?: return ActionResult(false, null, "No scheduled task matching '$query'.")
             return try {
                 // Disarm AND delete: removing only one of the two is how
                 // "cancelled" tasks used to keep firing in spirit.
