@@ -8,7 +8,7 @@ import kotlinx.serialization.Serializable
  * screen can answer "Why do you know this?" from the record itself instead
  * of inventing an explanation after the fact.
  */
-@Serializable
+@Serializable(with = OriginKindSerializer::class)
 enum class OriginKind {
     /** The user asked the agent to remember it (chat command, agent action, approved routine). */
     USER_EXPLICIT,
@@ -35,7 +35,15 @@ enum class OriginKind {
     USER_ENTERED,
 
     /** Restored from a backup import. */
-    IMPORTED
+    IMPORTED,
+
+    /**
+     * The stored origin kind is not one this build recognises (e.g. the
+     * node was written by a newer version). Never assigned at creation
+     * time — it exists so such nodes stay visible with honest provenance
+     * instead of being dropped from every graph read.
+     */
+    UNKNOWN
 }
 
 /**
