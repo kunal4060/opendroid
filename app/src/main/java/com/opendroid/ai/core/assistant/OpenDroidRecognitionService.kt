@@ -63,8 +63,14 @@ class OpenDroidRecognitionService : RecognitionService() {
     }
 
     override fun onDestroy() {
-        mainHandler.post { engine?.destroy() }
+        // Audit-2 #21: capture the engine BEFORE nulling the field. The
+        // posted lambda previously read the property when it ran on the
+        // main thread — after `engine = null` had already executed — so
+        // destroy() never ran and the SpeechRecognizer leaked on every
+        // service teardown.
+        val toDestroy = engine
         engine = null
+        mainHandler.post { toDestroy?.destroy() }
         super.onDestroy()
     }
 
