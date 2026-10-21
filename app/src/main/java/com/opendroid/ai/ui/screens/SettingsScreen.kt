@@ -2489,6 +2489,11 @@ fun SettingsScreen(
                 AppLockSettingsSection(viewModel = viewModel)
             }
 
+            // External automation (C7): Tasker/ADB intent API toggle + token
+            item {
+                ExternalAutomationSettingsSection()
+            }
+
             // Privacy Policy link card
             item {
                 Card(

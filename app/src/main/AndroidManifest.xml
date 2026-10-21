@@ -133,6 +133,39 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
+        <!-- External automation intent API (C7). Both components are exported
+             ON PURPOSE: they are the documented Tasker/ADB surface declared in
+             docs/external-intents.md. Neither executes anything by itself —
+             every intent passes through ExternalCommandGateway, which enforces
+             the Settings master toggle (default off), the user's API token,
+             and the app lock, and audits every outcome. No manifest permission
+             is attached: a signature-level permission could never be held by
+             Tasker (different signature), and ADB bypasses app permissions by
+             design — the token is the gate that actually works for both. -->
+        <receiver
+            android:name=".core.external.ExternalCommandReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.opendroid.ai.action.RUN_COMMAND" />
+                <action android:name="com.opendroid.ai.action.RUN_MACRO" />
+                <action android:name="com.opendroid.ai.action.QUERY_STATUS" />
+            </intent-filter>
+        </receiver>
+
+        <activity
+            android:name=".core.external.ExternalApiActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="com.opendroid.ai.action.RUN_COMMAND" />
+                <action android:name="com.opendroid.ai.action.RUN_MACRO" />
+                <action android:name="com.opendroid.ai.action.QUERY_STATUS" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
         <!-- Boot Completed Receiver to Auto Start on Device Boot -->
         <receiver
             android:name=".core.service.BootReceiver"
