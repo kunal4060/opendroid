@@ -353,6 +353,11 @@ dependencies {
 
     // Testing
     testImplementation 'junit:junit:4.13.2'
+    // Real org.json for local JVM tests: the android.jar copy is a stub
+    // (returnDefaultValues makes its methods return null), which NPEs any
+    // production code built on JSONObject (the MCP client). Production
+    // keeps using Android's built-in org.json; this jar is test-only.
+    testImplementation 'org.json:json:20240303'
     testImplementation 'androidx.room:room-testing:2.8.4'
     testImplementation 'androidx.test:core:1.6.1'
     // Drives the real navigation graph (back stack, popUpTo) on the JVM.

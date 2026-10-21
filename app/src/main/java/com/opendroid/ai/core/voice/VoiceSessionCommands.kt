@@ -26,7 +26,10 @@ object VoiceSessionCommands {
         val normalised = utterance
             .trim()
             .lowercase()
-            .replace(Regex("""[.!?,]+$"""), "")
+            // Punctuation anywhere is wrapper noise ("that's all, thanks"):
+            // strip it all, not just trailing — the strict whole-utterance
+            // pattern still keeps real requests from matching.
+            .replace(Regex("""[.!?,]+"""), "")
             .replace(Regex("""\s+"""), " ")
         if (normalised.isEmpty()) return false
         return endPhrasePattern.matches(normalised)

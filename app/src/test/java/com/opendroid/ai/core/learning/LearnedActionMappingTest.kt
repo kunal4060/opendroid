@@ -12,7 +12,20 @@ class LearnedActionMappingTest {
         assertEquals("SEND_WHATSAPP", normalizeLearnedActionKey("send whatsapp"))
         assertEquals("SEND_WHATSAPP", normalizeLearnedActionKey("SEND-WHATSAPP"))
         assertEquals("SEND_WHATSAPP", normalizeLearnedActionKey("  send-whatsapp  "))
-        assertEquals("OPEN_APP", normalizeLearnedActionKey("open.app!"))
+        // '.' and '!' are stripped as invalid chars (NOT treated as word
+        // separators) — this is the auto mapper's exact behaviour too.
+        assertEquals("OPENAPP", normalizeLearnedActionKey("open.app!"))
+        // The identity the production contract requires, checked directly:
+        // the learned-key normaliser must agree with the auto mapper on
+        // every input, because dispatch looks mappings up by the latter.
+        val autoMapper = com.opendroid.ai.actions.ActionAutoMapper()
+        for (raw in listOf("send whatsapp", "SEND-WHATSAPP", "open.app!", "  Play Music  ", "a.b-c d")) {
+            assertEquals(
+                "normalisers diverge on '$raw'",
+                autoMapper.normalizeActionName(raw),
+                normalizeLearnedActionKey(raw)
+            )
+        }
     }
 
     @Test

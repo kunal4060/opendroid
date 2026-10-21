@@ -192,7 +192,7 @@ object BackupCrypto {
             cipherSink.finish()
             output.flush()
         } finally {
-            key.destroy()
+            destroyQuietly(key)
         }
     }
 
@@ -239,7 +239,7 @@ object BackupCrypto {
             if (tail.isNotEmpty()) plaintextOut.write(tail)
             plaintextOut.flush()
         } finally {
-            key.destroy()
+            destroyQuietly(key)
         }
         return header
     }
@@ -280,6 +280,20 @@ object BackupCrypto {
             throw BackupCryptoException.InvalidFormat("Backup uses an unknown key derivation scheme.")
         }
         return header
+    }
+
+    /**
+     * Best-effort key hygiene: on some JVM providers [SecretKeySpec.destroy]
+     * throws DestroyFailedException (the Destroyable default method).
+     * Cleanup must never fail — or mask the outcome of — the crypto
+     * operation itself, so failures here are deliberately ignored.
+     */
+    private fun destroyQuietly(key: SecretKeySpec) {
+        try {
+            key.destroy()
+        } catch (_: Exception) {
+            // Best effort only; the key material is dropped with the object.
+        }
     }
 
     private fun deriveKey(passphrase: CharArray, salt: ByteArray, iterations: Int): SecretKeySpec {

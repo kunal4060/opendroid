@@ -12,7 +12,7 @@ import org.junit.Test
 class NeverAutoApproveTest {
 
     @Test
-    fun `exactly the spec's twelve actions are flagged`() {
+    fun `exactly the spec's thirteen actions are flagged`() {
         val flagged = ActionSchema.ALL_ACTIONS.filter { it.neverAutoApprove }.map { it.name }.toSet()
         assertEquals(
             setOf(
@@ -20,6 +20,9 @@ class NeverAutoApproveTest {
                 "PAY_UPI", "ORDER_FOOD", "ORDER_GROCERY", "BOOK_UBER", "BOOK_OLA",
                 // Irreversible / destructive
                 "INSTALL_APP", "RESTART_DEVICE", "DELETE_FILE", "DELETE_MACRO", "CLEAR_BROWSER_DATA", "LOCK_DOOR",
+                // C4 added this after the original spec list: cancelling a
+                // scheduled task is destructive, so it is flagged too.
+                "CANCEL_SCHEDULED_TASK",
                 "DISMISS_NOTIFICATION"
             ),
             flagged
