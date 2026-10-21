@@ -126,12 +126,14 @@ class DeviceStateProvider @Inject constructor(
                     ?: return "None"
 
                 when {
-                    // Has actual internet access
+                    // Has internet capability. NET_CAPABILITY_VALIDATED is
+                    // deliberately NOT required: it depends on Google's
+                    // probe succeeding, which campus / captive / filtered
+                    // networks never allow — those devices have working
+                    // internet yet were reported "Limited" (offline),
+                    // which blocked chat send entirely.
                     capabilities.hasCapability(
                         NetworkCapabilities.NET_CAPABILITY_INTERNET
-                    ) &&
-                    capabilities.hasCapability(
-                        NetworkCapabilities.NET_CAPABILITY_VALIDATED
                     ) -> {
                         // Determine connection type
                         when {
@@ -150,11 +152,6 @@ class DeviceStateProvider @Inject constructor(
                             else -> "Connected"
                         }
                     }
-
-                    // Network exists but no validated internet
-                    capabilities.hasCapability(
-                        NetworkCapabilities.NET_CAPABILITY_INTERNET
-                    ) -> "Limited"
 
                     else -> "None"
                 }
