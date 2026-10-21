@@ -79,11 +79,6 @@ class TextToSpeechEngine(
         completionListeners.forEach { listener -> runCatching { listener() } }
     }
 
-    /** Registered listeners only — for paths where no speech actually played. */
-    private fun notifyCompletionListeners() {
-        completionListeners.forEach { listener -> runCatching { listener() } }
-    }
-
     init {
         tts = TextToSpeech(context, this)
         tts?.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
@@ -145,13 +140,19 @@ class TextToSpeechEngine(
                     tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
                 }
             } else {
-                // Nothing will be spoken (engine not ready, no cloud voice):
-                // still release registered listeners so a read-aloud queue
-                // waiting on completion doesn't hang. The service's
-                // onCompletionListener is deliberately NOT fired — no speech
-                // happened, so no Speaking state needs resetting.
+                // Nothing will be spoken (engine not ready, no cloud
+                // voice). The completion must still fire, with this
+                // utterance's id: both service consumers gate on their
+                // own state — the D2 controller leaves SPEAKING only via
+                // onCompletionListener, and approval listening arms only
+                // when the approval prompt's own id completes — so on a
+                // device whose TTS engine never initialised, withholding
+                // the event wedges a voice session in SPEAKING until the
+                // 10-minute cap and silently kills voice approval
+                // (finding #5). Firing it when nothing was asked to speak
+                // in those states is a no-op on both consumers.
                 mainHandler.post {
-                    notifyCompletionListeners()
+                    notifyCompletion(utteranceId)
                 }
             }
         }
