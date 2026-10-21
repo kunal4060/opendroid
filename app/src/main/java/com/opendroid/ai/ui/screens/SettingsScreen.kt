@@ -88,6 +88,7 @@ fun SettingsScreen(
     onNavigateToPermissions: () -> Unit = {},
     onNavigateToCrashLog: () -> Unit = {},
     onNavigateToRoutines: () -> Unit = {},
+    onNavigateToActionLearning: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val config by viewModel.llmConfig.collectAsState()
@@ -2482,6 +2483,11 @@ fun SettingsScreen(
                         )
                     }
                 }
+            }
+
+            // Action Learning (B5): review + teach unknown actions
+            item {
+                ActionLearningSettingsCard(onClick = onNavigateToActionLearning)
             }
 
             // App lock (A5): biometric / PIN gate settings

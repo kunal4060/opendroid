@@ -6,6 +6,9 @@ import com.opendroid.ai.actions.base.Action
 import com.opendroid.ai.actions.base.ActionResult
 import com.opendroid.ai.core.agent.ActionSchema
 import com.opendroid.ai.core.agent.DeviceStateProvider
+import com.opendroid.ai.core.learning.LearnedActionStore
+import com.opendroid.ai.core.learning.LearnedResolution
+import com.opendroid.ai.core.learning.resolve
 import com.opendroid.ai.data.db.dao.UnknownActionDao
 import com.opendroid.ai.data.db.entities.UnknownActionEntity
 import javax.inject.Inject
@@ -19,8 +22,11 @@ import javax.inject.Singleton
  *   2. Check internet pre-requisites
  *   3. Validate against ActionSchema (with default param injection)
  *   4. If not in schema → resolve via ActionAutoMapper (alias + semantic)
- *   5. Execute the resolved handler
- *   6. Log all resolutions for analytics
+ *   5. If still unresolved → consult user-taught learned mappings (B5,
+ *      Action Learning screen) — run the taught action/macro, or skip if the
+ *      user dismissed the verb
+ *   6. Execute the resolved handler
+ *   7. Log all resolutions for analytics
  *
  * NEVER crashes on unknown actions — always returns graceful failure.
  */
@@ -42,7 +48,8 @@ class ActionDispatcher @Inject constructor(
     private val socialActions: SocialActions,
     private val autoMapper: ActionAutoMapper,
     private val unknownActionDao: UnknownActionDao,
-    private val deviceStateProvider: DeviceStateProvider
+    private val deviceStateProvider: DeviceStateProvider,
+    private val learnedActionStore: LearnedActionStore
 ) {
 
     companion object {
@@ -85,8 +92,13 @@ class ActionDispatcher @Inject constructor(
         putAll(socialActions.getActions().associateBy { it.name })
     }
 
-    fun hasAction(actionName: String): Boolean =
-        actionsMap.containsKey(actionName) || actionsMap.containsKey(autoMapper.normalizeActionName(actionName))
+    fun hasAction(actionName: String): Boolean {
+        val normalized = autoMapper.normalizeActionName(actionName)
+        // A verb with a user-taught mapping (B5) counts as known: plan
+        // validation accepts it and dispatch resolves it in execute().
+        return actionsMap.containsKey(actionName) || actionsMap.containsKey(normalized) ||
+            learnedActionStore.hasMapping(normalized)
+    }
 
     /**
      * Resolves a raw plan/LLM action name to the canonical action name that
@@ -215,6 +227,18 @@ class ActionDispatcher @Inject constructor(
             }
         }
 
+        // ── STEP 3.5: Learned mappings (B5) ──
+        // Reached only after schema, alias/semantic and passthrough
+        // resolution all failed, so a taught mapping can never shadow a
+        // built-in action. Null means "no usable mapping" — fall through to
+        // the normal unknown-action handling below, unchanged.
+        val learnedResult = tryLearnedMapping(normalized, actionName, params, context)
+        if (learnedResult != null) {
+            Log.d(TAG, "║ Resolved via: LEARNED_MAPPING")
+            Log.d(TAG, "╚═══════════════════════════════════════")
+            return learnedResult
+        }
+
         // ── STEP 4: Truly unknown — graceful failure ──
         Log.e(TAG, "║ FAILED — no handler for: $actionName (normalized: $normalized)")
         Log.e(TAG, "║ Closest:     ${suggestClosest(normalized)}")
@@ -226,6 +250,89 @@ class ActionDispatcher @Inject constructor(
             attemptedAction = actionName,
             availableActions = ActionSchema.getAllActionNames()
         )
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  Learned mappings (B5) — user-taught meanings for invented verbs
+    // ════════════════════════════════════════════════════════════════
+
+    /** Guards against a taught macro whose own steps name the verb it teaches. */
+    private val learnedMacrosInFlight: MutableSet<String> =
+        java.util.Collections.synchronizedSet(mutableSetOf())
+
+    private suspend fun tryLearnedMapping(
+        normalized: String,
+        rawActionName: String,
+        params: Map<String, String>,
+        context: Context
+    ): ActionResult? {
+        val mapping = try {
+            learnedActionStore.mappingFor(normalized)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Learned mapping lookup failed for $normalized: ${e.message}")
+            return null
+        } ?: return null
+
+        return when (val resolution = mapping.resolve(params)) {
+            is LearnedResolution.Skip -> {
+                logUnknownAction(rawActionName, "AUTO_FIXED", wasAutoFixed = true, fixedWith = "SKIP")
+                ActionResult.Success(
+                    dataMap = mapOf(
+                        "message" to "Step skipped (dismissed in Action Learning)",
+                        "skipped" to "true"
+                    )
+                )
+            }
+
+            is LearnedResolution.RunAction -> {
+                val target = resolution.targetAction
+                // A mapping can outlive its target; if the target is no
+                // longer dispatchable, behave as if no mapping existed.
+                if (target !in actionsMap && !ActionSchema.isValid(target)) {
+                    null
+                } else if (internetRequiredActions.contains(target) &&
+                    !deviceStateProvider.isInternetAvailable()
+                ) {
+                    ActionResult.Failure(
+                        errorMsg = "No internet connection available",
+                        fallback = "Connect to WiFi or mobile data to use $target"
+                    )
+                } else {
+                    logUnknownAction(rawActionName, "AUTO_FIXED", wasAutoFixed = true, fixedWith = target)
+                    trySchemaExecution(target, resolution.params, context)
+                        ?: actionsMap[target]?.let { handler ->
+                            safeExecute(handler, resolution.params, context, target)
+                        }
+                }
+            }
+
+            is LearnedResolution.RunMacro -> {
+                val macroName = resolution.macroName
+                if (!learnedMacrosInFlight.add(macroName)) {
+                    Log.e(TAG, "Learned macro '$macroName' already running — refusing to recurse")
+                    null
+                } else {
+                    try {
+                        val handler = actionsMap["RUN_MACRO"]
+                        if (handler == null) {
+                            null
+                        } else {
+                            logUnknownAction(
+                                rawActionName, "AUTO_FIXED",
+                                wasAutoFixed = true, fixedWith = "RUN_MACRO"
+                            )
+                            safeExecute(handler, mapOf("macroName" to macroName), context, "RUN_MACRO")
+                        }
+                    } finally {
+                        learnedMacrosInFlight.remove(macroName)
+                    }
+                }
+            }
+
+            null -> null
+        }
     }
 
     // ════════════════════════════════════════════════════════════════

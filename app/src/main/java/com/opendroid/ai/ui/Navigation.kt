@@ -54,6 +54,7 @@ object OpenDroidRoutes {
     const val NOTIFICATION_HISTORY = "notification_history"
     const val PERMISSIONS = "permissions"
     const val CRASH_LOG = "crash_log"
+    const val ACTION_LEARNING = "action_learning"
     const val ROUTINES = "routines"
     const val SOCIAL = "social"
 }
@@ -170,6 +171,17 @@ fun OpenDroidNavigation(
                 },
                 onNavigateToRoutines = {
                     navController.navigate(OpenDroidRoutes.ROUTINES)
+                },
+                onNavigateToActionLearning = {
+                    navController.navigate(OpenDroidRoutes.ACTION_LEARNING)
+                }
+            )
+        }
+
+        composable(OpenDroidRoutes.ACTION_LEARNING) {
+            UnknownActionsScreen(
+                onBack = {
+                    navController.popBackStack()
                 }
             )
         }
@@ -300,7 +312,8 @@ fun MainDashboard(
     onNavigateToNotificationHistory: () -> Unit = {},
     onNavigateToPermissions: () -> Unit = {},
     onNavigateToCrashLog: () -> Unit = {},
-    onNavigateToRoutines: () -> Unit = {}
+    onNavigateToRoutines: () -> Unit = {},
+    onNavigateToActionLearning: () -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -426,7 +439,10 @@ fun MainDashboard(
                         viewModel = macroViewModel,
                         onNavigateToRoutines = onNavigateToRoutines
                     )
-                    Screen.History -> LogsScreen(viewModel = historyViewModel)
+                    Screen.History -> LogsScreen(
+                        viewModel = historyViewModel,
+                        onNavigateToActionLearning = onNavigateToActionLearning
+                    )
                     Screen.Settings -> SettingsScreen(
                         viewModel = settingsViewModel,
                         onNavigateToBenchmark = onNavigateToBenchmark,
@@ -439,7 +455,8 @@ fun MainDashboard(
                         onNavigateToNotificationHistory = onNavigateToNotificationHistory,
                         onNavigateToPermissions = onNavigateToPermissions,
                         onNavigateToCrashLog = onNavigateToCrashLog,
-                        onNavigateToRoutines = onNavigateToRoutines
+                        onNavigateToRoutines = onNavigateToRoutines,
+                        onNavigateToActionLearning = onNavigateToActionLearning
                     )
                 }
             }

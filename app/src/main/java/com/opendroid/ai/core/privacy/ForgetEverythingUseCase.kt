@@ -18,6 +18,7 @@ import com.opendroid.ai.core.security.ProviderCredentialId
 import com.opendroid.ai.core.security.ProviderCredentialStore
 import com.opendroid.ai.core.security.SensitiveMemoryStore
 import com.opendroid.ai.core.security.SocialCredentialStore
+import com.opendroid.ai.core.learning.LearnedActionStore
 import com.opendroid.ai.core.security.UserProfileStore
 import com.opendroid.ai.core.service.McpConfigStore
 import com.opendroid.ai.core.service.OpenDroidService
@@ -57,7 +58,8 @@ class ForgetEverythingUseCase @Inject constructor(
     private val providerCredentialStore: ProviderCredentialStore,
     private val userProfileStore: UserProfileStore,
     private val sensitiveMemoryStore: SensitiveMemoryStore,
-    private val socialCredentialStore: SocialCredentialStore
+    private val socialCredentialStore: SocialCredentialStore,
+    private val learnedActionStore: LearnedActionStore
 ) {
 
     /** Runs the full wipe off the main thread and streams each finished step to [onStepFinished]. */
@@ -112,6 +114,12 @@ class ForgetEverythingUseCase @Inject constructor(
             title = "App settings",
             remainingDescription = "Your app settings are still stored on this device.",
             clear = { settingsRepository.clearAllSettings() }
+        ),
+        WipeTarget(
+            id = "action-learning",
+            title = "Action Learning teachings",
+            remainingDescription = "Your taught meanings for invented actions are still stored on this device.",
+            clear = { learnedActionStore.clearAll() }
         ),
         WipeTarget(
             id = "sensitive-memory",
