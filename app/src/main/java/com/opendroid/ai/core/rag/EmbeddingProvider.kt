@@ -89,14 +89,21 @@ object EmbeddingCatalog {
                 "BAAI/bge-large-en-v1.5", key("Together AI"), keyRequired = true
             )
             "Custom OpenAI Compatible" -> {
-                val base = UrlUtils.formatBaseUrl(
-                    config.customEndpoints[providerName] ?: "",
-                    "https://api.openai.com/v1"
-                )
-                if (base.isEmpty()) null else Endpoint(
-                    providerName, "$base/embeddings",
-                    "text-embedding-3-small", key(providerName), keyRequired = false
-                )
+                // No OpenAI fallback here: substituting api.openai.com
+                // for a blank custom endpoint made this provider always
+                // "configured", shadowing real backends later in
+                // PREFERENCE_ORDER (Ollama) with a keyless phantom whose
+                // requests were doomed to fail.
+                val raw = config.customEndpoints[providerName]
+                if (raw.isNullOrBlank()) {
+                    null
+                } else {
+                    val base = UrlUtils.formatBaseUrl(raw, "")
+                    if (base.isEmpty()) null else Endpoint(
+                        providerName, "$base/embeddings",
+                        "text-embedding-3-small", key(providerName), keyRequired = false
+                    )
+                }
             }
             "Ollama" -> {
                 val base = UrlUtils.formatBaseUrl(config.ollamaUrl, "")

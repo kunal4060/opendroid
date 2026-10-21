@@ -35,19 +35,43 @@ object CitationText {
      */
     fun validate(text: String, sourceCount: Int): Validation {
         var stripped = 0
-        val cleaned = MARKER.replace(text) { match ->
+        val out = StringBuilder()
+        var lastIndex = 0
+        // Set when a strip joined a space before the marker to a space
+        // after it: that one following space is the strip's artifact and
+        // is dropped from the next segment. Intentional spacing anywhere
+        // else (indentation, aligned columns) is never touched — the old
+        // implementation collapsed every "  " in the whole answer.
+        var dropNextLeadingSpace = false
+
+        fun appendSegment(segment: String) {
+            val s = if (dropNextLeadingSpace && segment.startsWith(' ')) {
+                segment.substring(1)
+            } else {
+                segment
+            }
+            dropNextLeadingSpace = false
+            out.append(s)
+        }
+
+        for (match in MARKER.findAll(text)) {
+            val segment = text.substring(lastIndex, match.range.first)
             val n = match.groupValues[1].toIntOrNull()
             if (n != null && n in 1..sourceCount) {
-                match.value
+                appendSegment(segment)
+                out.append(match.value)
             } else {
                 stripped++
-                ""
+                appendSegment(segment)
+                val beforeIsSpace = out.isNotEmpty() && out[out.length - 1] == ' '
+                val afterIndex = match.range.last + 1
+                val afterIsSpace = afterIndex < text.length && text[afterIndex] == ' '
+                dropNextLeadingSpace = beforeIsSpace && afterIsSpace
             }
+            lastIndex = match.range.last + 1
         }
-        // A stripped marker can leave a doubled space behind; collapse the
-        // exact artifact ("word  next") without touching intentional
-        // spacing elsewhere. Line breaks are not matched by ' '.
-        return Validation(cleaned.replace("  ", " "), stripped)
+        appendSegment(text.substring(lastIndex))
+        return Validation(out.toString(), stripped)
     }
 
     /**

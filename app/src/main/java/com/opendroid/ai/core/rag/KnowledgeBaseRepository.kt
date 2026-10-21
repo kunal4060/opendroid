@@ -93,12 +93,17 @@ class KnowledgeBaseRepository @Inject constructor(
             val sameHash = existing.firstOrNull {
                 it.contentHash == staged.sha256 && it.status == RagDocumentStatus.READY
             }
-            if (sameHash != null && sameHash.sourceUri != uri.toString()) {
+            val sameUriDoc = existing.firstOrNull { it.sourceUri == uri.toString() }
+            if (sameHash != null && sameHash.sourceUri != uri.toString() && sameUriDoc == null) {
                 // Identical content already indexed under another source:
                 // the hash-skip — re-indexing would only duplicate chunks.
+                // Only valid when NO document exists for this URI: if one
+                // does, its content changed (it now duplicates another
+                // document) and the replace path below must run, or the
+                // stale chunks of the old content stay retrievable.
                 return
             }
-            val docId = existing.firstOrNull { it.sourceUri == uri.toString() }?.id
+            val docId = sameUriDoc?.id
                 ?: UUID.randomUUID().toString()
             progressDocId = docId
             val document = RagDocument(
@@ -170,9 +175,19 @@ class KnowledgeBaseRepository @Inject constructor(
                 )
                 val finalChunks = chunks
                 store.mutate { index ->
+                    // The user may have deleted this document while it
+                    // was indexing: the documents map cannot resurrect
+                    // the row, and the chunks must not be appended
+                    // either — orphan chunks would stay retrievable and
+                    // cited with no document left to delete them from.
+                    val stillPresent = index.documents.any { it.id == docId }
                     index.copy(
                         documents = index.documents.map { if (it.id == docId) ready else it },
-                        chunks = index.chunks.filterNot { it.documentId == docId } + finalChunks
+                        chunks = if (stillPresent) {
+                            index.chunks.filterNot { it.documentId == docId } + finalChunks
+                        } else {
+                            index.chunks
+                        }
                     )
                 }
             } catch (e: Exception) {
@@ -266,8 +281,9 @@ class KnowledgeBaseRepository @Inject constructor(
     /**
      * Embeds chunks that lack a vector for [backend]'s model, using their
      * stored text (documents never need re-importing when the embedding
-     * model changes). Bounded per call; beyond the bound the caller simply
-     * ranks lexically this time.
+     * model changes). Bounded per call: at most [MAX_BACKFILL_CHUNKS] of
+     * the backlog are embedded per call, so a large backlog converges
+     * over successive retrieves instead of never shrinking.
      */
     private suspend fun backfillEmbeddings(
         chunks: List<RagChunk>,
@@ -276,10 +292,11 @@ class KnowledgeBaseRepository @Inject constructor(
         val missing = chunks.filter {
             it.embeddingModelId != backend.id || it.embedding == null
         }
-        if (missing.isEmpty() || missing.size > MAX_BACKFILL_CHUNKS) return chunks
-        val vectors = backend.embed(missing.map { it.text })
-        if (vectors.size != missing.size) return chunks
-        val byId = missing.mapIndexed { i, chunk ->
+        if (missing.isEmpty()) return chunks
+        val slice = missing.take(MAX_BACKFILL_CHUNKS)
+        val vectors = backend.embed(slice.map { it.text })
+        if (vectors.size != slice.size) return chunks
+        val byId = slice.mapIndexed { i, chunk ->
             chunk.id to chunk.copy(
                 embedding = VectorMath.encode(vectors[i]),
                 embeddingModelId = backend.id

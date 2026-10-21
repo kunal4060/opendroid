@@ -64,12 +64,18 @@ object ResearchSourceResolver {
                 out[message.id] = direct.sortedBy { it.position }
                 continue
             }
-            val matchedRunId = runsAnswerTexts.entries.firstOrNull { (_, answerText) ->
-                answerText.length >= MIN_CONTAINMENT_LENGTH && message.text.contains(answerText)
-            }?.key
-            val viaRun = matchedRunId?.let { byMessageId[it] }
-            if (!viaRun.isNullOrEmpty()) {
-                out[message.id] = viaRun.sortedBy { it.position }
+            // Attach the UNION of every run whose answer this message
+            // contains: a plan can run several WEB_RESEARCH steps into
+            // one summary message, and first-match-only left the later
+            // runs' [n] markers unlinked and their sources dropped.
+            val viaRuns = runsAnswerTexts.entries
+                .filter { (_, answerText) ->
+                    answerText.length >= MIN_CONTAINMENT_LENGTH && message.text.contains(answerText)
+                }
+                .flatMap { (runId, _) -> byMessageId[runId].orEmpty() }
+                .distinctBy { it.id }
+            if (viaRuns.isNotEmpty()) {
+                out[message.id] = viaRuns.sortedBy { it.position }
             }
         }
         return out
