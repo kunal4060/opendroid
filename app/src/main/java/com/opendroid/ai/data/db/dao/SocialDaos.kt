@@ -78,6 +78,9 @@ interface SocialPostDao {
     @Query("DELETE FROM social_posts WHERE id = :id")
     suspend fun deleteById(id: String)
 
+    @Query("DELETE FROM social_posts WHERE accountId = :accountId")
+    suspend fun deleteByAccountId(accountId: String)
+
     @Query("SELECT * FROM social_posts WHERE status = 'PUBLISHED' ORDER BY (likesCount + commentsCount * 2 + sharesCount * 3) DESC LIMIT :limit")
     suspend fun getTopPerformingPosts(limit: Int): List<SocialPostEntity>
 }
@@ -143,6 +146,9 @@ interface SocialInteractionDao {
 
     @Query("DELETE FROM social_interactions WHERE id = :id")
     suspend fun deleteById(id: String)
+
+    @Query("DELETE FROM social_interactions WHERE accountId = :accountId")
+    suspend fun deleteByAccountId(accountId: String)
 }
 
 @Dao
@@ -164,6 +170,9 @@ interface SocialAnalyticsDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSnapshot(snapshot: SocialAnalyticsSnapshotEntity)
+
+    @Query("DELETE FROM social_analytics_snapshots WHERE accountId = :accountId")
+    suspend fun deleteByAccountId(accountId: String)
 }
 
 @Dao

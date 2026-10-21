@@ -50,6 +50,16 @@ open class SocialRepository @Inject constructor(
     }
 
     suspend fun deleteAccount(id: String) {
+        // Cascade (audit-4 #9): the account's own content rows go with the
+        // account — previously only the account row was deleted, leaving
+        // its posts, interactions and analytics snapshots behind forever.
+        // (Comments carry no accountId — they are keyed by platform post
+        // id — so they cannot be attributed to an account in this schema.)
+        // The account's OAuth credentials are removed by the caller,
+        // SocialManager.revokeAccess, before this runs.
+        postDao.deleteByAccountId(id)
+        interactionDao.deleteByAccountId(id)
+        analyticsDao.deleteByAccountId(id)
         accountDao.deleteById(id)
     }
 
