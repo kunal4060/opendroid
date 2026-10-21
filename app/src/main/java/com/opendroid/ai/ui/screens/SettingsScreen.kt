@@ -2595,6 +2595,11 @@ fun SettingsScreen(
                 ExternalAutomationSettingsSection()
             }
 
+            // MCP Servers (D5): remote MCP client — servers, tools, grants
+            item {
+                McpServersSection()
+            }
+
             // Privacy Policy link card
             item {
                 Card(
