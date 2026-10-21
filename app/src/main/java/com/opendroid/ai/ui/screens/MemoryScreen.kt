@@ -1153,6 +1153,8 @@ fun KnowledgeGraphView(
     var newLabel by remember { mutableStateOf("") }
     var newSummary by remember { mutableStateOf("") }
     var newCategory by remember { mutableStateOf(KnowledgeCategory.NOTE_FACT) }
+    // Key of a sensitive record whose overwrite is awaiting confirmation.
+    var pendingSensitiveOverwriteKey by remember { mutableStateOf<String?>(null) }
     // C5: List | Graph — the graph renders the same filtered nodes below.
     var showGraph by remember { mutableStateOf(false) }
 
@@ -1176,6 +1178,55 @@ fun KnowledgeGraphView(
         }.thenByDescending { it.confidence }
          .thenByDescending { it.lastUpdated }
     )
+
+    // Keys of the secrets already in the store (sensitive node ids are
+    // "sensitive_<key>"; graphFlow also synthesizes nodes for store keys
+    // written directly, e.g. by a backup restore, so this covers them all).
+    val existingSensitiveKeys = allNodes
+        .filter { it.tier == MemoryTier.SENSITIVE }
+        .map { it.id.removePrefix("sensitive_") }
+        .toSet()
+
+    val performSaveEntry: () -> Unit = {
+        if (addIsSensitive) {
+            viewModel.recordSensitiveData(newLabel, newSummary, newLabel)
+        } else {
+            viewModel.recordExplicitKnowledge(newLabel, newSummary, newCategory)
+        }
+        newLabel = ""
+        newSummary = ""
+        isAddingKnowledge = false
+    }
+
+    pendingSensitiveOverwriteKey?.let { existingKey ->
+        // Re-adding a secret under an existing key used to silently
+        // overwrite (and irrecoverably destroy) the old value. Confirm
+        // first — the same protection MCP server names got in Loop 1.
+        AlertDialog(
+            onDismissRequest = { pendingSensitiveOverwriteKey = null },
+            title = { Text("Replace the existing secret?") },
+            text = {
+                Text(
+                    "A secret is already stored under '$existingKey'. Saving will replace it, " +
+                        "and the old value cannot be recovered."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingSensitiveOverwriteKey = null
+                    performSaveEntry()
+                }) {
+                    Text("Replace", color = AppTheme.colors.accentRed)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingSensitiveOverwriteKey = null }) { Text("Cancel") }
+            },
+            containerColor = AppTheme.colors.cardBackground,
+            titleContentColor = AppTheme.colors.textPrimary,
+            textContentColor = AppTheme.colors.textSecondary
+        )
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Tier Chips
@@ -1415,14 +1466,13 @@ fun KnowledgeGraphView(
                         Button(
                             onClick = {
                                 if (newLabel.isNotBlank() && newSummary.isNotBlank()) {
-                                    if (addIsSensitive) {
-                                        viewModel.recordSensitiveData(newLabel, newSummary, newLabel)
+                                    if (addIsSensitive && newLabel in existingSensitiveKeys) {
+                                        // Never silently overwrite an existing
+                                        // secret — confirm the replacement first.
+                                        pendingSensitiveOverwriteKey = newLabel
                                     } else {
-                                        viewModel.recordExplicitKnowledge(newLabel, newSummary, newCategory)
+                                        performSaveEntry()
                                     }
-                                    newLabel = ""
-                                    newSummary = ""
-                                    isAddingKnowledge = false
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(
