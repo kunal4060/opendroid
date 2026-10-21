@@ -449,6 +449,13 @@ class ModelRepository @Inject constructor(
                 )
             }
 
+            // The install replaced the model file in place. Evict any
+            // cached LiteRT engine for this model: the engine cache is
+            // keyed by the (unchanged) file path, so without eviction the
+            // old model keeps serving while the new file is reported
+            // READY (the delete paths already evicted; replace did not).
+            liteRTLMProvider.get().evictEngineForModel(modelId)
+
             val refFile = File(context.filesDir, "litert_models/${modelId}.litertlm")
             refFile.parentFile?.mkdirs()
             refFile.writeText(dir.absolutePath)

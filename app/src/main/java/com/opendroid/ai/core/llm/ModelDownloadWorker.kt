@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
+import com.opendroid.ai.core.llm.providers.LiteRTLMProvider
 import com.opendroid.ai.core.security.CredentialStoreResult
 import com.opendroid.ai.core.security.ProviderCredentialId
 import com.opendroid.ai.core.security.ProviderCredentialStore
@@ -45,6 +46,7 @@ class ModelDownloadWorker(
         fun modelDao(): ModelDao
         fun okHttpClient(): OkHttpClient
         fun providerCredentialStore(): ProviderCredentialStore
+        fun liteRTLMProvider(): LiteRTLMProvider
     }
 
     private val entryPoint = EntryPointAccessors.fromApplication(
@@ -190,6 +192,13 @@ class ModelDownloadWorker(
                 return fail(modelId, verificationFailureMessage(install.failure))
             }
 
+            // The install just replaced the model file in place. A provider
+            // that already loaded this model holds an engine keyed by the
+            // (unchanged) path, mmap'd to the old file — evict it or the
+            // old model keeps serving indefinitely (the delete paths
+            // already evicted; the replace paths did not).
+            entryPoint.liteRTLMProvider().evictEngineForModel(modelId)
+
             val refFile = File(applicationContext.filesDir, "litert_models/$modelId.litertlm")
             val refDirectory = requireNotNull(refFile.parentFile)
             if (!refDirectory.exists() && !refDirectory.mkdirs()) {
@@ -207,6 +216,15 @@ class ModelDownloadWorker(
             )
             retainTemporaryFileForResume = true
             return Result.retry()
+        } catch (cancelled: CancellationException) {
+            // A real coroutine cancellation unwinds through the finally
+            // below before doWork's CancellationException handler runs, and
+            // the retain flag is only set on the graceful paths — without
+            // this, cancelling a download deleted the partial file and the
+            // next run restarted a multi-GB download from byte 0 instead
+            // of resuming with a Range request.
+            retainTemporaryFileForResume = true
+            throw cancelled
         } finally {
             if (!retainTemporaryFileForResume) {
                 temporaryFile.delete()
