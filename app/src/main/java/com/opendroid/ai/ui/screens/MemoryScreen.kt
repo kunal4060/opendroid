@@ -4,7 +4,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -18,23 +17,40 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.HelpOutline
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.rounded.ArrowForward
+import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.Cancel
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.EditNote
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.PlayCircle
+import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Smartphone
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.TrendingUp
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.opendroid.ai.core.memory.graph.KnowledgeCategory
 import com.opendroid.ai.core.memory.graph.KnowledgeNode
 import com.opendroid.ai.core.memory.graph.MemoryProvenance
@@ -43,6 +59,7 @@ import com.opendroid.ai.data.models.ChatMessage
 import com.opendroid.ai.data.models.Macro
 import com.opendroid.ai.data.models.Memory
 import com.opendroid.ai.data.models.MemoryType
+import com.opendroid.ai.ui.screens.graph.GraphRenderModel
 import com.opendroid.ai.ui.screens.graph.MemoryGraphView
 import com.opendroid.ai.ui.theme.*
 import com.opendroid.ai.ui.viewmodel.MemoryViewModel
@@ -55,12 +72,118 @@ import java.util.Locale
 /** Storage-key prefix for knowledge-graph node rows; mirrors PersonalGrowthEngine. */
 private const val PKG_NODE_KEY_PREFIX = "pkg_node_"
 
+/** Vector glyph per memory tier — replaces the old emoji tier icons. */
+fun memoryTierIcon(tier: MemoryTier): ImageVector = when (tier) {
+    MemoryTier.TEMPORARY -> Icons.Rounded.Bolt
+    MemoryTier.LONG_TERM -> Icons.Rounded.Psychology
+    MemoryTier.LEARNED_PATTERN -> Icons.Rounded.TrendingUp
+    MemoryTier.SENSITIVE -> Icons.Rounded.Lock
+}
+
+/** Tier colour by meaning: accent for long-term, steel info for learned
+ *  patterns, amber for the locked sensitive tier, neutral for temporary. */
+@Composable
+fun memoryTierColor(tier: MemoryTier): Color = when (tier) {
+    MemoryTier.TEMPORARY -> AppTheme.colors.textSecondary
+    MemoryTier.LONG_TERM -> AppTheme.colors.accentNeonGreen
+    MemoryTier.LEARNED_PATTERN -> AppTheme.colors.accentInfo
+    MemoryTier.SENSITIVE -> AppTheme.colors.accentOrange
+}
+
+/** One-line explanation shown under each tier section header. */
+fun memoryTierCaption(tier: MemoryTier): String = when (tier) {
+    MemoryTier.LONG_TERM -> "Facts and knowledge kept until you delete them."
+    MemoryTier.LEARNED_PATTERN -> "Patterns noticed from how you use the app."
+    MemoryTier.SENSITIVE -> "Encrypted on this device; shown only after you unlock it."
+    MemoryTier.TEMPORARY -> "Short-lived context for the current session."
+}
+
+/** Vector glyph per knowledge category — replaces the old emoji icons. */
+fun memoryCategoryIcon(category: KnowledgeCategory): ImageVector = when (category) {
+    KnowledgeCategory.CONTACT -> Icons.Rounded.Groups
+    KnowledgeCategory.TASK_ROUTINE -> Icons.Rounded.Settings
+    KnowledgeCategory.APP_PREFERENCE -> Icons.Rounded.Smartphone
+    KnowledgeCategory.SCHEDULE -> Icons.Rounded.CalendarMonth
+    KnowledgeCategory.PROJECT -> Icons.Rounded.Folder
+    KnowledgeCategory.RESOURCE -> Icons.Rounded.Public
+    KnowledgeCategory.NOTE_FACT -> Icons.Rounded.EditNote
+    KnowledgeCategory.USER_PREFERENCE -> Icons.Rounded.Star
+}
+
+/**
+ * Confidence as a quiet trust cue (research-2 3E.3): a slim 3-segment meter
+ * plus a word, never a raw number. Segments derive from the node's stored
+ * confidence exactly as the sort order does.
+ */
+@Composable
+fun MemoryConfidenceMeter(confidence: Float, modifier: Modifier = Modifier) {
+    val filled = when {
+        confidence >= 0.66f -> 3
+        confidence >= 0.33f -> 2
+        confidence > 0f -> 1
+        else -> 0
+    }
+    val word = when {
+        confidence >= 0.66f -> "High confidence"
+        confidence >= 0.33f -> "Medium confidence"
+        else -> "Low confidence"
+    }
+    Row(
+        modifier = modifier.semantics { contentDescription = word },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        repeat(3) { index ->
+            Box(
+                modifier = Modifier
+                    .width(14.dp)
+                    .height(3.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(
+                        if (index < filled) AppTheme.colors.accentNeonGreen
+                        else AppTheme.colors.borderColor
+                    )
+            )
+        }
+        Spacer(modifier = Modifier.width(5.dp))
+        Text(
+            text = word,
+            style = MaterialTheme.typography.labelMedium,
+            color = AppTheme.colors.textSecondary
+        )
+    }
+}
+
+/** Shared honest empty state: an icon and one line, never filler content. */
+@Composable
+fun MemoryEmptyState(icon: ImageVector, message: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = AppTheme.colors.textTertiary,
+            modifier = Modifier.size(40.dp)
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = AppTheme.colors.textSecondary,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
 enum class MemoryScreenTab(val title: String) {
-    GROWTH_GRAPH("GROWTH GRAPH"),
-    SEMANTIC("LONG-TERM"),
-    WORKING("TEMPORARY"),
-    EPISODIC("EPISODIC"),
-    PROCEDURAL("MACROS")
+    GROWTH_GRAPH("Growth graph"),
+    SEMANTIC("Long-term"),
+    WORKING("Temporary"),
+    EPISODIC("Episodic"),
+    PROCEDURAL("Macros")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -81,12 +204,9 @@ fun MemoryScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "PERSONAL MEMORY",
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary,
-                        fontSize = 20.sp,
-                        letterSpacing = 2.sp,
+                        text = "Personal memory",
+                        color = AppTheme.colors.textPrimary,
+                        style = MaterialTheme.typography.titleLarge,
                         modifier = Modifier.semantics { heading() }
                     )
                 },
@@ -100,13 +220,13 @@ fun MemoryScreen(
                             MemoryScreenTab.PROCEDURAL -> viewModel.clearMemories(MemoryType.PROCEDURAL)
                         }
                     }) {
-                        Text("Wipe Category", color = AccentRed, fontSize = 12.sp)
+                        Text("Wipe category", color = AppTheme.colors.accentRed, style = MaterialTheme.typography.labelLarge)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBackground)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = AppTheme.colors.background)
             )
         },
-        containerColor = DarkBackground,
+        containerColor = AppTheme.colors.background,
         modifier = modifier
     ) { padding ->
         Column(
@@ -118,14 +238,24 @@ fun MemoryScreen(
             // Memory Category Tabs
             ScrollableTabRow(
                 selectedTabIndex = selectedTab.ordinal,
-                containerColor = DarkBackground,
-                contentColor = TextPrimary,
+                containerColor = AppTheme.colors.background,
+                contentColor = AppTheme.colors.accentNeonGreen,
                 edgePadding = 0.dp,
-                divider = { Divider(color = BorderColor) }
+                indicator = { tabPositions ->
+                    if (selectedTab.ordinal in tabPositions.indices) {
+                        TabRowDefaults.Indicator(
+                            modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab.ordinal]),
+                            color = AppTheme.colors.accentNeonGreen
+                        )
+                    }
+                },
+                divider = { Divider(color = AppTheme.colors.borderSubtle) }
             ) {
                 MemoryScreenTab.values().forEach { tab ->
                     Tab(
                         selected = selectedTab == tab,
+                        selectedContentColor = AppTheme.colors.accentNeonGreen,
+                        unselectedContentColor = AppTheme.colors.textSecondary,
                         onClick = { 
                             selectedTab = tab
                             searchQuery = "" // Reset search query when changing tabs
@@ -134,9 +264,7 @@ fun MemoryScreen(
                         text = {
                             Text(
                                 text = tab.title,
-                                fontSize = 12.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = if (selectedTab == tab) FontWeight.Bold else FontWeight.Normal
+                                style = MaterialTheme.typography.labelLarge
                             )
                         }
                     )
@@ -161,15 +289,15 @@ fun MemoryScreen(
                                 MemoryScreenTab.PROCEDURAL -> "Search macros..."
                                 else -> "Search facts..."
                             }
-                            Text(hint, color = TextSecondary, fontSize = 13.sp)
+                            Text(hint, color = AppTheme.colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
                         },
-                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = TextSecondary) },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = AppTheme.colors.textSecondary) },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = AccentCyan,
-                            unfocusedBorderColor = BorderColor,
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary
+                            focusedBorderColor = AppTheme.colors.accentNeonGreen,
+                            unfocusedBorderColor = AppTheme.colors.borderColor,
+                            focusedTextColor = AppTheme.colors.textPrimary,
+                            unfocusedTextColor = AppTheme.colors.textPrimary
                         ),
                         modifier = Modifier.weight(1f)
                     )
@@ -179,10 +307,10 @@ fun MemoryScreen(
                             onClick = { isAddingFact = !isAddingFact },
                             modifier = Modifier
                                 .size(48.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(TextPrimary)
+                                .clip(RoundedCornerShape(percent = 50))
+                                .background(AppTheme.colors.accentGreenButton)
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = "Add Memory", tint = DarkBackground)
+                            Icon(Icons.Default.Add, contentDescription = "Add Memory", tint = AppTheme.colors.onAccent)
                         }
                     }
                 }
@@ -237,17 +365,15 @@ fun WorkingMemoryView(viewModel: MemoryViewModel) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
-                colors = CardDefaults.cardColors(containerColor = CardBackground)
+                    .border(1.dp, AppTheme.colors.borderColor, RoundedCornerShape(18.dp)),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = AppTheme.colors.cardBackground)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "ACTIVE ENVIRONMENT STATE",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = AccentCyan,
-                        letterSpacing = 1.sp
+                        text = "Active environment state",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = AppTheme.colors.textPrimary
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     
@@ -255,23 +381,23 @@ fun WorkingMemoryView(viewModel: MemoryViewModel) {
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        StateItem("Battery Level", "${workingMemory.batteryLevel}%", AccentCyan)
-                        StateItem("WiFi State", workingMemory.wifiState, if (workingMemory.wifiState == "Active") AccentCyan else if (workingMemory.wifiState == "Inactive") AccentRed else TextSecondary)
+                        StateItem("Battery level", "${workingMemory.batteryLevel}%", AppTheme.colors.textPrimary)
+                        StateItem("Wi-Fi state", workingMemory.wifiState, if (workingMemory.wifiState == "Inactive") AppTheme.colors.accentRed else AppTheme.colors.textPrimary)
                     }
                     Spacer(modifier = Modifier.height(12.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        StateItem("Connectivity", workingMemory.connectivity, AccentCyan)
-                        StateItem("Internet", if (workingMemory.isInternetAvailable) "Available" else "NOT AVAILABLE", if (workingMemory.isInternetAvailable) AccentCyan else AccentRed)
+                        StateItem("Connectivity", workingMemory.connectivity, AppTheme.colors.textPrimary)
+                        StateItem("Internet", if (workingMemory.isInternetAvailable) "Available" else "Not available", if (workingMemory.isInternetAvailable) AppTheme.colors.textPrimary else AppTheme.colors.accentRed)
                     }
                     Spacer(modifier = Modifier.height(12.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        StateItem("Location Context", workingMemory.locationContext, TextSecondary)
+                        StateItem("Location context", workingMemory.locationContext, AppTheme.colors.textPrimary)
                     }
                 }
             }
@@ -282,17 +408,15 @@ fun WorkingMemoryView(viewModel: MemoryViewModel) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
-                colors = CardDefaults.cardColors(containerColor = CardBackground)
+                    .border(1.dp, AppTheme.colors.borderColor, RoundedCornerShape(18.dp)),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = AppTheme.colors.cardBackground)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "ACTIVE PLAN MONITOR",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = AccentCyan,
-                        letterSpacing = 1.sp
+                        text = "Active plan",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = AppTheme.colors.textPrimary
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     
@@ -300,37 +424,36 @@ fun WorkingMemoryView(viewModel: MemoryViewModel) {
                     if (plan != null) {
                         Text(
                             text = plan.goal,
-                            fontSize = 15.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = TextPrimary
+                            color = AppTheme.colors.textPrimary
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Surface(
                                 color = when (plan.status.name) {
-                                    "RUNNING" -> AccentCyan.copy(alpha = 0.2f)
-                                    "COMPLETED" -> AccentCyan.copy(alpha = 0.2f)
-                                    else -> AccentRed.copy(alpha = 0.2f)
+                                    "RUNNING" -> AppTheme.colors.accentContainer
+                                    "COMPLETED" -> AppTheme.colors.success.copy(alpha = 0.18f)
+                                    else -> AppTheme.colors.accentRed.copy(alpha = 0.15f)
                                 },
-                                shape = RoundedCornerShape(4.dp),
+                                shape = RoundedCornerShape(6.dp),
                                 modifier = Modifier.padding(end = 6.dp)
                              ) {
                                 Text(
                                     text = plan.status.name,
                                     color = when (plan.status.name) {
-                                        "RUNNING" -> AccentCyan
-                                        "COMPLETED" -> AccentCyan
-                                        else -> AccentRed
+                                        "RUNNING" -> AppTheme.colors.onAccentContainer
+                                        "COMPLETED" -> AppTheme.colors.success
+                                        else -> AppTheme.colors.accentRed
                                     },
-                                    fontSize = 10.sp,
-                                    fontFamily = FontFamily.Monospace,
+                                    style = MaterialTheme.typography.labelSmall,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
                         }
                         
                         Spacer(modifier = Modifier.height(12.dp))
-                        Divider(color = BorderColor)
+                        Divider(color = AppTheme.colors.borderSubtle)
                         Spacer(modifier = Modifier.height(12.dp))
                         
                         plan.steps.forEachIndexed { index, step ->
@@ -338,7 +461,7 @@ fun WorkingMemoryView(viewModel: MemoryViewModel) {
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 4.dp)
-                                    // D8: the status glyphs (● ▶ ✖ ○) are
+                                    // D8: the old text status glyphs are
                                     // meaningless to a screen reader — the
                                     // merged stop speaks step, state and
                                     // outcome in words instead.
@@ -365,44 +488,44 @@ fun WorkingMemoryView(viewModel: MemoryViewModel) {
                                     },
                                 verticalAlignment = Alignment.Top
                             ) {
-                                Text(
-                                    text = when (step.status.name) {
-                                        "COMPLETED" -> "●"
-                                        "RUNNING" -> "▶"
-                                        "FAILED" -> "✖"
-                                        else -> "○"
+                                Icon(
+                                    imageVector = when (step.status.name) {
+                                        "COMPLETED" -> Icons.Rounded.CheckCircle
+                                        "RUNNING" -> Icons.Rounded.PlayCircle
+                                        "FAILED" -> Icons.Rounded.Cancel
+                                        else -> Icons.Rounded.Schedule
                                     },
-                                    color = when (step.status.name) {
-                                        "COMPLETED" -> AccentCyan
-                                        "RUNNING" -> AccentCyan
-                                        "FAILED" -> AccentRed
-                                        else -> TextSecondary
+                                    contentDescription = null,
+                                    tint = when (step.status.name) {
+                                        "COMPLETED" -> AppTheme.colors.success
+                                        "RUNNING" -> AppTheme.colors.accentNeonGreen
+                                        "FAILED" -> AppTheme.colors.accentRed
+                                        else -> AppTheme.colors.textSecondary
                                     },
-                                    fontSize = 12.sp,
-                                    modifier = Modifier.padding(end = 8.dp, top = 2.dp)
+                                    modifier = Modifier
+                                        .padding(end = 8.dp, top = 2.dp)
+                                        .size(16.dp)
                                 )
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = "${index + 1}. ${step.description}",
-                                        fontSize = 12.sp,
-                                        color = if (step.status.name == "COMPLETED") TextSecondary else TextPrimary,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (step.status.name == "COMPLETED") AppTheme.colors.textSecondary else AppTheme.colors.textPrimary,
                                         fontWeight = if (step.status.name == "RUNNING") FontWeight.Bold else FontWeight.Normal
                                     )
                                     if (!step.result.isNullOrBlank()) {
                                         Text(
                                             text = "Result: ${step.result}",
-                                            fontSize = 10.sp,
-                                            color = AccentCyan,
-                                            fontFamily = FontFamily.Monospace,
+                                            style = MonoMedium,
+                                            color = AppTheme.colors.textSecondary,
                                             modifier = Modifier.padding(top = 2.dp)
                                         )
                                     }
                                     if (!step.error.isNullOrBlank()) {
                                         Text(
                                             text = "Error: ${step.error}",
-                                            fontSize = 10.sp,
-                                            color = AccentRed,
-                                            fontFamily = FontFamily.Monospace,
+                                            style = MonoMedium,
+                                            color = AppTheme.colors.accentRed,
                                             modifier = Modifier.padding(top = 2.dp)
                                         )
                                     }
@@ -418,9 +541,8 @@ fun WorkingMemoryView(viewModel: MemoryViewModel) {
                         ) {
                             Text(
                                 text = "No active autonomous plan running.",
-                                color = TextSecondary,
-                                fontSize = 12.sp,
-                                fontFamily = FontFamily.Monospace
+                                color = AppTheme.colors.textSecondary,
+                                style = MaterialTheme.typography.bodySmall
                             )
                         }
                     }
@@ -433,17 +555,15 @@ fun WorkingMemoryView(viewModel: MemoryViewModel) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
-                colors = CardDefaults.cardColors(containerColor = CardBackground)
+                    .border(1.dp, AppTheme.colors.borderColor, RoundedCornerShape(18.dp)),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = AppTheme.colors.cardBackground)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "WORKING SESSION HISTORY (LAST 20)",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = AccentCyan,
-                        letterSpacing = 1.sp
+                        text = "Working session history",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = AppTheme.colors.textPrimary
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     
@@ -459,23 +579,21 @@ fun WorkingMemoryView(viewModel: MemoryViewModel) {
                                     horizontalArrangement = if (msg.sender.name == "USER") Arrangement.End else Arrangement.Start
                                 ) {
                                     Surface(
-                                        color = if (msg.sender.name == "USER") AccentCyan.copy(alpha = 0.15f) else CardBackground,
-                                        shape = RoundedCornerShape(8.dp),
-                                        border = BorderStroke(1.dp, if (msg.sender.name == "USER") AccentCyan.copy(alpha = 0.3f) else BorderColor)
+                                        color = if (msg.sender.name == "USER") AppTheme.colors.accentContainer else AppTheme.colors.surfaceRaised,
+                                        shape = RoundedCornerShape(14.dp),
+                                        border = BorderStroke(1.dp, AppTheme.colors.borderColor)
                                     ) {
                                         Column(modifier = Modifier.padding(10.dp)) {
                                             Text(
-                                                text = if (msg.sender.name == "USER") "USER" else "AGENT",
-                                                fontSize = 9.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                fontFamily = FontFamily.Monospace,
-                                                color = if (msg.sender.name == "USER") AccentCyan else TextPrimary
+                                                text = if (msg.sender.name == "USER") "User" else "Agent",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = if (msg.sender.name == "USER") AppTheme.colors.onAccentContainer else AppTheme.colors.textSecondary
                                             )
                                             Spacer(modifier = Modifier.height(2.dp))
                                             Text(
                                                 text = msg.text,
-                                                fontSize = 12.sp,
-                                                color = TextPrimary
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = AppTheme.colors.textPrimary
                                             )
                                         }
                                     }
@@ -491,9 +609,8 @@ fun WorkingMemoryView(viewModel: MemoryViewModel) {
                         ) {
                             Text(
                                 text = "No messages in current working session.",
-                                color = TextSecondary,
-                                fontSize = 12.sp,
-                                fontFamily = FontFamily.Monospace
+                                color = AppTheme.colors.textSecondary,
+                                style = MaterialTheme.typography.bodySmall
                             )
                         }
                     }
@@ -506,9 +623,9 @@ fun WorkingMemoryView(viewModel: MemoryViewModel) {
 @Composable
 fun StateItem(label: String, value: String, valueColor: Color) {
     Column {
-        Text(text = label, color = TextSecondary, fontSize = 11.sp)
+        Text(text = label, color = AppTheme.colors.textSecondary, style = MaterialTheme.typography.labelMedium)
         Spacer(modifier = Modifier.height(2.dp))
-        Text(text = value, color = valueColor, fontSize = 14.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+        Text(text = value, color = valueColor, style = MonoMedium)
     }
 }
 
@@ -532,8 +649,9 @@ fun EpisodicMemoryView(viewModel: MemoryViewModel, searchQuery: String) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
-                    colors = CardDefaults.cardColors(containerColor = CardBackground)
+                        .border(1.dp, AppTheme.colors.borderColor, RoundedCornerShape(18.dp)),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = AppTheme.colors.cardBackground)
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Row(
@@ -543,23 +661,20 @@ fun EpisodicMemoryView(viewModel: MemoryViewModel, searchQuery: String) {
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = if (log.sender.name == "USER") "USER" else "AGENT",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = if (log.sender.name == "USER") AccentCyan else TextPrimary
+                                    text = if (log.sender.name == "USER") "User" else "Agent",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (log.sender.name == "USER") AppTheme.colors.accentNeonGreen else AppTheme.colors.textPrimary
                                 )
                                 log.modelBadge?.let { badge ->
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Surface(
-                                        color = AccentCyan.copy(alpha = 0.1f),
-                                        shape = RoundedCornerShape(4.dp)
+                                        color = AppTheme.colors.surfaceRaised,
+                                        shape = RoundedCornerShape(6.dp)
                                     ) {
                                         Text(
                                             text = badge,
-                                            fontSize = 9.sp,
-                                            fontFamily = FontFamily.Monospace,
-                                            color = AccentCyan,
+                                            style = MonoMedium,
+                                            color = AppTheme.colors.textSecondary,
                                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                                         )
                                     }
@@ -567,33 +682,26 @@ fun EpisodicMemoryView(viewModel: MemoryViewModel, searchQuery: String) {
                             }
                             Text(
                                 text = dateFormat.format(Date(log.timestamp)),
-                                fontSize = 9.sp,
-                                color = TextSecondary,
-                                fontFamily = FontFamily.Monospace
+                                style = MonoMedium,
+                                color = AppTheme.colors.textTertiary
                             )
                         }
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = log.text,
-                            fontSize = 13.sp,
-                            color = TextPrimary
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = AppTheme.colors.textPrimary
                         )
                     }
                 }
             }
         }
     } else {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "No episodic chat logs recorded.",
-                color = TextSecondary,
-                fontSize = 12.sp,
-                fontFamily = FontFamily.Monospace
-            )
-        }
+        MemoryEmptyState(
+            icon = Icons.Rounded.History,
+            message = "No episodic chat logs recorded.",
+            modifier = Modifier.fillMaxSize()
+        )
     }
 }
 
@@ -623,28 +731,27 @@ fun SemanticMemoryView(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 12.dp)
-                    .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
-                colors = CardDefaults.cardColors(containerColor = CardBackground)
+                    .border(1.dp, AppTheme.colors.borderColor, RoundedCornerShape(18.dp)),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = AppTheme.colors.cardBackground)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "STORE NEW MEMORY FACT",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = AccentCyan
+                        text = "Store a new memory fact",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = AppTheme.colors.textPrimary
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(
                         value = newKey,
                         onValueChange = onNewKeyChange,
-                        label = { Text("Fact Key/Identifier", fontSize = 12.sp) },
+                        label = { Text("Fact key / identifier", style = MaterialTheme.typography.bodySmall) },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = AccentCyan,
-                            unfocusedBorderColor = BorderColor,
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary
+                            focusedBorderColor = AppTheme.colors.accentNeonGreen,
+                            unfocusedBorderColor = AppTheme.colors.borderColor,
+                            focusedTextColor = AppTheme.colors.textPrimary,
+                            unfocusedTextColor = AppTheme.colors.textPrimary
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -652,19 +759,19 @@ fun SemanticMemoryView(
                     OutlinedTextField(
                         value = newValue,
                         onValueChange = onNewValueChange,
-                        label = { Text("Fact Content/Details", fontSize = 12.sp) },
+                        label = { Text("Fact content / details", style = MaterialTheme.typography.bodySmall) },
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = AccentCyan,
-                            unfocusedBorderColor = BorderColor,
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary
+                            focusedBorderColor = AppTheme.colors.accentNeonGreen,
+                            unfocusedBorderColor = AppTheme.colors.borderColor,
+                            focusedTextColor = AppTheme.colors.textPrimary,
+                            unfocusedTextColor = AppTheme.colors.textPrimary
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         TextButton(onClick = { onIsAddingFactChange(false) }) {
-                            Text("Cancel", color = AccentRed)
+                            Text("Cancel", color = AppTheme.colors.accentRed)
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(
@@ -676,10 +783,10 @@ fun SemanticMemoryView(
                                     onIsAddingFactChange(false)
                                 }
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = TextPrimary, contentColor = DarkBackground),
-                            shape = RoundedCornerShape(8.dp)
+                            colors = ButtonDefaults.buttonColors(containerColor = AppTheme.colors.accentGreenButton, contentColor = AppTheme.colors.onAccent),
+                            shape = RoundedCornerShape(percent = 50)
                         ) {
-                            Text("Save Fact", fontWeight = FontWeight.Bold)
+                            Text("Save fact", style = MaterialTheme.typography.labelLarge)
                         }
                     }
                 }
@@ -712,19 +819,13 @@ fun SemanticMemoryView(
                 }
             }
         } else {
-            Box(
+            MemoryEmptyState(
+                icon = Icons.Rounded.Description,
+                message = "No semantic facts indexed in this category.",
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "No semantic facts indexed in this category.",
-                    color = TextSecondary,
-                    fontSize = 13.sp,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
+                    .fillMaxWidth()
+            )
         }
     }
 }
@@ -739,8 +840,9 @@ fun MemoryItemCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
-        colors = CardDefaults.cardColors(containerColor = CardBackground)
+            .border(1.dp, AppTheme.colors.borderColor, RoundedCornerShape(18.dp)),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = AppTheme.colors.cardBackground)
     ) {
         Row(
             modifier = Modifier
@@ -752,22 +854,20 @@ fun MemoryItemCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = memory.key,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = AccentCyan,
-                    fontFamily = FontFamily.Monospace
+                    style = MonoMedium,
+                    color = AppTheme.colors.textPrimary
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = memory.value,
-                    fontSize = 13.sp,
-                    color = TextPrimary
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = AppTheme.colors.textPrimary
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = "Indexed: ${dateFormat.format(Date(memory.timestamp))}",
-                    fontSize = 9.sp,
-                    color = TextSecondary
+                    style = MaterialTheme.typography.labelMedium,
+                    color = AppTheme.colors.textTertiary
                 )
                 MemoryRowProvenance(memory = memory, onDelete = onDelete)
             }
@@ -776,7 +876,7 @@ fun MemoryItemCard(
                 Icon(
                     imageVector = Icons.Default.Delete,
                     contentDescription = "Delete Memory",
-                    tint = TextSecondary.copy(alpha = 0.6f)
+                    tint = AppTheme.colors.textSecondary.copy(alpha = 0.6f)
                 )
             }
         }
@@ -869,20 +969,19 @@ private fun ProvenanceExpander(
             Icon(
                 imageVector = Icons.Default.HelpOutline,
                 contentDescription = null,
-                tint = AccentCyan,
+                tint = AppTheme.colors.accentNeonGreen,
                 modifier = Modifier.size(14.dp)
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
                 text = "Why do you know this?",
-                fontSize = 11.sp,
-                color = AccentCyan,
-                fontFamily = FontFamily.Monospace
+                style = MaterialTheme.typography.labelMedium,
+                color = AppTheme.colors.accentNeonGreen,
             )
             Icon(
                 imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                 contentDescription = if (expanded) "Hide origin" else "Show origin",
-                tint = AccentCyan,
+                tint = AppTheme.colors.accentNeonGreen,
                 modifier = Modifier.size(14.dp)
             )
         }
@@ -895,16 +994,15 @@ private fun ProvenanceExpander(
             ) {
                 Text(
                     text = headline,
-                    fontSize = 12.sp,
-                    color = TextPrimary
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppTheme.colors.textPrimary
                 )
                 rows.forEach { (label, value) ->
                     Spacer(modifier = Modifier.height(3.dp))
                     Text(
                         text = "$label: $value",
-                        fontSize = 10.sp,
-                        color = TextSecondary,
-                        fontFamily = FontFamily.Monospace
+                        style = MonoMedium,
+                        color = AppTheme.colors.textSecondary
                     )
                 }
                 Row(
@@ -915,11 +1013,11 @@ private fun ProvenanceExpander(
                         Icon(
                             imageVector = Icons.Default.Delete,
                             contentDescription = null,
-                            tint = AccentRed,
+                            tint = AppTheme.colors.accentRed,
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Delete this memory", fontSize = 11.sp, color = AccentRed)
+                        Text("Delete this memory", style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.accentRed)
                     }
                 }
             }
@@ -946,8 +1044,9 @@ fun ProceduralMemoryView(viewModel: MemoryViewModel, searchQuery: String) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
-                    colors = CardDefaults.cardColors(containerColor = CardBackground)
+                        .border(1.dp, AppTheme.colors.borderColor, RoundedCornerShape(18.dp)),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = AppTheme.colors.cardBackground)
                 ) {
                     Row(
                         modifier = Modifier
@@ -959,23 +1058,19 @@ fun ProceduralMemoryView(viewModel: MemoryViewModel, searchQuery: String) {
                         Column(modifier = Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = macro.name.uppercase(),
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = AccentCyan,
-                                    fontFamily = FontFamily.Monospace
+                                    text = macro.name,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = AppTheme.colors.textPrimary
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Surface(
-                                    color = if (macro.isSystem) AccentCyan.copy(alpha = 0.15f) else TextSecondary.copy(alpha = 0.1f),
-                                    shape = RoundedCornerShape(4.dp)
+                                    color = if (macro.isSystem) AppTheme.colors.accentContainer else AppTheme.colors.surfaceRaised,
+                                    shape = RoundedCornerShape(6.dp)
                                 ) {
                                     Text(
-                                        text = if (macro.isSystem) "SYSTEM" else "USER",
-                                        fontSize = 8.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = FontFamily.Monospace,
-                                        color = if (macro.isSystem) AccentCyan else TextSecondary,
+                                        text = if (macro.isSystem) "System" else "User",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = if (macro.isSystem) AppTheme.colors.onAccentContainer else AppTheme.colors.textSecondary,
                                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                                     )
                                 }
@@ -983,17 +1078,15 @@ fun ProceduralMemoryView(viewModel: MemoryViewModel, searchQuery: String) {
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = "Trigger: \"${macro.trigger}\"",
-                                fontSize = 12.sp,
-                                color = TextPrimary,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = AppTheme.colors.textPrimary,
                                 fontWeight = FontWeight.SemiBold
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "PROCEDURAL ACTIONS:",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = AccentCyan,
-                                fontFamily = FontFamily.Monospace
+                                text = "Actions",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = AppTheme.colors.textSecondary
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             macro.steps.forEachIndexed { index, step ->
@@ -1001,16 +1094,18 @@ fun ProceduralMemoryView(viewModel: MemoryViewModel, searchQuery: String) {
                                     modifier = Modifier.padding(vertical = 2.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = "  → ",
-                                        fontSize = 11.sp,
-                                        color = AccentCyan,
-                                        fontFamily = FontFamily.Monospace
+                                    Icon(
+                                        imageVector = Icons.Rounded.ArrowForward,
+                                        contentDescription = null,
+                                        tint = AppTheme.colors.accentNeonGreen,
+                                        modifier = Modifier
+                                            .padding(horizontal = 4.dp)
+                                            .size(12.dp)
                                     )
                                     Text(
                                         text = step.description,
-                                        fontSize = 11.sp,
-                                        color = TextSecondary
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = AppTheme.colors.textSecondary
                                     )
                                 }
                             }
@@ -1021,7 +1116,7 @@ fun ProceduralMemoryView(viewModel: MemoryViewModel, searchQuery: String) {
                                 Icon(
                                     imageVector = Icons.Default.Delete,
                                     contentDescription = "Delete Macro",
-                                    tint = AccentRed.copy(alpha = 0.8f)
+                                    tint = AppTheme.colors.accentRed.copy(alpha = 0.8f)
                                 )
                             }
                         }
@@ -1030,17 +1125,11 @@ fun ProceduralMemoryView(viewModel: MemoryViewModel, searchQuery: String) {
             }
         }
     } else {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "No custom macros or procedures registered.",
-                color = TextSecondary,
-                fontSize = 12.sp,
-                fontFamily = FontFamily.Monospace
-            )
-        }
+        MemoryEmptyState(
+            icon = Icons.Rounded.Bolt,
+            message = "No custom macros or procedures registered.",
+            modifier = Modifier.fillMaxSize()
+        )
     }
 }
 
@@ -1092,36 +1181,42 @@ fun KnowledgeGraphView(
                 FilterChip(
                     selected = selectedTierFilter == null,
                     onClick = { selectedTierFilter = null },
-                    label = { Text("All Levels (${allNodes.size})", fontSize = 11.sp, fontFamily = FontFamily.Monospace) },
+                    label = { Text("All tiers (${allNodes.size})", style = MaterialTheme.typography.labelMedium) },
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = TextPrimary,
-                        selectedLabelColor = DarkBackground,
-                        containerColor = CardBackground,
-                        labelColor = TextSecondary
+                        selectedContainerColor = AppTheme.colors.accentContainer,
+                        selectedLabelColor = AppTheme.colors.onAccentContainer,
+                        containerColor = AppTheme.colors.cardBackground,
+                        labelColor = AppTheme.colors.textSecondary
                     )
                 )
             }
             items(MemoryTier.values()) { tier ->
                 val count = allNodes.count { it.tier == tier }
-                val (label, icon) = when (tier) {
-                    MemoryTier.TEMPORARY -> "Level 1: Temp" to "⚡"
-                    MemoryTier.LONG_TERM -> "Level 2: Long-Term" to "🧠"
-                    MemoryTier.LEARNED_PATTERN -> "Level 3: Patterns" to "📈"
-                    MemoryTier.SENSITIVE -> "Level 4: Sensitive" to "🔒"
-                }
                 FilterChip(
                     selected = selectedTierFilter == tier,
                     onClick = { selectedTierFilter = if (selectedTierFilter == tier) null else tier },
-                    label = { Text("$icon $label ($count)", fontSize = 11.sp, fontFamily = FontFamily.Monospace) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = memoryTierIcon(tier),
+                            contentDescription = null,
+                            tint = memoryTierColor(tier),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    },
+                    label = { Text("${GraphRenderModel.tierDisplayName(tier)} ($count)", style = MaterialTheme.typography.labelMedium) },
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = when (tier) {
-                            MemoryTier.SENSITIVE -> AccentOrange
-                            MemoryTier.LEARNED_PATTERN -> AccentCyan
-                            else -> TextPrimary
+                        selectedContainerColor = if (tier == MemoryTier.SENSITIVE) {
+                            AppTheme.colors.accentOrange
+                        } else {
+                            AppTheme.colors.accentContainer
                         },
-                        selectedLabelColor = DarkBackground,
-                        containerColor = CardBackground,
-                        labelColor = TextSecondary
+                        selectedLabelColor = if (tier == MemoryTier.SENSITIVE) {
+                            AppTheme.colors.background
+                        } else {
+                            AppTheme.colors.onAccentContainer
+                        },
+                        containerColor = AppTheme.colors.cardBackground,
+                        labelColor = AppTheme.colors.textSecondary
                     )
                 )
             }
@@ -1139,35 +1234,39 @@ fun KnowledgeGraphView(
                 FilterChip(
                     selected = selectedCategoryFilter == null,
                     onClick = { selectedCategoryFilter = null },
-                    label = { Text("All Categories", fontSize = 10.sp) },
+                    label = { Text("All categories", style = MaterialTheme.typography.labelMedium) },
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = TextPrimary.copy(alpha = 0.2f),
-                        selectedLabelColor = TextPrimary,
-                        containerColor = CardBackground.copy(alpha = 0.6f),
-                        labelColor = TextSecondary
+                        selectedContainerColor = AppTheme.colors.accentContainer,
+                        selectedLabelColor = AppTheme.colors.onAccentContainer,
+                        containerColor = AppTheme.colors.cardBackground,
+                        labelColor = AppTheme.colors.textSecondary
                     )
                 )
             }
             items(KnowledgeCategory.values()) { cat ->
-                val icon = when (cat) {
-                    KnowledgeCategory.CONTACT -> "👥"
-                    KnowledgeCategory.TASK_ROUTINE -> "⚙️"
-                    KnowledgeCategory.APP_PREFERENCE -> "📱"
-                    KnowledgeCategory.SCHEDULE -> "📅"
-                    KnowledgeCategory.PROJECT -> "📁"
-                    KnowledgeCategory.RESOURCE -> "🌐"
-                    KnowledgeCategory.NOTE_FACT -> "📝"
-                    KnowledgeCategory.USER_PREFERENCE -> "⭐"
-                }
                 FilterChip(
                     selected = selectedCategoryFilter == cat,
                     onClick = { selectedCategoryFilter = if (selectedCategoryFilter == cat) null else cat },
-                    label = { Text("$icon ${cat.name.replace('_', ' ')}", fontSize = 10.sp) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = memoryCategoryIcon(cat),
+                            contentDescription = null,
+                            tint = AppTheme.colors.textSecondary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    },
+                    label = {
+                        Text(
+                            cat.name.replace('_', ' ').lowercase()
+                                .replaceFirstChar { it.uppercase() },
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    },
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = AccentCyan.copy(alpha = 0.3f),
-                        selectedLabelColor = AccentCyan,
-                        containerColor = CardBackground.copy(alpha = 0.6f),
-                        labelColor = TextSecondary
+                        selectedContainerColor = AppTheme.colors.accentContainer,
+                        selectedLabelColor = AppTheme.colors.onAccentContainer,
+                        containerColor = AppTheme.colors.cardBackground,
+                        labelColor = AppTheme.colors.textSecondary
                     )
                 )
             }
@@ -1182,17 +1281,14 @@ fun KnowledgeGraphView(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "KNOWLEDGE ENTITIES (${filteredNodes.size})",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
-                color = AccentCyan,
-                letterSpacing = 1.sp
+                text = "Knowledge (${filteredNodes.size})",
+                style = MaterialTheme.typography.titleSmall,
+                color = AppTheme.colors.textPrimary
             )
             TextButton(onClick = { isAddingKnowledge = !isAddingKnowledge }) {
-                Icon(Icons.Default.Add, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(16.dp))
+                Icon(Icons.Default.Add, contentDescription = null, tint = AppTheme.colors.accentNeonGreen, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text(if (isAddingKnowledge) "Close" else "Add Entity / Secret", color = TextPrimary, fontSize = 11.sp)
+                Text(if (isAddingKnowledge) "Close" else "Add entity / secret", color = AppTheme.colors.accentNeonGreen, style = MaterialTheme.typography.labelLarge)
             }
         }
 
@@ -1202,42 +1298,47 @@ fun KnowledgeGraphView(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 8.dp)
-                    .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
-                colors = CardDefaults.cardColors(containerColor = CardBackground)
+                    .border(1.dp, AppTheme.colors.borderColor, RoundedCornerShape(18.dp)),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = AppTheme.colors.cardBackground)
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Text(
-                        text = if (addIsSensitive) "ADD LEVEL 4 ENCRYPTED SECRET" else "ADD LEVEL 2 LONG-TERM KNOWLEDGE",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = if (addIsSensitive) AccentOrange else AccentCyan
+                        text = if (addIsSensitive) "Add an encrypted secret" else "Add long-term knowledge",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = if (addIsSensitive) AppTheme.colors.accentOrange else AppTheme.colors.textPrimary
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         FilterChip(
                             selected = !addIsSensitive,
                             onClick = { addIsSensitive = false },
-                            label = { Text("🧠 Long-Term Memory", fontSize = 11.sp) }
+                            leadingIcon = {
+                                Icon(Icons.Rounded.Psychology, contentDescription = null, modifier = Modifier.size(14.dp))
+                            },
+                            label = { Text("Long-term memory", style = MaterialTheme.typography.labelMedium) }
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         FilterChip(
                             selected = addIsSensitive,
                             onClick = { addIsSensitive = true },
-                            label = { Text("🔒 Keystore Encrypted", fontSize = 11.sp) }
+                            leadingIcon = {
+                                Icon(Icons.Rounded.Lock, contentDescription = null, modifier = Modifier.size(14.dp))
+                            },
+                            label = { Text("Keystore encrypted", style = MaterialTheme.typography.labelMedium) }
                         )
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = newLabel,
                         onValueChange = { newLabel = it },
-                        label = { Text(if (addIsSensitive) "Secret Key / Label (e.g. locker_code)" else "Label / Title (e.g. Favorite Coffee)", fontSize = 12.sp) },
+                        label = { Text(if (addIsSensitive) "Secret key / label (e.g. locker_code)" else "Label / title (e.g. Favorite Coffee)", style = MaterialTheme.typography.bodySmall) },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = if (addIsSensitive) AccentOrange else AccentCyan,
-                            unfocusedBorderColor = BorderColor,
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary
+                            focusedBorderColor = if (addIsSensitive) AppTheme.colors.accentOrange else AppTheme.colors.accentNeonGreen,
+                            unfocusedBorderColor = AppTheme.colors.borderColor,
+                            focusedTextColor = AppTheme.colors.textPrimary,
+                            unfocusedTextColor = AppTheme.colors.textPrimary
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -1245,19 +1346,19 @@ fun KnowledgeGraphView(
                     OutlinedTextField(
                         value = newSummary,
                         onValueChange = { newSummary = it },
-                        label = { Text(if (addIsSensitive) "Secret Value (Hardware Encrypted)" else "Details / Description", fontSize = 12.sp) },
+                        label = { Text(if (addIsSensitive) "Secret value (hardware encrypted)" else "Details / description", style = MaterialTheme.typography.bodySmall) },
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = if (addIsSensitive) AccentOrange else AccentCyan,
-                            unfocusedBorderColor = BorderColor,
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary
+                            focusedBorderColor = if (addIsSensitive) AppTheme.colors.accentOrange else AppTheme.colors.accentNeonGreen,
+                            unfocusedBorderColor = AppTheme.colors.borderColor,
+                            focusedTextColor = AppTheme.colors.textPrimary,
+                            unfocusedTextColor = AppTheme.colors.textPrimary
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(10.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         TextButton(onClick = { isAddingKnowledge = false }) {
-                            Text("Cancel", color = AccentRed)
+                            Text("Cancel", color = AppTheme.colors.accentRed)
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(
@@ -1274,12 +1375,12 @@ fun KnowledgeGraphView(
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (addIsSensitive) AccentOrange else TextPrimary,
-                                contentColor = DarkBackground
+                                containerColor = if (addIsSensitive) AppTheme.colors.accentOrange else AppTheme.colors.accentGreenButton,
+                                contentColor = if (addIsSensitive) AppTheme.colors.background else AppTheme.colors.onAccent
                             ),
-                            shape = RoundedCornerShape(8.dp)
+                            shape = RoundedCornerShape(percent = 50)
                         ) {
-                            Text("Save Entry", fontWeight = FontWeight.Bold)
+                            Text("Save entry", style = MaterialTheme.typography.labelLarge)
                         }
                     }
                 }
@@ -1298,12 +1399,12 @@ fun KnowledgeGraphView(
                 leadingIcon = {
                     Icon(Icons.Default.List, contentDescription = null, modifier = Modifier.size(14.dp))
                 },
-                label = { Text("List", fontSize = 11.sp, fontFamily = FontFamily.Monospace) },
+                label = { Text("List", style = MaterialTheme.typography.labelMedium) },
                 colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = TextPrimary,
-                    selectedLabelColor = DarkBackground,
-                    containerColor = CardBackground,
-                    labelColor = TextSecondary
+                    selectedContainerColor = AppTheme.colors.accentContainer,
+                    selectedLabelColor = AppTheme.colors.onAccentContainer,
+                    containerColor = AppTheme.colors.cardBackground,
+                    labelColor = AppTheme.colors.textSecondary
                 )
             )
             FilterChip(
@@ -1312,12 +1413,12 @@ fun KnowledgeGraphView(
                 leadingIcon = {
                     Icon(Icons.Default.AccountTree, contentDescription = null, modifier = Modifier.size(14.dp))
                 },
-                label = { Text("Graph", fontSize = 11.sp, fontFamily = FontFamily.Monospace) },
+                label = { Text("Graph", style = MaterialTheme.typography.labelMedium) },
                 colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = TextPrimary,
-                    selectedLabelColor = DarkBackground,
-                    containerColor = CardBackground,
-                    labelColor = TextSecondary
+                    selectedContainerColor = AppTheme.colors.accentContainer,
+                    selectedLabelColor = AppTheme.colors.onAccentContainer,
+                    containerColor = AppTheme.colors.cardBackground,
+                    labelColor = AppTheme.colors.textSecondary
                 )
             )
         }
@@ -1333,33 +1434,73 @@ fun KnowledgeGraphView(
                 modifier = Modifier.weight(1f)
             )
         } else if (filteredNodes.isNotEmpty()) {
+            // Nodes arrive sorted tier-first (see above), so grouping by tier
+            // here is presentation only: a plain-language header + caption
+            // per tier section, in the same order.
+            val tierOrder = listOf(
+                MemoryTier.LONG_TERM,
+                MemoryTier.LEARNED_PATTERN,
+                MemoryTier.SENSITIVE,
+                MemoryTier.TEMPORARY
+            )
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 contentPadding = PaddingValues(bottom = 24.dp),
                 modifier = Modifier.weight(1f)
             ) {
-                items(filteredNodes, key = { it.id }) { node ->
-                    KnowledgeNodeCard(
-                        node = node,
-                        onPromote = { viewModel.promotePattern(node.id) },
-                        onDelete = { viewModel.deleteKnowledgeNode(node.id) }
-                    )
+                tierOrder.forEach { tier ->
+                    val tierNodes = filteredNodes.filter { it.tier == tier }
+                    if (tierNodes.isNotEmpty()) {
+                        item(key = "tier-header-${tier.name}") {
+                            TierSectionHeader(tier = tier)
+                        }
+                        items(tierNodes, key = { it.id }) { node ->
+                            KnowledgeNodeCard(
+                                node = node,
+                                onPromote = { viewModel.promotePattern(node.id) },
+                                onDelete = { viewModel.deleteKnowledgeNode(node.id) }
+                            )
+                        }
+                    }
                 }
             }
         } else {
-            Box(
+            MemoryEmptyState(
+                icon = Icons.Default.AccountTree,
+                message = "No knowledge graph entities matching filter.",
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "No Knowledge Graph entities matching filter.",
-                    color = TextSecondary,
-                    fontSize = 13.sp,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
+                    .fillMaxWidth()
+            )
+        }
+    }
+}
+
+/** Plain-language tier section header: vector icon, name, one-line caption. */
+@Composable
+private fun TierSectionHeader(tier: MemoryTier) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
+    ) {
+        Icon(
+            imageVector = memoryTierIcon(tier),
+            contentDescription = null,
+            tint = memoryTierColor(tier),
+            modifier = Modifier.size(18.dp)
+        )
+        Column {
+            Text(
+                text = GraphRenderModel.tierDisplayName(tier),
+                style = MaterialTheme.typography.titleSmall,
+                color = AppTheme.colors.textPrimary
+            )
+            Text(
+                text = memoryTierCaption(tier),
+                style = MaterialTheme.typography.bodySmall,
+                color = AppTheme.colors.textSecondary
+            )
         }
     }
 }
@@ -1370,24 +1511,25 @@ fun KnowledgeNodeCard(
     onPromote: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val tierColor = when (node.tier) {
-        MemoryTier.SENSITIVE -> AccentOrange
-        MemoryTier.LEARNED_PATTERN -> AccentCyan
-        MemoryTier.TEMPORARY -> TextSecondary
-        MemoryTier.LONG_TERM -> AccentCyan
-    }
-    val tierIcon = when (node.tier) {
-        MemoryTier.SENSITIVE -> "🔒"
-        MemoryTier.LEARNED_PATTERN -> "📈"
-        MemoryTier.TEMPORARY -> "⚡"
-        MemoryTier.LONG_TERM -> "🧠"
-    }
+    val tierColor = memoryTierColor(node.tier)
+    val isSensitive = node.tier == MemoryTier.SENSITIVE
 
+    // Sensitive memories get the trust treatment (research-2 3E.4): a
+    // distinct raised surface and an amber hairline, with the lock glyph.
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
-        colors = CardDefaults.cardColors(containerColor = CardBackground)
+            .border(
+                1.dp,
+                if (isSensitive) AppTheme.colors.accentOrange.copy(alpha = 0.45f)
+                else AppTheme.colors.borderColor,
+                RoundedCornerShape(18.dp)
+            ),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSensitive) AppTheme.colors.surfaceRaised
+            else AppTheme.colors.cardBackground
+        )
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(
@@ -1400,28 +1542,37 @@ fun KnowledgeNodeCard(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Surface(
-                        color = tierColor.copy(alpha = 0.15f),
-                        shape = RoundedCornerShape(4.dp),
-                        border = BorderStroke(1.dp, tierColor.copy(alpha = 0.4f))
+                        color = AppTheme.colors.surfaceOverlay,
+                        shape = RoundedCornerShape(6.dp),
+                        border = BorderStroke(1.dp, AppTheme.colors.borderColor)
                     ) {
-                        Text(
-                            text = "$tierIcon ${node.tier.name}",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            color = tierColor,
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
+                        ) {
+                            Icon(
+                                imageVector = memoryTierIcon(node.tier),
+                                contentDescription = null,
+                                tint = tierColor,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = GraphRenderModel.tierDisplayName(node.tier),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = tierColor
+                            )
+                        }
                     }
                     Surface(
-                        color = TextPrimary.copy(alpha = 0.08f),
-                        shape = RoundedCornerShape(4.dp)
+                        color = AppTheme.colors.surfaceOverlay,
+                        shape = RoundedCornerShape(6.dp)
                     ) {
                         Text(
-                            text = node.category.name.replace('_', ' '),
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = TextSecondary,
+                            text = node.category.name.replace('_', ' ').lowercase()
+                                .replaceFirstChar { it.uppercase() },
+                            style = MaterialTheme.typography.labelMedium,
+                            color = AppTheme.colors.textSecondary,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
@@ -1429,13 +1580,7 @@ fun KnowledgeNodeCard(
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (node.tier == MemoryTier.LEARNED_PATTERN) {
-                        Text(
-                            text = "${(node.confidence * 100).toInt()}% conf",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            color = AccentCyan
-                        )
+                        MemoryConfidenceMeter(confidence = node.confidence)
                         Spacer(modifier = Modifier.width(4.dp))
                     }
                     IconButton(
@@ -1445,7 +1590,7 @@ fun KnowledgeNodeCard(
                         Icon(
                             imageVector = Icons.Default.Delete,
                             contentDescription = "Delete Node",
-                            tint = TextSecondary.copy(alpha = 0.6f),
+                            tint = AppTheme.colors.textSecondary.copy(alpha = 0.6f),
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -1456,16 +1601,14 @@ fun KnowledgeNodeCard(
 
             Text(
                 text = node.label,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                color = AccentCyan,
-                fontFamily = FontFamily.Monospace
+                style = MaterialTheme.typography.titleSmall,
+                color = AppTheme.colors.textPrimary
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = node.summary,
-                fontSize = 13.sp,
-                color = TextPrimary
+                style = MaterialTheme.typography.bodyMedium,
+                color = AppTheme.colors.textPrimary
             )
 
             if (node.properties.isNotEmpty()) {
@@ -1477,9 +1620,8 @@ fun KnowledgeNodeCard(
                     node.properties.entries.take(3).forEach { (k, v) ->
                         Text(
                             text = "$k: $v",
-                            fontSize = 9.sp,
-                            color = TextSecondary,
-                            fontFamily = FontFamily.Monospace
+                            style = MonoMedium,
+                            color = AppTheme.colors.textSecondary
                         )
                     }
                 }
@@ -1496,13 +1638,13 @@ fun KnowledgeNodeCard(
                 ) {
                     OutlinedButton(
                         onClick = onPromote,
-                        shape = RoundedCornerShape(6.dp),
-                        border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, AppTheme.colors.borderStrong),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                     ) {
-                        Icon(Icons.Default.TrendingUp, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(12.dp))
+                        Icon(Icons.Rounded.TrendingUp, contentDescription = null, tint = AppTheme.colors.accentNeonGreen, modifier = Modifier.size(12.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Promote to Long-Term", fontSize = 10.sp, color = AccentCyan)
+                        Text("Promote to long-term", style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.accentNeonGreen)
                     }
                 }
             }

@@ -5,9 +5,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountTree
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -33,9 +41,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -43,16 +51,9 @@ import com.opendroid.ai.core.memory.graph.KnowledgeCategory
 import com.opendroid.ai.core.memory.graph.KnowledgeNode
 import com.opendroid.ai.core.memory.graph.KnowledgeRelation
 import com.opendroid.ai.core.memory.graph.MemoryTier
-import com.opendroid.ai.ui.theme.AccentCyan
-import com.opendroid.ai.ui.theme.AccentGreenButton
-import com.opendroid.ai.ui.theme.AccentNeonGreen
-import com.opendroid.ai.ui.theme.AccentOrange
-import com.opendroid.ai.ui.theme.AccentPurple
-import com.opendroid.ai.ui.theme.BorderColor
-import com.opendroid.ai.ui.theme.CardBackground
-import com.opendroid.ai.ui.theme.DarkBackground
-import com.opendroid.ai.ui.theme.TextPrimary
-import com.opendroid.ai.ui.theme.TextSecondary
+import com.opendroid.ai.ui.theme.AppTheme
+import com.opendroid.ai.ui.theme.JetBrainsMonoFamily
+import com.opendroid.ai.ui.theme.MonoMedium
 import com.opendroid.ai.ui.viewmodel.MemoryViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -63,23 +64,23 @@ private const val MAX_SCALE = 3.5f
 /** Fill colour per knowledge category (node meaning is also in its label). */
 @Composable
 private fun categoryColor(category: KnowledgeCategory): Color = when (category) {
-    KnowledgeCategory.CONTACT -> AccentCyan
-    KnowledgeCategory.TASK_ROUTINE -> AccentGreenButton
-    KnowledgeCategory.APP_PREFERENCE -> AccentPurple
-    KnowledgeCategory.SCHEDULE -> AccentOrange
-    KnowledgeCategory.PROJECT -> AccentNeonGreen
-    KnowledgeCategory.RESOURCE -> TextPrimary
-    KnowledgeCategory.NOTE_FACT -> TextSecondary
-    KnowledgeCategory.USER_PREFERENCE -> AccentCyan.copy(alpha = 0.55f)
+    KnowledgeCategory.CONTACT -> AppTheme.colors.accentInfo
+    KnowledgeCategory.TASK_ROUTINE -> AppTheme.colors.accentGreenButton
+    KnowledgeCategory.APP_PREFERENCE -> AppTheme.colors.textSecondary
+    KnowledgeCategory.SCHEDULE -> AppTheme.colors.accentOrange
+    KnowledgeCategory.PROJECT -> AppTheme.colors.accentNeonGreen
+    KnowledgeCategory.RESOURCE -> AppTheme.colors.textPrimary
+    KnowledgeCategory.NOTE_FACT -> AppTheme.colors.accentInfo.copy(alpha = 0.55f)
+    KnowledgeCategory.USER_PREFERENCE -> AppTheme.colors.accentNeonGreen.copy(alpha = 0.55f)
 }
 
 /** Accent per tier, used for zone framing and pattern confidence arcs. */
 @Composable
 private fun tierAccent(tier: MemoryTier): Color = when (tier) {
-    MemoryTier.TEMPORARY -> TextSecondary
-    MemoryTier.LONG_TERM -> AccentCyan
-    MemoryTier.LEARNED_PATTERN -> AccentPurple
-    MemoryTier.SENSITIVE -> AccentOrange
+    MemoryTier.TEMPORARY -> AppTheme.colors.textSecondary
+    MemoryTier.LONG_TERM -> AppTheme.colors.accentNeonGreen
+    MemoryTier.LEARNED_PATTERN -> AppTheme.colors.accentInfo
+    MemoryTier.SENSITIVE -> AppTheme.colors.accentOrange
 }
 
 /** What a node may show as its name. Sensitive records never show theirs on the map. */
@@ -110,17 +111,26 @@ fun MemoryGraphView(
     // Honest empty states — never sample nodes.
     if (filteredNodes.isEmpty()) {
         Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(
-                text = if (totalNodeCount == 0) {
-                    "Your knowledge graph is empty.\nMemories you save and patterns I learn will appear here as a map."
-                } else {
-                    "No memories match the current search or filters."
-                },
-                color = TextSecondary,
-                fontSize = 13.sp,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier.padding(24.dp)
-            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    imageVector = Icons.Default.AccountTree,
+                    contentDescription = null,
+                    tint = AppTheme.colors.textTertiary,
+                    modifier = Modifier.size(40.dp)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = if (totalNodeCount == 0) {
+                        "Your knowledge graph is empty.\nMemories you save and patterns I learn will appear here as a map."
+                    } else {
+                        "No memories match the current search or filters."
+                    },
+                    color = AppTheme.colors.textSecondary,
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 24.dp)
+                )
+            }
         }
         return
     }
@@ -172,13 +182,13 @@ fun MemoryGraphView(
     }
 
     // Resolve theme colours here — the Canvas draw lambda is not composable.
-    val background = DarkBackground
-    val cardBackground = CardBackground
-    val borderColor = BorderColor
-    val textPrimary = TextPrimary
-    val textSecondary = TextSecondary
-    val accentCyan = AccentCyan
-    val accentOrange = AccentOrange
+    val background = AppTheme.colors.background
+    val cardBackground = AppTheme.colors.cardBackground
+    val borderColor = AppTheme.colors.borderColor
+    val textPrimary = AppTheme.colors.textPrimary
+    val textSecondary = AppTheme.colors.textSecondary
+    val accent = AppTheme.colors.accentNeonGreen
+    val accentOrange = AppTheme.colors.accentOrange
     val categoryColors = KnowledgeCategory.values().associateWith { categoryColor(it) }
     val tierAccents = MemoryTier.values().associateWith { tierAccent(it) }
     val textMeasurer = rememberTextMeasurer()
@@ -193,7 +203,7 @@ fun MemoryGraphView(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(18.dp))
             .background(background)
             .semantics {
                 // Enriched summary (D8): per-tier counts from the same
@@ -287,7 +297,7 @@ fun MemoryGraphView(
                         style = TextStyle(
                             fontSize = 34.sp,
                             fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = JetBrainsMonoFamily,
                             color = accent
                         )
                     )
@@ -301,7 +311,6 @@ fun MemoryGraphView(
                             text = "Nothing here yet",
                             style = TextStyle(
                                 fontSize = 30.sp,
-                                fontFamily = FontFamily.Monospace,
                                 color = textSecondary
                             )
                         )
@@ -323,7 +332,7 @@ fun MemoryGraphView(
                         val other = current.nodes[GraphRenderModel.otherEnd(edge, focusedLayout.node.id)]
                             ?: continue
                         drawLine(
-                            color = accentCyan.copy(
+                            color = accent.copy(
                                 alpha = 0.25f + 0.55f * edge.weight.coerceIn(0f, 1f)
                             ),
                             start = Offset(focusedLayout.center.x, focusedLayout.center.y),
@@ -412,7 +421,7 @@ fun MemoryGraphView(
 
                     if (node.id == focusedId || node.id == selectedId) {
                         drawCircle(
-                            color = accentCyan.copy(alpha = 0.9f),
+                            color = accent.copy(alpha = 0.9f),
                             radius = laidOut.radius + 10f,
                             center = center,
                             style = Stroke(width = 3f / scale)
@@ -428,7 +437,6 @@ fun MemoryGraphView(
                             text = labelText,
                             style = TextStyle(
                                 fontSize = 26.sp,
-                                fontFamily = FontFamily.Monospace,
                                 color = textPrimary.copy(alpha = baseAlpha)
                             )
                         )
@@ -447,7 +455,7 @@ fun MemoryGraphView(
 
         if (visible.truncated) {
             Surface(
-                color = cardBackground,
+                color = AppTheme.colors.surfaceRaised,
                 shape = RoundedCornerShape(6.dp),
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -456,8 +464,7 @@ fun MemoryGraphView(
                 Text(
                     text = "Showing strongest ${visible.nodes.size} of ${visible.totalCount} — " +
                         "refine search or filters",
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace,
+                    style = MonoMedium,
                     color = textSecondary,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                 )
@@ -469,15 +476,14 @@ fun MemoryGraphView(
                 onClick = { focusedId = null },
                 modifier = Modifier.align(Alignment.TopEnd)
             ) {
-                Text("Clear focus", color = accentCyan, fontSize = 11.sp)
+                Text("Clear focus", color = accent, style = MaterialTheme.typography.labelLarge)
             }
         }
 
         Text(
             text = "Drag to pan · pinch to zoom · tap a memory for details",
-            fontSize = 10.sp,
-            fontFamily = FontFamily.Monospace,
-            color = textSecondary,
+            style = MaterialTheme.typography.labelSmall,
+            color = AppTheme.colors.textTertiary,
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .padding(10.dp)
