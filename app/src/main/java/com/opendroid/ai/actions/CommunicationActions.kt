@@ -186,8 +186,9 @@ class CommunicationActions @Inject constructor(
                 ?: return ActionResult(false, null, "message is missing")
 
             val trimmed = contact.trim()
-            if (trimmed.startsWith("@") || (trimmed.isNotEmpty() && !trimmed.contains(" ") && !trimmed.all { it.isDigit() })) {
-                // Direct Telegram username/handle
+            if (trimmed.startsWith("@")) {
+                // Explicit Telegram handle — the only input trusted as a
+                // username without consulting device contacts first.
                 return executeTelegram(trimmed.removePrefix("@"), contact, message, context, isUsername = true)
             }
 
@@ -196,6 +197,9 @@ class CommunicationActions @Inject constructor(
                 return executeTelegram(trimmed, contact, message, context, isUsername = false)
             }
 
+            // Resolve against device contacts FIRST: the old code treated
+            // any single-token name ("Rahul") as a Telegram username and
+            // opened t.me/Rahul — a stranger — instead of the saved contact.
             return when (val resolved = contactResolver.resolveWithDisambiguation(contact)) {
                 is ContactResolution.Found -> executeTelegram(resolved.contact.phoneNumber, contact, message, context, isUsername = false)
                 is ContactResolution.Ambiguous -> buildContactPickerResult(
@@ -203,8 +207,18 @@ class CommunicationActions @Inject constructor(
                     mapOf("message" to message)
                 )
                 is ContactResolution.NotFound -> {
-                    // If not found in device contacts, treat as Telegram username
-                    executeTelegram(trimmed.removePrefix("@"), contact, message, context, isUsername = true)
+                    // Only a username-SHAPED token (5+ chars of
+                    // letters/digits/underscore, per Telegram's rules) may
+                    // fall back to a username once contacts have no match;
+                    // anything else is a contact we failed to find.
+                    if (trimmed.matches(Regex("^[A-Za-z0-9_]{5,}$"))) {
+                        executeTelegram(trimmed, contact, message, context, isUsername = true)
+                    } else {
+                        ActionResult.NeedsInput(
+                            question = "I couldn't find '$contact' in your contacts. What's their Telegram username or number?",
+                            metadata = mapOf("param" to "contact")
+                        )
+                    }
                 }
             }
         }
@@ -422,7 +436,9 @@ class CommunicationActions @Inject constructor(
                 }
             }
 
-            ActionResult(true, "Opened Telegram chat with $contactLabel with your message ready!", null)
+            // Non-success: the chat is open with the message ready, but
+            // nothing was sent — the user still has to tap send.
+            ActionResult(false, "I've opened the Telegram chat with $contactLabel with your message ready — just tap send!", "Telegram message was not sent automatically", true)
         } catch (e: Exception) {
             Log.e("SendTelegram", "Telegram failed: ${e.localizedMessage}")
             ActionResult(false, null, "Telegram didn't work. ${e.localizedMessage ?: "Please try again."}", true)
@@ -436,7 +452,14 @@ class CommunicationActions @Inject constructor(
                 try {
                     val smsManager = context.getSystemService(SmsManager::class.java)
                     if (smsManager != null) {
-                        smsManager.sendTextMessage(phone, null, message, null, null)
+                        // Split long messages: sendTextMessage throws/fails
+                        // on many devices once the text exceeds one segment.
+                        val parts = smsManager.divideMessage(message)
+                        if (parts != null && parts.size > 1) {
+                            smsManager.sendMultipartTextMessage(phone, null, parts, null, null)
+                        } else {
+                            smsManager.sendTextMessage(phone, null, message, null, null)
+                        }
                         return ActionResult(true, "Text sent to $contactLabel!", null)
                     }
                 } catch (_: Exception) {
@@ -529,7 +552,9 @@ class CommunicationActions @Inject constructor(
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 context.startActivity(intent)
-                ActionResult(true, "WhatsApp is open — find the '$groupName' group and send your message!", null)
+                // Non-success: WhatsApp's main screen is open; no message
+                // was sent to the group.
+                ActionResult(false, "WhatsApp is open — find the '$groupName' group and send your message!", "WhatsApp group message was not sent automatically", true)
             } catch (e: Exception) {
                 Log.e("WhatsAppGroup", "Group message failed: ${e.localizedMessage}")
                 ActionResult(false, null, "Couldn't open WhatsApp. Is it installed?")
@@ -573,7 +598,9 @@ class CommunicationActions @Inject constructor(
                         }
                     }
                 }
-                ActionResult(true, "Video call to $contact is starting!", null)
+                // Non-success: an app/chat/dialer was opened, but no call
+                // was placed — claiming "call is starting" was false.
+                ActionResult(false, "I've opened the way to reach $contact — please tap the video call button to start the call.", "Video call was not placed automatically", true)
             } catch (e: Exception) {
                 Log.e("VideoCall", "Video call failed: ${e.localizedMessage}")
                 ActionResult(false, null, "Couldn't start the video call. Try again?")
