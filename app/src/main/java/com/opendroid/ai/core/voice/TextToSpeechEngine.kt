@@ -36,6 +36,16 @@ class TextToSpeechEngine(
     @Volatile
     private var destroyed = false
     private var mediaPlayer: MediaPlayer? = null
+
+    /**
+     * Serialises every [mediaPlayer] hand-off against [destroy]. The
+     * destroyed re-check and the player creation in [playElevenLabsTts]
+     * must be atomic with respect to destroy()'s release: a bare
+     * check-then-create lets destroy() slip into the gap, after which
+     * the in-flight speak assigns and starts a player on a destroyed
+     * engine that nothing ever releases (finding #10).
+     */
+    private val mediaPlayerLock = Any()
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     var onCompletionListener: (() -> Unit)? = null
@@ -48,9 +58,6 @@ class TextToSpeechEngine(
      * read-aloud speech happens to finish.
      */
     var onUtteranceCompletionListener: ((String?) -> Unit)? = null
-
-    @Volatile
-    private var currentUtteranceId: String? = null
 
     // Additional completion observers, for callers that must not clobber the
     // single [onCompletionListener] slot owned by OpenDroidService (chat
@@ -69,11 +76,6 @@ class TextToSpeechEngine(
     private fun notifyCompletion(utteranceId: String? = null) {
         onCompletionListener?.invoke()
         onUtteranceCompletionListener?.invoke(utteranceId)
-        completionListeners.forEach { listener -> runCatching { listener() } }
-    }
-
-    /** Registered listeners only — for paths where no speech actually played. */
-    private fun notifyCompletionListeners() {
         completionListeners.forEach { listener -> runCatching { listener() } }
     }
 
@@ -113,7 +115,6 @@ class TextToSpeechEngine(
      * receive this id when the speech finishes.
      */
     fun speak(text: String, utteranceId: String) {
-        currentUtteranceId = utteranceId
         scope.launch {
             if (destroyed) return@launch
             val config = settingsRepository.llmConfig.first()
@@ -122,7 +123,7 @@ class TextToSpeechEngine(
 
             if (apiKey.isNotEmpty()) {
                 try {
-                    val success = playElevenLabsTts(text, apiKey, voiceId)
+                    val success = playElevenLabsTts(text, apiKey, voiceId, utteranceId)
                     if (success) return@launch
                 } catch (e: Exception) {
                     // Fallback to local TTS if ElevenLabs fails
@@ -139,19 +140,25 @@ class TextToSpeechEngine(
                     tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
                 }
             } else {
-                // Nothing will be spoken (engine not ready, no cloud voice):
-                // still release registered listeners so a read-aloud queue
-                // waiting on completion doesn't hang. The service's
-                // onCompletionListener is deliberately NOT fired — no speech
-                // happened, so no Speaking state needs resetting.
+                // Nothing will be spoken (engine not ready, no cloud
+                // voice). The completion must still fire, with this
+                // utterance's id: both service consumers gate on their
+                // own state — the D2 controller leaves SPEAKING only via
+                // onCompletionListener, and approval listening arms only
+                // when the approval prompt's own id completes — so on a
+                // device whose TTS engine never initialised, withholding
+                // the event wedges a voice session in SPEAKING until the
+                // 10-minute cap and silently kills voice approval
+                // (finding #5). Firing it when nothing was asked to speak
+                // in those states is a no-op on both consumers.
                 mainHandler.post {
-                    notifyCompletionListeners()
+                    notifyCompletion(utteranceId)
                 }
             }
         }
     }
 
-    private fun playElevenLabsTts(text: String, apiKey: String, voiceId: String): Boolean {
+    private fun playElevenLabsTts(text: String, apiKey: String, voiceId: String, utteranceId: String): Boolean {
         val url = "https://api.elevenlabs.io/v1/text-to-speech/$voiceId"
         val escapedText = text
             .replace("\\", "\\\\")
@@ -189,19 +196,43 @@ class TextToSpeechEngine(
             }
 
             // destroy() may have run while the (blocking) download was in
-            // flight — never create a player on a destroyed engine.
-            if (destroyed) return false
+            // flight — never create a player on a destroyed engine. The
+            // check and the creation happen under mediaPlayerLock, and
+            // destroy() takes the same lock to release, so the check
+            // cannot go stale between test and assignment (finding #10).
+            synchronized(mediaPlayerLock) {
+                if (destroyed) return false
 
-            mediaPlayer?.release()
-            mediaPlayer = MediaPlayer().apply {
-                setDataSource(tempFile.absolutePath)
-                prepare()
-                setOnCompletionListener {
-                    mainHandler.post {
-                        notifyCompletion(currentUtteranceId)
+                mediaPlayer?.release()
+                mediaPlayer = null
+                mediaPlayer = MediaPlayer().apply {
+                    setDataSource(tempFile.absolutePath)
+                    prepare()
+                    // Capture THIS utterance's id in the closure: the speech
+                    // that actually played is what completed. Reading a
+                    // shared field at completion time mis-attributes the
+                    // event to any interleaved speak() — with an approval
+                    // prompt in flight that either never arms approval
+                    // listening or arms it for unrelated speech (finding #3).
+                    setOnCompletionListener {
+                        mainHandler.post {
+                            notifyCompletion(utteranceId)
+                        }
                     }
+                    // Without an error listener a failed playback leaves the
+                    // player in the Error state — where stop() throws — and
+                    // no completion ever fires. Report the error as this
+                    // utterance's completion (the platform's own fallback
+                    // when no listener is installed) so listeners advance
+                    // and the player leaves the error path handled.
+                    setOnErrorListener { _, _, _ ->
+                        mainHandler.post {
+                            notifyCompletion(utteranceId)
+                        }
+                        true
+                    }
+                    start()
                 }
-                start()
             }
             return true
         }
@@ -209,7 +240,19 @@ class TextToSpeechEngine(
 
     fun stop() {
         tts?.stop()
-        mediaPlayer?.stop()
+        // MediaPlayer.stop() is illegal outside the Prepared/Started/
+        // Paused/PlaybackCompleted states: the field can still reference
+        // the player released just before a failed re-creation, or one a
+        // failed playback left in the Error state. Barge-in and session
+        // stop call this on the main thread — an unguarded stop() turns
+        // one bad cloud-TTS download into a crash (finding #4). A player
+        // in one of those states is not playing anything stop() could
+        // silence, so the exception is safe to swallow.
+        try {
+            synchronized(mediaPlayerLock) { mediaPlayer?.stop() }
+        } catch (_: IllegalStateException) {
+            // Player already released or in the Error state: nothing to stop.
+        }
     }
 
     companion object {
@@ -224,7 +267,13 @@ class TextToSpeechEngine(
         scope.cancel()
         tts?.shutdown()
         tts = null
-        mediaPlayer?.release()
-        mediaPlayer = null
+        // Same lock as the creation path: either an in-flight speak
+        // created its player first (and it is released here), or this
+        // release runs first and the speak's in-lock destroyed check
+        // refuses to create one at all (finding #10).
+        synchronized(mediaPlayerLock) {
+            mediaPlayer?.release()
+            mediaPlayer = null
+        }
     }
 }

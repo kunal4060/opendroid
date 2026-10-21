@@ -229,7 +229,15 @@ class LegacySseTransport(
 
     private val ids = AtomicLong(0)
     private val pending = ConcurrentHashMap<Long, CompletableDeferred<McpJsonRpc.Message>>()
-    private val endpoint = CompletableDeferred<String>()
+
+    /**
+     * The current stream generation's announced POST endpoint. Swapped
+     * for a fresh deferred whenever a stream dies (see [onStreamDead]),
+     * so the next request re-opens a stream and awaits the NEW endpoint
+     * instead of POSTing into a session whose stream is gone.
+     */
+    @Volatile
+    private var endpoint = CompletableDeferred<String>()
 
     @Volatile
     private var streamCall: Call? = null
@@ -253,13 +261,19 @@ class LegacySseTransport(
             .build()
         val call = streamClient.newCall(request)
         streamCall = call
+        // Capture THIS generation's endpoint: onStreamDead may swap the
+        // field for a fresh deferred before the await below runs, and the
+        // opener must observe its own stream's fate (announced endpoint,
+        // or the stream's error), never the successor's.
+        val announcedEndpoint = endpoint
         call.enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) = failAll(e.toMcpException("MCP legacy stream"))
+            override fun onFailure(call: Call, e: IOException) =
+                onStreamDead(call, e.toMcpException("MCP legacy stream"))
 
             override fun onResponse(call: Call, response: Response) {
                 response.use {
                     if (!it.isSuccessful) {
-                        failAll(McpException.Http(it.code, "MCP legacy stream answered HTTP ${it.code}"))
+                        onStreamDead(call, McpException.Http(it.code, "MCP legacy stream answered HTTP ${it.code}"))
                         return
                     }
                     try {
@@ -271,14 +285,16 @@ class LegacySseTransport(
                             handleEvent(event)
                         }
                         parser.flush()?.let(::handleEvent)
-                        if (!closed) failAll(McpException.Transport("MCP legacy stream ended"))
+                        if (!closed) onStreamDead(call, McpException.Transport("MCP legacy stream ended"))
                     } catch (error: Exception) {
-                        if (!closed) failAll(McpException.Transport("MCP legacy stream failed: ${error.message}", error))
+                        if (!closed) {
+                            onStreamDead(call, McpException.Transport("MCP legacy stream failed: ${error.message}", error))
+                        }
                     }
                 }
             }
         })
-        val resolved = withTimeoutOrNull(openTimeoutMs) { endpoint.await() }
+        val resolved = withTimeoutOrNull(openTimeoutMs) { announcedEndpoint.await() }
         if (resolved == null) {
             close()
             throw McpException.Timeout("MCP server did not announce an endpoint within ${openTimeoutMs}ms")
@@ -309,6 +325,23 @@ class LegacySseTransport(
         val waiting = pending.values.toList()
         pending.clear()
         waiting.forEach { it.completeExceptionally(error) }
+    }
+
+    /**
+     * The current stream generation died (failure, HTTP error, clean end,
+     * or a read error). In-flight work fails fast with [error] via
+     * [failAll]; then — unless the transport was closed or a successor
+     * stream is already installed — the dead call and its completed
+     * endpoint are cleared so the next request/notify re-opens a fresh
+     * stream instead of POSTing to a stale endpoint and waiting out the
+     * full call timeout for a response that can never arrive (finding #2).
+     */
+    private fun onStreamDead(call: Call, error: McpException) {
+        failAll(error)
+        if (!closed && streamCall === call) {
+            streamCall = null
+            endpoint = CompletableDeferred()
+        }
     }
 
     override suspend fun request(method: String, params: JSONObject?, timeoutMs: Long): JSONObject {

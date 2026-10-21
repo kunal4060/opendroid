@@ -101,21 +101,38 @@ class WearStatusPublisher @Inject constructor(
             .collectLatest { state ->
                 val proposed = state as? AgentState.PlanProposed
                 if (proposed == null) {
-                    if (publishedApprovalPlanId != null) {
-                        deleteDataItem(WearProtocol.PATH_PENDING_APPROVAL)
-                        publishedApprovalPlanId = null
+                    // Mirror of the publish latch below: clear the plan id
+                    // ONLY on a confirmed delete, retrying while the gate
+                    // stays resolved. The delete used to be latched as
+                    // done unconditionally even when it failed (the
+                    // failure was swallowed inside deleteDataItem), and
+                    // since this loop only runs on agentState emissions
+                    // the failed delete was never re-attempted — a stale
+                    // approval card could sit on the watch for the rest
+                    // of its TTL (finding #7). collectLatest cancels the
+                    // wait as soon as the gate state changes.
+                    while (publishedApprovalPlanId != null) {
+                        if (deleteDataItem(WearProtocol.PATH_PENDING_APPROVAL)) {
+                            publishedApprovalPlanId = null
+                        } else {
+                            delay(APPROVAL_PUBLISH_RETRY_MS)
+                        }
                     }
                 } else if (publishedApprovalPlanId != proposed.plan.planId) {
-                    val payload = pendingApprovalPayload(proposed.plan)
-                    val payloadJson = json.encodeToString(payload)
                     // Latch the plan id ONLY on a confirmed publish: a
                     // transient DataClient failure must not silently cost
                     // the user the wrist-approval card for this plan
                     // (finding #5). agentState will not re-emit for an
                     // unchanged plan, so retry here while this plan stays
                     // proposed — collectLatest cancels the wait as soon as
-                    // the gate state changes.
+                    // the gate state changes. The payload is rebuilt on
+                    // EVERY attempt: pendingApprovalPayload stamps the
+                    // approval expiry at construction, so reusing one
+                    // pre-built payload across a multi-minute outage
+                    // would publish a card whose TTL the outage already
+                    // consumed (finding #8).
                     while (publishedApprovalPlanId != proposed.plan.planId) {
+                        val payloadJson = json.encodeToString(pendingApprovalPayload(proposed.plan))
                         if (putDataItem(WearProtocol.PATH_PENDING_APPROVAL, payloadJson, urgent = true)) {
                             publishedApprovalPlanId = proposed.plan.planId
                         } else {
@@ -153,14 +170,17 @@ class WearStatusPublisher @Inject constructor(
         }
     }
 
-    private suspend fun deleteDataItem(path: String) {
-        try {
+    /** @return true when the delete was accepted by the DataClient. */
+    private suspend fun deleteDataItem(path: String): Boolean {
+        return try {
             val uri = Uri.Builder().scheme(WEAR_URI_SCHEME).path(path).build()
             kotlinx.coroutines.withContext(Dispatchers.IO) {
                 Tasks.await(Wearable.getDataClient(appContext).deleteDataItems(uri))
             }
+            true
         } catch (e: Exception) {
             Log.w(TAG, "Failed to delete $path from watch data layer", e)
+            false
         }
     }
 
@@ -189,7 +209,7 @@ class WearStatusPublisher @Inject constructor(
         private const val MAX_STEP_CHARS = 120
         private const val MAX_APPROVAL_STEPS = 12
 
-        /** Delay between pending-approval publish retries after a failure. */
+        /** Delay between pending-approval publish/delete retries after a failure. */
         private const val APPROVAL_PUBLISH_RETRY_MS = 5_000L
     }
 }

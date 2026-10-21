@@ -38,6 +38,23 @@ class SherpaKwsEngine(private val context: Context) : KeywordSpotterEngine {
     @Volatile private var sensitivity: Float = 0.5f
 
     @Volatile private var running = false
+
+    /**
+     * Monotonic start generation. stop() can return while its capture
+     * thread is still alive (join timeout — the thread owns release and
+     * finishes later), and a restart of THIS instance then runs two
+     * generations side by side. Without an identity check the zombie
+     * generation installs its handles into the shared spotter/stream
+     * fields over its successor's, enters the capture loop alongside it
+     * (the shared `running` flag was re-armed by the new start), and —
+     * once the successor has exited and cleared the thread reference —
+     * releases handles that are not its own: a double-release of the
+     * successor's, its own leaked (finding #9). Every generation tags
+     * its work with the value it was started with and touches shared
+     * state only while that tag is still the current generation.
+     */
+    private val generation = java.util.concurrent.atomic.AtomicInteger(0)
+
     private var captureThread: Thread? = null
     private var audioRecord: AudioRecord? = null
     private var spotter: KeywordSpotter? = null
@@ -55,11 +72,15 @@ class SherpaKwsEngine(private val context: Context) : KeywordSpotterEngine {
         if (running) return
         this.onDetected = onDetected
         running = true
+        val myGeneration = generation.incrementAndGet()
         WakeWordStatus.publish(WakeWordEngineState.Starting, kind)
-        captureThread = Thread({ runEngine() }, "opendroid-kws").apply { start() }
+        captureThread = Thread({ runEngine(myGeneration) }, "opendroid-kws").apply { start() }
     }
 
-    private fun runEngine() {
+    private fun runEngine(myGeneration: Int) {
+        var newSpotter: KeywordSpotter? = null
+        var newStream: OnlineStream? = null
+        var installed = false
         try {
             val modelDir = KwsModelFiles.ensureExtracted(context)
             val (keywordLines, fallbackNote) = resolveKeywordLines(modelDir)
@@ -83,31 +104,57 @@ class SherpaKwsEngine(private val context: Context) : KeywordSpotterEngine {
                 keywordsThreshold = WakeKeywordFactory.thresholdForSensitivity(sensitivity)
             )
             // null AssetManager → all paths above are plain filesystem paths.
-            val newSpotter = KeywordSpotter(null, config)
-            spotter = newSpotter
-            val newStream = newSpotter.createStream()
-            stream = newStream
-            if (!running) {
-                // stop() raced the (file-heavy) initialisation: release and
-                // leave quietly instead of publishing Listening after Stopped.
-                releaseNative()
+            val createdSpotter = KeywordSpotter(null, config)
+            newSpotter = createdSpotter
+            val createdStream = createdSpotter.createStream()
+            newStream = createdStream
+            if (myGeneration != generation.get() || !running) {
+                // Superseded by a newer start while this generation was
+                // still initialising (only reachable after a timed-out
+                // stop), or stop() raced the (file-heavy) initialisation:
+                // release and leave quietly. This generation's handles
+                // were never installed, so the shared fields — possibly
+                // already a successor's — are not touched, and no
+                // Listening is published after Stopped (finding #9).
+                releaseHandles(createdStream, createdSpotter)
+                newStream = null
+                newSpotter = null
                 return
             }
+            spotter = createdSpotter
+            stream = createdStream
+            installed = true
             WakeWordStatus.publish(WakeWordEngineState.Listening, kind, fallbackNote)
-            captureLoop(newSpotter, newStream)
+            captureLoop(myGeneration, createdSpotter, createdStream)
             // The capture thread owns native release on exit: stop() frees
             // the handles itself only after a successful join, so they are
             // never released from under a live capture thread (finding #2).
-            releaseNative()
+            releaseOnExit(myGeneration, createdStream, createdSpotter)
         } catch (e: Exception) {
-            running = false
-            releaseNative()
-            WakeWordStatus.publish(
-                WakeWordEngineState.Error(
-                    "Offline wake word failed to start: ${e.message ?: e.javaClass.simpleName}"
-                ),
-                kind
-            )
+            if (myGeneration == generation.get()) {
+                running = false
+                if (installed) {
+                    releaseNative()
+                } else {
+                    releaseHandles(newStream, newSpotter)
+                }
+                WakeWordStatus.publish(
+                    WakeWordEngineState.Error(
+                        "Offline wake word failed to start: ${e.message ?: e.javaClass.simpleName}"
+                    ),
+                    kind
+                )
+            } else {
+                // A superseded generation failing late must not clear the
+                // successor's running flag, publish Error over its
+                // Listening, or release the successor's field handles —
+                // only its own, if it ever installed them (finding #9).
+                if (installed) {
+                    releaseOnExit(myGeneration, newStream, newSpotter)
+                } else {
+                    releaseHandles(newStream, newSpotter)
+                }
+            }
         } finally {
             // Self-clean so a later stop()/start() never acts on a dead
             // thread reference. Identity-checked: start() may already have
@@ -138,7 +185,7 @@ class SherpaKwsEngine(private val context: Context) : KeywordSpotterEngine {
         }
     }
 
-    private fun captureLoop(activeSpotter: KeywordSpotter, activeStream: OnlineStream) {
+    private fun captureLoop(myGeneration: Int, activeSpotter: KeywordSpotter, activeStream: OnlineStream) {
         val minBuffer = AudioRecord.getMinBufferSize(
             SAMPLE_RATE_HZ,
             AudioFormat.CHANNEL_IN_MONO,
@@ -167,7 +214,11 @@ class SherpaKwsEngine(private val context: Context) : KeywordSpotterEngine {
             record.startRecording()
             val shorts = ShortArray(CHUNK_SAMPLES)
             var consecutiveReadErrors = 0
-            while (running) {
+            // The generation term matters, not just `running`: after a
+            // timed-out stop the successor re-arms `running`, and a zombie
+            // generation must still leave instead of decoding alongside
+            // its successor on its own handles (finding #9).
+            while (running && myGeneration == generation.get()) {
                 val read = record.read(shorts, 0, shorts.size)
                 if (read <= 0) {
                     // A transient bad read is worth a short retry, but a
@@ -197,10 +248,14 @@ class SherpaKwsEngine(private val context: Context) : KeywordSpotterEngine {
                     val keyword = activeSpotter.getResult(activeStream).keyword
                     if (keyword.isNotBlank()) {
                         // Reset right after a detection, per the engine's
-                        // contract, then hand over on the main thread.
+                        // contract, then hand over on the main thread. A
+                        // superseded generation must not deliver its
+                        // detection through the successor's callback.
                         activeSpotter.reset(activeStream)
                         val callback = onDetected
-                        mainHandler.post { if (running) callback?.invoke(keyword) }
+                        mainHandler.post {
+                            if (running && myGeneration == generation.get()) callback?.invoke(keyword)
+                        }
                         break
                     }
                 }
@@ -252,6 +307,38 @@ class SherpaKwsEngine(private val context: Context) : KeywordSpotterEngine {
         if (WakeWordStatus.info.value.state !is WakeWordEngineState.Error) {
             WakeWordStatus.publish(WakeWordEngineState.Stopped, kind)
         }
+    }
+
+    /** Releases the given handles quietly, stream before spotter. */
+    private fun releaseHandles(streamToRelease: OnlineStream?, spotterToRelease: KeywordSpotter?) {
+        try {
+            streamToRelease?.release()
+        } catch (_: Exception) {
+        }
+        try {
+            spotterToRelease?.release()
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * Exit-path release for one capture generation. While the generation
+     * is still current, its handles are the shared fields and the usual
+     * [releaseNative] path applies. A superseded generation must never
+     * release through the fields — they may already hold its successor's
+     * handles (releasing them is a double-release/use-after-release;
+     * skipping its own leaks them) — so it clears the fields only where
+     * they still identity-match its own handles and then releases those
+     * handles directly (finding #9).
+     */
+    private fun releaseOnExit(myGeneration: Int, ownStream: OnlineStream?, ownSpotter: KeywordSpotter?) {
+        if (myGeneration == generation.get()) {
+            releaseNative()
+            return
+        }
+        if (stream === ownStream) stream = null
+        if (spotter === ownSpotter) spotter = null
+        releaseHandles(ownStream, ownSpotter)
     }
 
     private fun releaseNative() {

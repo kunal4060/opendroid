@@ -31,7 +31,31 @@ class McpClientManager @Inject constructor(
     private val configStore: McpConfigStore
 ) {
 
-    private data class Session(val client: McpClient, val tools: List<McpTool>)
+    private data class Session(
+        val client: McpClient,
+        val tools: List<McpTool>,
+        val connectionKey: ConnectionKey
+    )
+
+    /**
+     * The connection-relevant slice of an [McpEndpointConfig]: everything
+     * that decides how (and whether) the wire is opened. A cached session
+     * is only reused when the incoming config's key matches — a Settings
+     * edit to the URL, auth headers, transport kind, or the cleartext
+     * opt-in must reconnect, never keep calling the old endpoint with the
+     * old credentials (finding #1). Per-tool settings are deliberately
+     * excluded: [callTool] re-checks them against the fresh config on
+     * every call, so an untick applies immediately without a reconnect.
+     */
+    private data class ConnectionKey(
+        val url: String,
+        val headers: Map<String, String>,
+        val transport: McpTransportKind,
+        val allowInsecureLocal: Boolean
+    )
+
+    private fun McpEndpointConfig.connectionKey(): ConnectionKey =
+        ConnectionKey(url, headers, transport, allowInsecureLocal)
 
     private val sessions = ConcurrentHashMap<String, Session>()
     private val connectLocks = ConcurrentHashMap<String, Mutex>()
@@ -52,14 +76,27 @@ class McpClientManager @Inject constructor(
      */
     suspend fun connect(config: McpEndpointConfig): List<McpTool> {
         requireEnabled(config)
-        sessions[config.name]?.let { return it.tools }
+        val key = config.connectionKey()
+        sessions[config.name]?.takeIf { it.connectionKey == key }?.let { return it.tools }
         val lock = connectLocks.getOrPut(config.name) { Mutex() }
         return lock.withLock {
-            sessions[config.name]?.let { return@withLock it.tools }
+            sessions[config.name]?.let { existing ->
+                if (existing.connectionKey == key) return@withLock existing.tools
+                // The config was edited in Settings since this session was
+                // opened: close the stale session (old endpoint, old
+                // credentials) and fall through to a fresh handshake with
+                // the edited config (finding #1).
+                sessions.remove(config.name)
+                try {
+                    existing.client.close()
+                } catch (_: Exception) {
+                    // Closing a stale session must never throw into callers.
+                }
+            }
             setState(config.name, McpServerState.Connecting)
             try {
                 val (client, tools) = openSession(config)
-                sessions[config.name] = Session(client, tools)
+                sessions[config.name] = Session(client, tools, key)
                 setState(
                     config.name,
                     McpServerState.Connected(toolCount = tools.size, serverInfo = client.serverInfo)
