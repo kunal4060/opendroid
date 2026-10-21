@@ -172,7 +172,7 @@ private fun UsageTotalsCard(state: UsageDashboardState) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, AccentCyan.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
+            .border(1.dp, AccentNeonGreen.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
         colors = CardDefaults.cardColors(containerColor = CardBackground)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -181,7 +181,7 @@ private fun UsageTotalsCard(state: UsageDashboardState) {
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
-                color = AccentCyan
+                color = AccentNeonGreen
             )
             Spacer(modifier = Modifier.height(8.dp))
             StatLine("Requests", formatCount(state.totalRequests))
@@ -213,7 +213,7 @@ private fun UsageModelCard(row: UsageRowUi, onEditPrice: () -> Unit) {
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
-                color = AccentCyan
+                color = AccentNeonGreen
             )
             Text(
                 text = row.model,
@@ -255,7 +255,7 @@ private fun UsageModelCard(row: UsageRowUi, onEditPrice: () -> Unit) {
                 Text(
                     text = "Using your edited price.",
                     fontSize = 11.sp,
-                    color = AccentCyan
+                    color = AccentNeonGreen
                 )
             }
             Spacer(modifier = Modifier.height(4.dp))

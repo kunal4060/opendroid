@@ -19,14 +19,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -46,6 +44,7 @@ import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
 import com.mikepenz.markdown.model.rememberMarkdownState
 import com.opendroid.ai.ui.theme.AppTheme
+import com.opendroid.ai.ui.theme.JetBrainsMonoFamily
 import dev.snipme.highlights.Highlights
 import dev.snipme.highlights.model.SyntaxThemes
 
@@ -77,7 +76,7 @@ fun MarkdownMessage(
     // Slightly lifted inset for code blocks — the same colours ChatScreen
     // uses for the user bubble, so code reads as "inset" against the agent
     // card in both palettes.
-    val codeBackground = if (palette.isDark) Color(0xFF1E1E22) else Color(0xFFF1F3F5)
+    val codeBackground = palette.surfaceSunken
 
     val colors = markdownColor(
         text = palette.textPrimary,
@@ -100,8 +99,8 @@ fun MarkdownMessage(
         h5 = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold, color = palette.textPrimary),
         h6 = TextStyle(fontSize = 13.sp, lineHeight = 19.sp, fontWeight = FontWeight.SemiBold, color = palette.textSecondary),
         text = body,
-        code = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 13.sp, lineHeight = 18.sp, color = palette.textPrimary),
-        inlineCode = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 13.sp, color = palette.textPrimary),
+        code = TextStyle(fontFamily = JetBrainsMonoFamily, fontSize = 13.sp, lineHeight = 18.sp, color = palette.textPrimary),
+        inlineCode = TextStyle(fontFamily = JetBrainsMonoFamily, fontSize = 13.sp, color = palette.textPrimary),
         quote = body.copy(fontStyle = FontStyle.Italic, color = palette.textSecondary),
         paragraph = body,
         ordered = body,
@@ -109,7 +108,7 @@ fun MarkdownMessage(
         list = body,
         textLink = TextLinkStyles(
             style = SpanStyle(
-                color = palette.accentCyan,
+                color = palette.accentInfo,
                 fontWeight = FontWeight.Bold,
                 textDecoration = TextDecoration.Underline
             )
@@ -211,7 +210,7 @@ private fun CodeBlockWithCopyHeader(
             Text(
                 text = language?.takeIf { it.isNotBlank() } ?: "code",
                 fontSize = 10.sp,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = JetBrainsMonoFamily,
                 color = palette.textSecondary,
                 modifier = Modifier.weight(1f)
             )

@@ -37,7 +37,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.opendroid.ai.core.security.AppLockManager
-import com.opendroid.ai.ui.theme.AccentCyan
+import com.opendroid.ai.ui.theme.AccentGreenButton
+import com.opendroid.ai.ui.theme.AccentNeonGreen
+import com.opendroid.ai.ui.theme.OnAccent
 import com.opendroid.ai.ui.theme.AccentRed
 import com.opendroid.ai.ui.theme.TextPrimary
 import com.opendroid.ai.ui.theme.TextSecondary
@@ -116,7 +118,7 @@ fun LockGate(appLockManager: AppLockManager) {
         Icon(
             imageVector = Icons.Default.Lock,
             contentDescription = "Locked",
-            tint = AccentCyan,
+            tint = AccentNeonGreen,
             modifier = Modifier.size(64.dp)
         )
         Spacer(modifier = Modifier.height(20.dp))
@@ -149,10 +151,10 @@ fun LockGate(appLockManager: AppLockManager) {
             Spacer(modifier = Modifier.height(28.dp))
             Button(
                 onClick = { showBiometricPrompt() },
-                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+                colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(text = "Unlock", color = TextPrimary)
+                Text(text = "Unlock", color = OnAccent)
             }
         }
 

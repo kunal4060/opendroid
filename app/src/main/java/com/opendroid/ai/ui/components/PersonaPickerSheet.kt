@@ -30,13 +30,13 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.opendroid.ai.data.models.Persona
 import com.opendroid.ai.data.models.PersonaKind
-import com.opendroid.ai.ui.theme.AccentCyan
+import com.opendroid.ai.ui.theme.AccentNeonGreen
+import com.opendroid.ai.ui.theme.JetBrainsMonoFamily
 import com.opendroid.ai.ui.theme.BorderColor
 import com.opendroid.ai.ui.theme.CardBackground
 import com.opendroid.ai.ui.theme.DarkSurface
@@ -68,14 +68,14 @@ fun PersonaChip(
             Icon(
                 imageVector = Icons.Default.Face,
                 contentDescription = null,
-                tint = if (activePersona != null) AccentCyan else TextSecondary,
+                tint = if (activePersona != null) AccentNeonGreen else TextSecondary,
                 modifier = Modifier.size(13.dp)
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(
                 text = activePersona?.name ?: "Persona",
                 fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = JetBrainsMonoFamily,
                 color = TextPrimary,
                 maxLines = 1
             )
@@ -84,9 +84,9 @@ fun PersonaChip(
                 Text(
                     text = "CHAT",
                     fontSize = 9.sp,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = JetBrainsMonoFamily,
                     fontWeight = FontWeight.Bold,
-                    color = AccentCyan
+                    color = AccentNeonGreen
                 )
             }
             Icon(
@@ -178,7 +178,7 @@ fun PersonaPickerSheet(
                         Text(
                             text = "QUICK COMMANDS",
                             fontSize = 10.sp,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = JetBrainsMonoFamily,
                             fontWeight = FontWeight.Bold,
                             color = TextSecondary,
                             modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)
@@ -255,7 +255,7 @@ private fun PersonaPickerRow(
             Icon(
                 imageVector = Icons.Default.Check,
                 contentDescription = "Selected for this chat",
-                tint = AccentCyan,
+                tint = AccentNeonGreen,
                 modifier = Modifier.size(16.dp)
             )
         }

@@ -18,7 +18,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -48,11 +47,8 @@ fun RoutinesScreen(
                 title = {
                     Text(
                         text = "HABITS & ROUTINES",
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = AppTheme.colors.textPrimary,
-                        fontSize = 18.sp,
-                        letterSpacing = 1.5.sp
+                        style = MaterialTheme.typography.titleLarge,
+                        color = AppTheme.colors.textPrimary
                     )
                 },
                 navigationIcon = {
@@ -86,7 +82,7 @@ fun RoutinesScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(bottom = 24.dp)
         ) {
@@ -95,11 +91,8 @@ fun RoutinesScreen(
                 item {
                     Text(
                         text = "DISCOVERED HABITS & SUGGESTIONS",
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = AppTheme.colors.accentCyan,
-                        fontSize = 13.sp,
-                        letterSpacing = 1.sp,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = AppTheme.colors.accentNeonGreen,
                         modifier = Modifier.padding(top = 8.dp)
                     )
                 }
@@ -123,11 +116,8 @@ fun RoutinesScreen(
             item {
                 Text(
                     text = "AUTOMATED ROUTINES (${activeRoutines.size})",
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    color = AppTheme.colors.accentCyan,
-                    fontSize = 13.sp,
-                    letterSpacing = 1.sp,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = AppTheme.colors.accentNeonGreen,
                     modifier = Modifier.padding(top = 8.dp)
                 )
             }
@@ -137,7 +127,7 @@ fun RoutinesScreen(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, AppTheme.colors.borderColor, RoundedCornerShape(12.dp)),
+                            .border(1.dp, AppTheme.colors.borderColor, RoundedCornerShape(18.dp)),
                         colors = CardDefaults.cardColors(containerColor = AppTheme.colors.cardBackground)
                     ) {
                         Column(
@@ -197,18 +187,15 @@ fun RoutinesScreen(
             item {
                 Text(
                     text = "SAMPLE ROUTINE TEMPLATES",
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleSmall,
                     color = AppTheme.colors.textSecondary,
-                    fontSize = 13.sp,
-                    letterSpacing = 1.sp,
                     modifier = Modifier.padding(top = 8.dp)
                 )
             }
 
             item {
                 RoutineTemplateCard(
-                    title = "🌅 Morning Routine",
+                    title = "Morning Routine",
                     description = "Read calendar → Summarize today's meetings → Check notifications → Task list → Morning briefing",
                     trigger = "Every weekday at 9:00 AM",
                     onActivate = {
@@ -220,7 +207,7 @@ fun RoutinesScreen(
 
             item {
                 RoutineTemplateCard(
-                    title = "💼 Work Focus Routine",
+                    title = "Work Focus Routine",
                     description = "Open Slack → Check Calendar → Read important notifications",
                     trigger = "Every weekday at 9:30 AM",
                     onActivate = {
@@ -232,7 +219,7 @@ fun RoutinesScreen(
 
             item {
                 RoutineTemplateCard(
-                    title = "🌙 Evening Wrap-up",
+                    title = "Evening Wrap-up",
                     description = "Check tomorrow's calendar → Check unread notifications → Daily summary",
                     trigger = "Daily at 9:00 PM",
                     onActivate = {
@@ -247,7 +234,7 @@ fun RoutinesScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, AppTheme.colors.borderColor, RoundedCornerShape(12.dp)),
+                        .border(1.dp, AppTheme.colors.borderColor, RoundedCornerShape(18.dp)),
                     colors = CardDefaults.cardColors(containerColor = AppTheme.colors.cardBackground)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -255,16 +242,14 @@ fun RoutinesScreen(
                             Icon(
                                 imageVector = Icons.Default.Analytics,
                                 contentDescription = null,
-                                tint = AppTheme.colors.accentPurple,
+                                tint = AppTheme.colors.accentNeonGreen,
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "HABIT LEARNING ENGINE",
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold,
-                                color = AppTheme.colors.textPrimary,
-                                fontSize = 13.sp
+                                style = MaterialTheme.typography.titleSmall,
+                                color = AppTheme.colors.textPrimary
                             )
                         }
                         Spacer(modifier = Modifier.height(8.dp))
@@ -292,7 +277,7 @@ fun SuggestedRoutineCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, AppTheme.colors.borderColor, RoundedCornerShape(12.dp)),
+            .border(1.dp, AppTheme.colors.borderColor, RoundedCornerShape(18.dp)),
         colors = CardDefaults.cardColors(containerColor = AppTheme.colors.cardBackground)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -301,17 +286,28 @@ fun SuggestedRoutineCard(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Surface(
-                    color = AppTheme.colors.accentCyan.copy(alpha = 0.15f),
+                    color = AppTheme.colors.accentContainer,
                     shape = RoundedCornerShape(6.dp)
                 ) {
-                    Text(
-                        text = "💡 ROUTINE DETECTED",
-                        color = AppTheme.colors.accentCyan,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Lightbulb,
+                            contentDescription = null,
+                            tint = AppTheme.colors.onAccentContainer,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "ROUTINE DETECTED",
+                            color = AppTheme.colors.onAccentContainer,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = JetBrainsMonoFamily
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.weight(1f))
                 Surface(
@@ -322,7 +318,7 @@ fun SuggestedRoutineCard(
                         text = "${(routine.confidence * 100).toInt()}% match",
                         color = AppTheme.colors.textSecondary,
                         fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = JetBrainsMonoFamily,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
@@ -340,13 +336,22 @@ fun SuggestedRoutineCard(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Text(
-                text = "⚡ ${routine.triggerLabel}",
-                color = AppTheme.colors.accentCyan,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                fontFamily = FontFamily.Monospace
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Bolt,
+                    contentDescription = null,
+                    tint = AppTheme.colors.accentNeonGreen,
+                    modifier = Modifier.size(13.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = routine.triggerLabel,
+                    color = AppTheme.colors.accentNeonGreen,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = JetBrainsMonoFamily
+                )
+            }
 
             if (routine.detectedActions.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
@@ -382,7 +387,7 @@ fun SuggestedRoutineCard(
             ) {
                 Text(
                     text = "Proposed Automation (${routine.suggestedSteps.size} steps)",
-                    color = AppTheme.colors.accentPurple,
+                    color = AppTheme.colors.accentNeonGreen,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -390,7 +395,7 @@ fun SuggestedRoutineCard(
                 Icon(
                     imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                     contentDescription = null,
-                    tint = AppTheme.colors.accentPurple,
+                    tint = AppTheme.colors.accentNeonGreen,
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -404,9 +409,9 @@ fun SuggestedRoutineCard(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = "${idx + 1}.",
-                                color = AppTheme.colors.accentCyan,
+                                color = AppTheme.colors.accentNeonGreen,
                                 fontSize = 12.sp,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = JetBrainsMonoFamily,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.width(20.dp)
                             )
@@ -430,22 +435,22 @@ fun SuggestedRoutineCard(
                 Button(
                     onClick = onApprove,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = AppTheme.colors.textPrimary,
-                        contentColor = AppTheme.colors.background
+                        containerColor = AppTheme.colors.accentGreenButton,
+                        contentColor = AppTheme.colors.onAccent
                     ),
-                    shape = RoundedCornerShape(8.dp),
+                    shape = androidx.compose.foundation.shape.CircleShape,
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Check,
                         contentDescription = null,
-                        tint = AppTheme.colors.background,
+                        tint = AppTheme.colors.onAccent,
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "Approve & Automate",
-                        color = AppTheme.colors.background,
+                        color = AppTheme.colors.onAccent,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp
                     )
@@ -480,7 +485,7 @@ fun ActiveRoutineCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, if (isEnabled) AppTheme.colors.accentCyan else AppTheme.colors.borderColor, RoundedCornerShape(12.dp)),
+            .border(1.dp, if (isEnabled) AppTheme.colors.accentNeonGreen else AppTheme.colors.borderColor, RoundedCornerShape(18.dp)),
         colors = CardDefaults.cardColors(containerColor = AppTheme.colors.cardBackground)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -496,20 +501,29 @@ fun ActiveRoutineCard(
                         fontSize = 16.sp
                     )
                     Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "⚡ ${routine.triggerLabel}",
-                        color = AppTheme.colors.accentCyan,
-                        fontSize = 12.sp,
-                        fontFamily = FontFamily.Monospace
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Bolt,
+                            contentDescription = null,
+                            tint = AppTheme.colors.accentNeonGreen,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = routine.triggerLabel,
+                            color = AppTheme.colors.accentNeonGreen,
+                            fontSize = 12.sp,
+                            fontFamily = JetBrainsMonoFamily
+                        )
+                    }
                 }
 
                 Switch(
                     checked = isEnabled,
                     onCheckedChange = onToggle,
                     colors = SwitchDefaults.colors(
-                        checkedThumbColor = AppTheme.colors.textPrimary,
-                        checkedTrackColor = AppTheme.colors.textPrimary.copy(alpha = 0.5f),
+                        checkedThumbColor = AppTheme.colors.onAccent,
+                        checkedTrackColor = AppTheme.colors.accentGreenButton,
                         uncheckedThumbColor = AppTheme.colors.textSecondary,
                         uncheckedTrackColor = AppTheme.colors.surface
                     )
@@ -536,28 +550,28 @@ fun ActiveRoutineCard(
                     enabled = !isExecuting,
                     colors = ButtonDefaults.buttonColors(containerColor = AppTheme.colors.surface),
                     shape = RoundedCornerShape(6.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, AppTheme.colors.accentCyan),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, AppTheme.colors.accentNeonGreen),
                     modifier = Modifier.weight(1f)
                 ) {
                     if (isExecuting) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(14.dp),
-                            color = AppTheme.colors.accentCyan,
+                            color = AppTheme.colors.accentNeonGreen,
                             strokeWidth = 2.dp
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Running...", color = AppTheme.colors.accentCyan, fontSize = 12.sp)
+                        Text("Running...", color = AppTheme.colors.accentNeonGreen, fontSize = 12.sp)
                     } else {
                         Icon(
                             imageVector = Icons.Default.PlayArrow,
                             contentDescription = null,
-                            tint = AppTheme.colors.accentCyan,
+                            tint = AppTheme.colors.accentNeonGreen,
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = "Run Routine Now",
-                            color = AppTheme.colors.accentCyan,
+                            color = AppTheme.colors.accentNeonGreen,
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp
                         )
@@ -586,13 +600,34 @@ fun RoutineTemplateCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, AppTheme.colors.borderColor, RoundedCornerShape(10.dp)),
+            .border(1.dp, AppTheme.colors.borderColor, RoundedCornerShape(18.dp)),
         colors = CardDefaults.cardColors(containerColor = AppTheme.colors.cardBackground)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(14.dp)
         ) {
+            val templateIcon = when {
+                title.contains("Morning") -> Icons.Default.WbSunny
+                title.contains("Work") -> Icons.Default.Work
+                title.contains("Evening") -> Icons.Default.Nightlight
+                else -> Icons.Default.Schedule
+            }
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(AppTheme.colors.accentContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = templateIcon,
+                    contentDescription = null,
+                    tint = AppTheme.colors.onAccentContainer,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
@@ -608,12 +643,21 @@ fun RoutineTemplateCard(
                     lineHeight = 16.sp
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "⏰ $trigger",
-                    color = AppTheme.colors.accentCyan,
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Schedule,
+                        contentDescription = null,
+                        tint = AppTheme.colors.accentNeonGreen,
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = trigger,
+                        color = AppTheme.colors.accentNeonGreen,
+                        fontSize = 11.sp,
+                        fontFamily = JetBrainsMonoFamily
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.width(8.dp))
@@ -622,7 +666,7 @@ fun RoutineTemplateCard(
                 Icon(
                     imageVector = Icons.Default.AddCircleOutline,
                     contentDescription = "Activate",
-                    tint = AppTheme.colors.accentCyan
+                    tint = AppTheme.colors.accentNeonGreen
                 )
             }
         }

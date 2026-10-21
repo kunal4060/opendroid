@@ -3,22 +3,16 @@ package com.opendroid.ai.ui
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.text.font.FontWeight
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -113,29 +107,29 @@ fun OpenDroidNavigation(
         startDestination = OpenDroidRoutes.SPLASH,
         modifier = Modifier.fillMaxSize().background(AppTheme.colors.background),
         enterTransition = {
-            fadeIn(animationSpec = tween(300)) + slideIntoContainer(
+            fadeIn(animationSpec = tween(300, easing = CubicBezierEasing(0.2f, 0f, 0f, 1f))) + slideIntoContainer(
                 AnimatedContentTransitionScope.SlideDirection.Start,
-                animationSpec = tween(300, easing = FastOutSlowInEasing)
+                animationSpec = tween(300, easing = CubicBezierEasing(0.2f, 0f, 0f, 1f))
             )
         },
         exitTransition = {
-            fadeOut(animationSpec = tween(250)) + slideOutOfContainer(
+            fadeOut(animationSpec = tween(225, easing = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f))) + slideOutOfContainer(
                 AnimatedContentTransitionScope.SlideDirection.Start,
                 targetOffset = { it / 4 },
-                animationSpec = tween(250, easing = FastOutSlowInEasing)
+                animationSpec = tween(225, easing = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f))
             )
         },
         popEnterTransition = {
-            fadeIn(animationSpec = tween(300)) + slideIntoContainer(
+            fadeIn(animationSpec = tween(300, easing = CubicBezierEasing(0.2f, 0f, 0f, 1f))) + slideIntoContainer(
                 AnimatedContentTransitionScope.SlideDirection.End,
                 initialOffset = { it / 4 },
-                animationSpec = tween(300, easing = FastOutSlowInEasing)
+                animationSpec = tween(300, easing = CubicBezierEasing(0.2f, 0f, 0f, 1f))
             )
         },
         popExitTransition = {
-            fadeOut(animationSpec = tween(250)) + slideOutOfContainer(
+            fadeOut(animationSpec = tween(225, easing = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f))) + slideOutOfContainer(
                 AnimatedContentTransitionScope.SlideDirection.End,
-                animationSpec = tween(250, easing = FastOutSlowInEasing)
+                animationSpec = tween(225, easing = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f))
             )
         }
     ) {
@@ -520,21 +514,19 @@ fun MainDashboard(
 
     Scaffold(
         bottomBar = {
-            NavigationBar(
-                containerColor = AppTheme.colors.surface,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-                    .border(1.dp, AppTheme.colors.borderColor, RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)),
-                tonalElevation = 6.dp
-            ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Divider(color = AppTheme.colors.borderSubtle, thickness = 1.dp)
+                NavigationBar(
+                    containerColor = AppTheme.colors.surface,
+                    tonalElevation = 0.dp
+                ) {
                 tabs.forEach { tab ->
                     val isSelected = currentTab == tab
                     val iconScale by animateFloatAsState(
                         targetValue = if (isSelected) 1.15f else 1.0f,
                         animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                            stiffness = Spring.StiffnessLow
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMedium
                         ),
                         label = "tabIconScale"
                     )
@@ -546,25 +538,25 @@ fun MainDashboard(
                                 imageVector = tab.icon,
                                 contentDescription = tab.title,
                                 modifier = Modifier.scale(iconScale),
-                                tint = if (isSelected) AppTheme.colors.textPrimary else AppTheme.colors.textSecondary
+                                tint = if (isSelected) AppTheme.colors.onAccentContainer else AppTheme.colors.textSecondary
                             )
                         },
                         label = {
                             Text(
                                 text = tab.title,
-                                fontSize = 10.sp,
-                                color = if (isSelected) AppTheme.colors.textPrimary else AppTheme.colors.textSecondary,
-                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                                style = MaterialTheme.typography.labelSmall
                             )
                         },
+                        alwaysShowLabel = true,
                         colors = NavigationBarItemDefaults.colors(
-                            indicatorColor = AppTheme.colors.textPrimary.copy(alpha = 0.08f),
-                            selectedIconColor = AppTheme.colors.textPrimary,
+                            indicatorColor = AppTheme.colors.accentContainer,
+                            selectedIconColor = AppTheme.colors.onAccentContainer,
                             unselectedIconColor = AppTheme.colors.textSecondary,
                             selectedTextColor = AppTheme.colors.textPrimary,
                             unselectedTextColor = AppTheme.colors.textSecondary
                         )
                     )
+                }
                 }
             }
         },
@@ -579,8 +571,8 @@ fun MainDashboard(
             AnimatedContent(
                 targetState = currentTab,
                 transitionSpec = {
-                    (fadeIn(animationSpec = tween(220)) + scaleIn(initialScale = 0.98f, animationSpec = tween(220)))
-                        .togetherWith(fadeOut(animationSpec = tween(180)))
+                    (fadeIn(animationSpec = tween(300, easing = CubicBezierEasing(0.2f, 0f, 0f, 1f))) + scaleIn(initialScale = 0.98f, animationSpec = tween(300, easing = CubicBezierEasing(0.2f, 0f, 0f, 1f))))
+                        .togetherWith(fadeOut(animationSpec = tween(225, easing = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f))))
                 },
                 label = "DashboardTabTransition"
             ) { tab ->

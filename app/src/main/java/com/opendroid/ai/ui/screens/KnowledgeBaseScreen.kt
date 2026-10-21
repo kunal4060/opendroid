@@ -119,7 +119,7 @@ fun KnowledgeBaseScreen(
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
-                            color = AccentCyan
+                            color = AccentNeonGreen
                         )
                         Spacer(modifier = Modifier.height(10.dp))
                         OutlinedTextField(
@@ -163,7 +163,7 @@ fun KnowledgeBaseScreen(
                                         text = "[${index + 1}] ${hit.chunk.citationLabel()}",
                                         fontSize = 12.sp,
                                         fontFamily = FontFamily.Monospace,
-                                        color = AccentCyan,
+                                        color = AccentNeonGreen,
                                         modifier = Modifier
                                             .clickable { selectedCitation = hit }
                                             .padding(vertical = 3.dp)

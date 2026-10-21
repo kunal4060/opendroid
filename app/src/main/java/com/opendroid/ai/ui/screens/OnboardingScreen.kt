@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -17,7 +16,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -63,7 +61,7 @@ fun OnboardingScreen(
                         OnboardingStage.PERMISSIONS -> "Grant Permissions"
                         OnboardingStage.PROVIDER -> "AI Provider"
                     }
-                    Text(titleText, color = TextPrimary, fontWeight = FontWeight.Bold)
+                    Text(titleText, color = TextPrimary, style = MaterialTheme.typography.titleLarge)
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBackground)
             )
@@ -145,7 +143,7 @@ private fun IntroductionPanel(
                 .size(130.dp)
                 .clip(CircleShape)
                 .background(CardBackground)
-                .border(2.5.dp, Brush.horizontalGradient(listOf(TextPrimary.copy(alpha = 0.4f), AccentCyan)), CircleShape),
+                .border(2.5.dp, AccentNeonGreen, CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Image(
@@ -159,8 +157,7 @@ private fun IntroductionPanel(
 
         Text(
             text = "Hello! I am OpenDroid",
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.headlineSmall,
             color = TextPrimary
         )
 
@@ -168,7 +165,7 @@ private fun IntroductionPanel(
 
         Text(
             text = "Your open autonomous device assistant. Please introduce yourself so I can serve you personally.",
-            fontSize = 14.sp,
+            style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
@@ -193,7 +190,7 @@ private fun IntroductionPanel(
             label = { Text("What should I call you?", color = TextSecondary) },
             placeholder = { Text("Enter your name", color = TextSecondary.copy(alpha = 0.6f)) },
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = AccentCyan,
+                focusedBorderColor = AccentNeonGreen,
                 unfocusedBorderColor = BorderColor,
                 focusedLabelColor = TextPrimary,
                 unfocusedLabelColor = TextSecondary,
@@ -225,7 +222,7 @@ private fun IntroductionPanel(
                 }
             },
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = AccentCyan,
+                focusedBorderColor = AccentNeonGreen,
                 unfocusedBorderColor = BorderColor,
                 focusedLabelColor = TextPrimary,
                 unfocusedLabelColor = TextSecondary,
@@ -292,8 +289,8 @@ private fun IntroductionPanel(
         Button(
             onClick = onContinue,
             modifier = Modifier.fillMaxWidth().height(50.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = TextPrimary, contentColor = DarkBackground),
-            shape = RoundedCornerShape(8.dp)
+            colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton, contentColor = OnAccent),
+            shape = CircleShape
         ) {
             Text("Let's Go", fontWeight = FontWeight.Bold, fontSize = 16.sp)
         }
@@ -335,7 +332,7 @@ fun PermissionPromptPanel(
                 .size(130.dp)
                 .clip(CircleShape)
                 .background(CardBackground)
-                .border(3.dp, Brush.horizontalGradient(listOf(AccentCyan, AccentPurple)), CircleShape),
+                .border(2.5.dp, AccentNeonGreen, CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Image(
@@ -349,8 +346,7 @@ fun PermissionPromptPanel(
 
         Text(
             text = "Permissions Setup",
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.headlineSmall,
             color = TextPrimary
         )
 
@@ -358,9 +354,8 @@ fun PermissionPromptPanel(
 
         Text(
             text = "Let's give me permission so I can serve you well",
-            fontSize = 16.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = AccentCyan,
+            style = MaterialTheme.typography.titleMedium,
+            color = AccentNeonGreen,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
 
@@ -368,7 +363,7 @@ fun PermissionPromptPanel(
 
         Text(
             text = "To allow me to interact with your device, run commands, list files, and operate system features, some standard Android permissions are required.",
-            fontSize = 14.sp,
+            style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
@@ -378,8 +373,8 @@ fun PermissionPromptPanel(
         Button(
             onClick = onContinue,
             modifier = Modifier.fillMaxWidth().height(50.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = TextPrimary, contentColor = DarkBackground),
-            shape = RoundedCornerShape(8.dp)
+            colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton, contentColor = OnAccent),
+            shape = CircleShape
         ) {
             Text("Grant Permissions", fontWeight = FontWeight.Bold, fontSize = 16.sp)
         }

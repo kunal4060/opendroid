@@ -21,7 +21,6 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -71,7 +70,7 @@ fun AuditLogTab(
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
             color = TextPrimary,
-            fontFamily = FontFamily.Monospace
+            fontFamily = JetBrainsMonoFamily
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
@@ -166,7 +165,7 @@ fun AuditLogTab(
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = TextSecondary,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = JetBrainsMonoFamily,
                                 // D8: day groups are headings for heading
                                 // navigation in TalkBack.
                                 modifier = Modifier
@@ -244,7 +243,7 @@ private fun ActionTypeDropdown(
             )
             actionTypes.forEach { actionType ->
                 DropdownMenuItem(
-                    text = { Text(actionType, fontFamily = FontFamily.Monospace, fontSize = 13.sp) },
+                    text = { Text(actionType, fontFamily = JetBrainsMonoFamily, fontSize = 13.sp) },
                     onClick = {
                         onSelect(actionType)
                         expanded = false
@@ -258,7 +257,7 @@ private fun ActionTypeDropdown(
 @Composable
 fun AuditOutcomeBadge(outcome: AuditOutcome, modifier: Modifier = Modifier) {
     val (label, color) = when (outcome) {
-        AuditOutcome.SUCCESS -> "SUCCESS" to AccentCyan
+        AuditOutcome.SUCCESS -> "SUCCESS" to AppTheme.colors.success
         AuditOutcome.FAILED -> "FAILED" to AccentRed
         AuditOutcome.DENIED -> "DENIED" to AccentOrange
     }
@@ -273,7 +272,7 @@ fun AuditOutcomeBadge(outcome: AuditOutcome, modifier: Modifier = Modifier) {
             fontSize = 9.sp,
             fontWeight = FontWeight.Bold,
             color = color,
-            fontFamily = FontFamily.Monospace
+            fontFamily = JetBrainsMonoFamily
         )
     }
 }
@@ -287,7 +286,7 @@ fun AuditEntryCard(
     val outcome = AuditLog.outcomeOf(entry)
     val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()) }
     val borderColor = when (outcome) {
-        AuditOutcome.SUCCESS -> AccentCyan
+        AuditOutcome.SUCCESS -> AppTheme.colors.success
         AuditOutcome.FAILED -> AccentRed
         AuditOutcome.DENIED -> AccentOrange
     }
@@ -330,7 +329,7 @@ fun AuditEntryCard(
                     text = dateFormat.format(Date(entry.timestamp)),
                     fontSize = 10.sp,
                     color = TextSecondary,
-                    fontFamily = FontFamily.Monospace
+                    fontFamily = JetBrainsMonoFamily
                 )
             }
 
@@ -348,8 +347,8 @@ fun AuditEntryCard(
             Text(
                 text = "Module: ${entry.actionType}",
                 fontSize = 11.sp,
-                color = AccentPurple,
-                fontFamily = FontFamily.Monospace
+                color = AccentNeonGreen,
+                fontFamily = JetBrainsMonoFamily
             )
 
             if (outcome == AuditOutcome.DENIED) {
@@ -365,7 +364,7 @@ fun AuditEntryCard(
                 Spacer(modifier = Modifier.height(10.dp))
                 Button(
                     onClick = save,
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentPurple),
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton, contentColor = OnAccent),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Save completed task as macro", fontSize = 11.sp)
@@ -410,8 +409,8 @@ private fun AuditEntryDetailSheet(
                     text = entry.actionType,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
-                    color = AccentPurple,
-                    fontFamily = FontFamily.Monospace
+                    color = AccentNeonGreen,
+                    fontFamily = JetBrainsMonoFamily
                 )
             }
 
@@ -439,7 +438,7 @@ private fun AuditEntryDetailSheet(
 
             entry.resultData?.let { result ->
                 Spacer(modifier = Modifier.height(8.dp))
-                AuditDetailBlock("Execution Result Data", result, AccentCyan)
+                AuditDetailBlock("Execution Result Data", result, AccentNeonGreen)
             }
 
             entry.errorMessage?.let { error ->
@@ -481,7 +480,7 @@ private fun AuditEntryDetailSheet(
                                 text = planEntry.actionType,
                                 fontSize = 10.sp,
                                 color = TextSecondary,
-                                fontFamily = FontFamily.Monospace
+                                fontFamily = JetBrainsMonoFamily
                             )
                         }
                     }
@@ -506,7 +505,7 @@ private fun AuditDetailRow(label: String, value: String) {
             text = value,
             fontSize = 11.sp,
             color = TextPrimary,
-            fontFamily = FontFamily.Monospace
+            fontFamily = JetBrainsMonoFamily
         )
     }
 }
@@ -519,7 +518,7 @@ private fun AuditDetailBlock(label: String, body: String, bodyColor: Color) {
         text = body,
         fontSize = 11.sp,
         color = bodyColor,
-        fontFamily = FontFamily.Monospace,
+        fontFamily = JetBrainsMonoFamily,
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(6.dp))

@@ -34,7 +34,7 @@ import com.opendroid.ai.core.voice.kws.WakeEngineKind
 import com.opendroid.ai.core.voice.kws.WakeKeywordFactory
 import com.opendroid.ai.core.voice.kws.WakeWordEngineState
 import com.opendroid.ai.core.voice.kws.WakeWordStatus
-import com.opendroid.ai.ui.theme.AccentCyan
+import com.opendroid.ai.ui.theme.AccentNeonGreen
 import com.opendroid.ai.ui.theme.AccentRed
 import com.opendroid.ai.ui.theme.BorderColor
 import com.opendroid.ai.ui.theme.CardBackground
@@ -69,7 +69,7 @@ fun WakeWordSettingsSection(viewModel: SettingsViewModel) {
                 Icon(
                     imageVector = Icons.Default.Mic,
                     contentDescription = "Wake Word",
-                    tint = AccentCyan,
+                    tint = AccentNeonGreen,
                     modifier = Modifier.size(24.dp)
                 )
                 Spacer(modifier = Modifier.width(12.dp))
@@ -79,7 +79,7 @@ fun WakeWordSettingsSection(viewModel: SettingsViewModel) {
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace,
-                        color = AccentCyan
+                        color = AccentNeonGreen
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
@@ -98,7 +98,7 @@ fun WakeWordSettingsSection(viewModel: SettingsViewModel) {
                 WakeWordEngineState.Idle -> "Not started" to TextSecondary
                 WakeWordEngineState.Starting -> "Starting…" to TextSecondary
                 WakeWordEngineState.Listening ->
-                    "Listening for \"${config.wakeWordKeyword.trim().ifEmpty { WakeKeywordFactory.DEFAULT_PHRASE }}\"" to AccentCyan
+                    "Listening for \"${config.wakeWordKeyword.trim().ifEmpty { WakeKeywordFactory.DEFAULT_PHRASE }}\"" to AccentNeonGreen
                 WakeWordEngineState.Stopped -> "Stopped" to TextSecondary
                 is WakeWordEngineState.Error -> state.message to AccentRed
             }

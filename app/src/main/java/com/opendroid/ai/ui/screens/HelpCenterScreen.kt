@@ -12,10 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.opendroid.ai.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -29,11 +26,8 @@ fun HelpCenterScreen(
                 title = {
                     Text(
                         text = "HELP CENTER",
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary,
-                        fontSize = 20.sp,
-                        letterSpacing = 2.sp
+                        style = MaterialTheme.typography.titleLarge,
+                        color = TextPrimary
                     )
                 },
                 navigationIcon = {
@@ -54,7 +48,7 @@ fun HelpCenterScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(bottom = 32.dp)
         ) {
@@ -63,8 +57,9 @@ fun HelpCenterScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, AccentCyan.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
-                    colors = CardDefaults.cardColors(containerColor = CardBackground)
+                        .border(1.dp, BorderColor, RoundedCornerShape(18.dp)),
+                    colors = CardDefaults.cardColors(containerColor = CardBackground),
+                    shape = RoundedCornerShape(18.dp)
                 ) {
                     Row(
                         modifier = Modifier
@@ -75,20 +70,19 @@ fun HelpCenterScreen(
                         Icon(
                             imageVector = Icons.Default.HelpOutline,
                             contentDescription = "Help",
-                            tint = AccentCyan,
+                            tint = AccentNeonGreen,
                             modifier = Modifier.size(32.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
                                 text = "How can we help?",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium,
                                 color = TextPrimary
                             )
                             Text(
                                 text = "Quick answers to common questions",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )
                         }

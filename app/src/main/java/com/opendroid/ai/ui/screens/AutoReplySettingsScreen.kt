@@ -17,12 +17,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -105,7 +107,7 @@ fun AutoReplySettingsScreen(
     ) { padding ->
         if (isLoading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = themeColors.accentPurple)
+                CircularProgressIndicator(color = themeColors.accentNeonGreen)
             }
         } else {
             Column(
@@ -121,8 +123,8 @@ fun AutoReplySettingsScreen(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, themeColors.accentRed, RoundedCornerShape(16.dp)),
-                        shape = RoundedCornerShape(16.dp),
+                            .border(1.dp, themeColors.accentRed, RoundedCornerShape(18.dp)),
+                        shape = RoundedCornerShape(18.dp),
                         colors = CardDefaults.cardColors(containerColor = themeColors.accentRed.copy(alpha = 0.08f))
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
@@ -157,7 +159,7 @@ fun AutoReplySettingsScreen(
                                         colors = ButtonDefaults.buttonColors(containerColor = themeColors.accentRed),
                                         modifier = Modifier.weight(1f)
                                     ) {
-                                        Text("Grant Notification Access", fontSize = 10.sp, color = Color.White)
+                                        Text("Grant Notification Access", fontSize = 10.sp, color = themeColors.onAccent)
                                     }
                                 }
                                 if (!isAccessibilityPermissionGranted) {
@@ -169,10 +171,10 @@ fun AutoReplySettingsScreen(
                                                 context.startActivity(Intent(android.provider.Settings.ACTION_SETTINGS))
                                             }
                                         },
-                                        colors = ButtonDefaults.buttonColors(containerColor = themeColors.accentPurple),
+                                        colors = ButtonDefaults.buttonColors(containerColor = themeColors.accentGreenButton),
                                         modifier = Modifier.weight(1f)
                                     ) {
-                                        Text("Grant Accessibility Access", fontSize = 10.sp, color = Color.White)
+                                        Text("Grant Accessibility Access", fontSize = 10.sp, color = themeColors.onAccent)
                                     }
                                 }
                             }
@@ -184,11 +186,11 @@ fun AutoReplySettingsScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, themeColors.borderColor, RoundedCornerShape(16.dp)),
-                    shape = RoundedCornerShape(16.dp),
+                        .border(1.dp, themeColors.borderColor, RoundedCornerShape(18.dp)),
+                    shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = if (config.globalEnabled) {
-                            themeColors.accentPurple.copy(alpha = 0.08f)
+                            themeColors.accentContainer
                         } else {
                             themeColors.cardBackground
                         }
@@ -239,20 +241,20 @@ fun AutoReplySettingsScreen(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, themeColors.borderColor, RoundedCornerShape(16.dp)),
-                        shape = RoundedCornerShape(16.dp),
+                            .border(1.dp, themeColors.borderColor, RoundedCornerShape(18.dp)),
+                        shape = RoundedCornerShape(18.dp),
                         colors = CardDefaults.cardColors(containerColor = themeColors.cardBackground)
                     ) {
                         Column(modifier = Modifier.padding(8.dp)) {
-                            AppToggleRow("WhatsApp", "💬", config.whatsappEnabled, themeColors) {
+                            AppToggleRow("WhatsApp", Icons.Default.Chat, config.whatsappEnabled, themeColors) {
                                 saveConfig(config.copy(whatsappEnabled = it))
                             }
                             Divider(color = themeColors.borderColor.copy(alpha = 0.5f))
-                            AppToggleRow("SMS", "📱", config.smsEnabled, themeColors) {
+                            AppToggleRow("SMS", Icons.Default.Phone, config.smsEnabled, themeColors) {
                                 saveConfig(config.copy(smsEnabled = it))
                             }
                             Divider(color = themeColors.borderColor.copy(alpha = 0.5f))
-                            AppToggleRow("Email", "📧", config.emailEnabled, themeColors) {
+                            AppToggleRow("Email", Icons.Default.Email, config.emailEnabled, themeColors) {
                                 saveConfig(config.copy(emailEnabled = it))
                             }
                         }
@@ -269,8 +271,8 @@ fun AutoReplySettingsScreen(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, themeColors.borderColor, RoundedCornerShape(16.dp)),
-                        shape = RoundedCornerShape(16.dp),
+                            .border(1.dp, themeColors.borderColor, RoundedCornerShape(18.dp)),
+                        shape = RoundedCornerShape(18.dp),
                         colors = CardDefaults.cardColors(containerColor = themeColors.cardBackground)
                     ) {
                         Column(modifier = Modifier.padding(20.dp)) {
@@ -287,7 +289,7 @@ fun AutoReplySettingsScreen(
                                     "${config.replyDelayMinutes} minutes",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = themeColors.accentPurple
+                                    color = themeColors.accentNeonGreen
                                 )
                             }
                             Spacer(modifier = Modifier.height(8.dp))
@@ -299,8 +301,8 @@ fun AutoReplySettingsScreen(
                                 valueRange = 1f..60f,
                                 steps = 58,
                                 colors = SliderDefaults.colors(
-                                    thumbColor = themeColors.accentPurple,
-                                    activeTrackColor = themeColors.accentPurple
+                                    thumbColor = themeColors.accentNeonGreen,
+                                    activeTrackColor = themeColors.accentNeonGreen
                                 )
                             )
                             Row(
@@ -324,8 +326,8 @@ fun AutoReplySettingsScreen(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, themeColors.borderColor, RoundedCornerShape(16.dp)),
-                        shape = RoundedCornerShape(16.dp),
+                            .border(1.dp, themeColors.borderColor, RoundedCornerShape(18.dp)),
+                        shape = RoundedCornerShape(18.dp),
                         colors = CardDefaults.cardColors(containerColor = themeColors.cardBackground)
                     ) {
                         Column(modifier = Modifier.padding(20.dp)) {
@@ -342,7 +344,7 @@ fun AutoReplySettingsScreen(
                                     "${config.maxRepliesPerContactPerHour}",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = themeColors.accentPurple
+                                    color = themeColors.accentNeonGreen
                                 )
                             }
                             Spacer(modifier = Modifier.height(8.dp))
@@ -354,8 +356,8 @@ fun AutoReplySettingsScreen(
                                 valueRange = 1f..10f,
                                 steps = 8,
                                 colors = SliderDefaults.colors(
-                                    thumbColor = themeColors.accentPurple,
-                                    activeTrackColor = themeColors.accentPurple
+                                    thumbColor = themeColors.accentNeonGreen,
+                                    activeTrackColor = themeColors.accentNeonGreen
                                 )
                             )
                         }
@@ -372,8 +374,8 @@ fun AutoReplySettingsScreen(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, themeColors.borderColor, RoundedCornerShape(16.dp)),
-                        shape = RoundedCornerShape(16.dp),
+                            .border(1.dp, themeColors.borderColor, RoundedCornerShape(18.dp)),
+                        shape = RoundedCornerShape(18.dp),
                         colors = CardDefaults.cardColors(containerColor = themeColors.cardBackground)
                     ) {
                         Column(modifier = Modifier.padding(20.dp)) {
@@ -396,11 +398,11 @@ fun AutoReplySettingsScreen(
                                     )
                                 },
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = themeColors.accentPurple,
+                                    focusedBorderColor = themeColors.accentNeonGreen,
                                     unfocusedBorderColor = themeColors.borderColor,
                                     focusedTextColor = themeColors.textPrimary,
                                     unfocusedTextColor = themeColors.textPrimary,
-                                    cursorColor = themeColors.accentPurple
+                                    cursorColor = themeColors.accentNeonGreen
                                 ),
                                 shape = RoundedCornerShape(12.dp),
                                 maxLines = 3
@@ -418,7 +420,7 @@ fun AutoReplySettingsScreen(
 @Composable
 private fun AppToggleRow(
     appName: String,
-    emoji: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     isEnabled: Boolean,
     themeColors: com.opendroid.ai.ui.theme.OpenDroidColors,
     onToggle: (Boolean) -> Unit
@@ -431,7 +433,12 @@ private fun AppToggleRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(emoji, fontSize = 22.sp)
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = themeColors.accentNeonGreen,
+                modifier = Modifier.size(22.dp)
+            )
             Spacer(modifier = Modifier.width(12.dp))
             Text(appName, fontSize = 15.sp, color = themeColors.textPrimary)
         }

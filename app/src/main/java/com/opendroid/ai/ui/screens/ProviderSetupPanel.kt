@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -154,7 +156,7 @@ private fun SetupNoteCard(text: String) {
         Text(
             text = text,
             fontSize = 13.sp,
-            color = AccentCyan,
+            color = AccentNeonGreen,
             modifier = Modifier.padding(16.dp)
         )
     }
@@ -175,7 +177,7 @@ private fun OnDeviceCard(state: ProviderSetupUiState, viewModel: OnboardingViewM
             )
             Spacer(modifier = Modifier.height(8.dp))
             if (state.onDeviceDone && state.activeProviderName == "On-Device AI") {
-                Text("On-device AI is on.", fontSize = 13.sp, color = AccentCyan)
+                Text("On-device AI is on.", fontSize = 13.sp, color = AppTheme.colors.success)
             } else {
                 OutlinedButton(
                     onClick = { viewModel.enableAiCore() },
@@ -229,13 +231,13 @@ private fun OnDeviceCard(state: ProviderSetupUiState, viewModel: OnboardingViewM
 
             when (state.liteRtStatus) {
                 ModelStatus.READY -> {
-                    Text("Downloaded and ready.", fontSize = 13.sp, color = AccentCyan)
+                    Text("Downloaded and ready.", fontSize = 13.sp, color = AppTheme.colors.success)
                 }
                 ModelStatus.DOWNLOADING -> {
                     LinearProgressIndicator(
                         progress = { state.liteRtProgress / 100f },
                         modifier = Modifier.fillMaxWidth(),
-                        color = AccentCyan
+                        color = AccentNeonGreen
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
@@ -370,7 +372,11 @@ private fun ByokCard(state: ProviderSetupUiState, viewModel: OnboardingViewModel
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(provider, color = TextPrimary, modifier = Modifier.weight(1f))
-                Text("▾", color = TextSecondary)
+                Icon(
+                    imageVector = Icons.Default.ArrowDropDown,
+                    contentDescription = null,
+                    tint = TextSecondary
+                )
             }
             DropdownMenu(
                 expanded = menuExpanded,
@@ -497,7 +503,7 @@ private fun ConnectionResultText(state: ConnectionTestState?, done: Boolean) {
         is ConnectionTestState.Connected -> Text(
             text = "Connected with ${state.model} · ${state.latencyMs} ms — you're ready to chat.",
             fontSize = 12.sp,
-            color = AccentCyan,
+            color = AccentNeonGreen,
             fontWeight = FontWeight.SemiBold
         )
         is ConnectionTestState.Failed -> Text(
@@ -529,7 +535,7 @@ private fun ConnectionResultText(state: ConnectionTestState?, done: Boolean) {
 
 @Composable
 private fun setupFieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedBorderColor = AccentCyan,
+    focusedBorderColor = AccentNeonGreen,
     unfocusedBorderColor = BorderColor,
     focusedLabelColor = TextPrimary,
     unfocusedLabelColor = TextSecondary,

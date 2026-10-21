@@ -14,10 +14,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -37,11 +35,8 @@ fun AboutScreen(
                 title = {
                     Text(
                         text = "ABOUT",
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary,
-                        fontSize = 20.sp,
-                        letterSpacing = 2.sp
+                        style = MaterialTheme.typography.titleLarge,
+                        color = TextPrimary
                     )
                 },
                 navigationIcon = {
@@ -62,7 +57,7 @@ fun AboutScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(bottom = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -72,13 +67,9 @@ fun AboutScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(
-                            1.dp,
-                            Brush.linearGradient(listOf(TextPrimary.copy(alpha = 0.3f), AccentCyan.copy(alpha = 0.4f))),
-                            RoundedCornerShape(16.dp)
-                        ),
+                        .border(1.dp, BorderColor, RoundedCornerShape(18.dp)),
                     colors = CardDefaults.cardColors(containerColor = CardBackground),
-                    shape = RoundedCornerShape(16.dp)
+                    shape = RoundedCornerShape(18.dp)
                 ) {
                     Column(
                         modifier = Modifier
@@ -90,12 +81,8 @@ fun AboutScreen(
                             modifier = Modifier
                                 .size(80.dp)
                                 .clip(CircleShape)
-                                .background(
-                                    Brush.linearGradient(
-                                        listOf(TextPrimary.copy(alpha = 0.1f), AccentCyan.copy(alpha = 0.15f))
-                                    )
-                                )
-                                .border(1.5.dp, TextPrimary.copy(alpha = 0.3f), CircleShape),
+                                .background(AppTheme.colors.accentContainer)
+                                .border(1.5.dp, AccentNeonGreen, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             // bot.png is a 512x341 canvas whose glyph only covers the
@@ -113,8 +100,7 @@ fun AboutScreen(
 
                         Text(
                             text = "OpenDroid",
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.ExtraBold,
+                            style = MaterialTheme.typography.headlineMedium,
                             color = TextPrimary,
                             letterSpacing = 1.sp
                         )
@@ -123,8 +109,8 @@ fun AboutScreen(
 
                         Text(
                             text = "Autonomous AI Agent for Android",
-                            fontSize = 14.sp,
-                            color = AccentCyan,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = AccentNeonGreen,
                             fontWeight = FontWeight.Medium
                         )
 
@@ -134,7 +120,7 @@ fun AboutScreen(
                             text = "Version ${BuildConfig.VERSION_NAME}",
                             fontSize = 12.sp,
                             color = TextSecondary,
-                            fontFamily = FontFamily.Monospace
+                            fontFamily = JetBrainsMonoFamily
                         )
                     }
                 }
@@ -145,16 +131,14 @@ fun AboutScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
+                        .border(1.dp, BorderColor, RoundedCornerShape(18.dp)),
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "WHAT IS OPENDROID?",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            color = AccentCyan
+                            style = MaterialTheme.typography.titleSmall,
+                            color = AccentNeonGreen
                         )
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
@@ -164,9 +148,8 @@ fun AboutScreen(
                                     "system settings and managing files.\n\n" +
                                     "Powered by your choice of LLM provider (Gemini, OpenAI, Claude, Groq, local Ollama, and more), " +
                                     "OpenDroid combines intelligent planning with real device automation through Android's Accessibility framework.",
-                            fontSize = 13.sp,
-                            color = TextPrimary,
-                            lineHeight = 20.sp
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextPrimary
                         )
                     }
                 }
@@ -177,16 +160,14 @@ fun AboutScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
+                        .border(1.dp, BorderColor, RoundedCornerShape(18.dp)),
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "KEY CAPABILITIES",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            color = AccentCyan
+                            style = MaterialTheme.typography.titleSmall,
+                            color = AccentNeonGreen
                         )
                         Spacer(modifier = Modifier.height(12.dp))
 
@@ -207,16 +188,14 @@ fun AboutScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
+                        .border(1.dp, BorderColor, RoundedCornerShape(18.dp)),
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "TECHNOLOGY STACK",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            color = AccentCyan
+                            style = MaterialTheme.typography.titleSmall,
+                            color = AccentNeonGreen
                         )
                         Spacer(modifier = Modifier.height(12.dp))
 
@@ -237,16 +216,14 @@ fun AboutScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
+                        .border(1.dp, BorderColor, RoundedCornerShape(18.dp)),
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "SUPPORTED LLM PROVIDERS",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            color = AccentCyan
+                            style = MaterialTheme.typography.titleSmall,
+                            color = AccentNeonGreen
                         )
                         Spacer(modifier = Modifier.height(12.dp))
 
@@ -264,12 +241,12 @@ fun AboutScreen(
                                     modifier = Modifier
                                         .size(6.dp)
                                         .clip(CircleShape)
-                                        .background(AccentCyan)
+                                        .background(AccentNeonGreen)
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Text(
                                     text = provider,
-                                    fontSize = 13.sp,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     color = TextPrimary
                                 )
                             }
@@ -283,7 +260,7 @@ fun AboutScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, AccentPurple.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
+                        .border(1.dp, AccentNeonGreen.copy(alpha = 0.3f), RoundedCornerShape(18.dp)),
                     colors = CardDefaults.cardColors(containerColor = CardBackground)
                 ) {
                     Column(
@@ -294,26 +271,23 @@ fun AboutScreen(
                     ) {
                         Text(
                             text = "OPEN SOURCE",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            color = AccentPurple
+                            style = MaterialTheme.typography.titleSmall,
+                            color = AccentNeonGreen
                         )
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
                             text = "OpenDroid is open source software. Contributions, bug reports, and feature requests are welcome.",
-                            fontSize = 13.sp,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = TextPrimary,
-                            textAlign = TextAlign.Center,
-                            lineHeight = 20.sp
+                            textAlign = TextAlign.Center
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = "github.com/yashab-cyber/opendroid",
                             fontSize = 13.sp,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = JetBrainsMonoFamily,
                             fontWeight = FontWeight.SemiBold,
-                            color = AccentCyan
+                            color = AppTheme.colors.accentInfo
                         )
                     }
                 }
@@ -322,7 +296,7 @@ fun AboutScreen(
             // Footer
             item {
                 Text(
-                    text = "Made with ❤ for the Android community",
+                    text = "Made for the Android community",
                     fontSize = 12.sp,
                     color = TextSecondary,
                     textAlign = TextAlign.Center,
@@ -346,20 +320,19 @@ private fun FeatureItem(icon: ImageVector, title: String, subtitle: String) {
         Icon(
             imageVector = icon,
             contentDescription = title,
-            tint = AccentCyan,
+            tint = AccentNeonGreen,
             modifier = Modifier.size(20.dp)
         )
         Spacer(modifier = Modifier.width(12.dp))
         Column {
             Text(
                 text = title,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.titleSmall,
                 color = TextPrimary
             )
             Text(
                 text = subtitle,
-                fontSize = 11.sp,
+                style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary
             )
         }
@@ -376,12 +349,12 @@ private fun TechItem(label: String, value: String) {
     ) {
         Text(
             text = label,
-            fontSize = 13.sp,
+            style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary
         )
         Text(
             text = value,
-            fontSize = 13.sp,
+            style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
             color = TextPrimary
         )

@@ -37,11 +37,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.opendroid.ai.ui.theme.AccentCyan
+import com.opendroid.ai.ui.theme.AccentNeonGreen
+import com.opendroid.ai.ui.theme.JetBrainsMonoFamily
 import com.opendroid.ai.ui.theme.AccentRed
 import com.opendroid.ai.ui.theme.BorderColor
 import com.opendroid.ai.ui.theme.CardBackground
@@ -115,14 +115,14 @@ fun ModelPickerChip(
             Icon(
                 imageVector = Icons.Default.SmartToy,
                 contentDescription = null,
-                tint = if (effective.isOverride) AccentCyan else TextSecondary,
+                tint = if (effective.isOverride) AccentNeonGreen else TextSecondary,
                 modifier = Modifier.size(13.dp)
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(
                 text = "${effective.provider} • ${effective.model}",
                 fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = JetBrainsMonoFamily,
                 color = TextPrimary,
                 maxLines = 1
             )
@@ -131,9 +131,9 @@ fun ModelPickerChip(
                 Text(
                     text = "CHAT",
                     fontSize = 9.sp,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = JetBrainsMonoFamily,
                     fontWeight = FontWeight.Bold,
-                    color = AccentCyan
+                    color = AccentNeonGreen
                 )
             }
             Icon(
@@ -203,7 +203,7 @@ fun ModelPickerSheet(
                     Text(
                         text = "This chat uses its own model.",
                         fontSize = 12.sp,
-                        color = AccentCyan,
+                        color = AccentNeonGreen,
                         modifier = Modifier.weight(1f)
                     )
                     TextButton(onClick = {
@@ -296,7 +296,7 @@ private fun PickerProviderSection(
                         Text(
                             text = "ON-DEVICE",
                             fontSize = 9.sp,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = JetBrainsMonoFamily,
                             fontWeight = FontWeight.Bold,
                             color = TextSecondary
                         )
@@ -306,7 +306,7 @@ private fun PickerProviderSection(
                         Icon(
                             imageVector = Icons.Default.Check,
                             contentDescription = "Currently used by this chat",
-                            tint = AccentCyan,
+                            tint = AccentNeonGreen,
                             modifier = Modifier.size(15.dp)
                         )
                     }
@@ -376,7 +376,7 @@ private fun PickerProviderSection(
                             Text(
                                 text = label,
                                 fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = JetBrainsMonoFamily,
                                 color = TextSecondary
                             )
                             Spacer(modifier = Modifier.width(6.dp))
@@ -385,7 +385,7 @@ private fun PickerProviderSection(
                             Icon(
                                 imageVector = Icons.Default.Check,
                                 contentDescription = "Selected for this chat",
-                                tint = AccentCyan,
+                                tint = AccentNeonGreen,
                                 modifier = Modifier.size(15.dp)
                             )
                         }

@@ -20,7 +20,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -65,11 +64,8 @@ fun LogsScreen(
                 title = {
                     Text(
                         text = "AUDIT LOG",
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleLarge,
                         color = TextPrimary,
-                        fontSize = 20.sp,
-                        letterSpacing = 2.sp,
                         modifier = Modifier.semantics { heading() }
                     )
                 },
@@ -111,7 +107,7 @@ fun LogsScreen(
                 indicator = { tabPositions ->
                     TabRowDefaults.Indicator(
                         modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
-                        color = TextPrimary
+                        color = AccentNeonGreen
                     )
                 },
                 divider = {
@@ -125,10 +121,9 @@ fun LogsScreen(
                         text = {
                             Text(
                                 text = title,
-                                fontSize = 13.sp,
+                                style = MaterialTheme.typography.labelLarge,
                                 fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal,
-                                color = if (selectedTab == index) TextPrimary else TextSecondary,
-                                fontFamily = FontFamily.Monospace
+                                color = if (selectedTab == index) TextPrimary else TextSecondary
                             )
                         }
                     )
@@ -156,7 +151,7 @@ fun LogsScreen(
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .border(1.dp, AccentOrange.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                                .border(1.dp, AccentOrange.copy(alpha = 0.3f), RoundedCornerShape(18.dp))
                                 .clickable { onNavigateToActionLearning() },
                             colors = CardDefaults.cardColors(containerColor = CardBackground)
                         ) {
@@ -176,14 +171,12 @@ fun LogsScreen(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = "ACTION LEARNING",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = FontFamily.Monospace,
+                                        style = MaterialTheme.typography.titleSmall,
                                         color = AccentOrange
                                     )
                                     Text(
                                         text = "Review these invented actions — teach what each should do, convert to a macro, or dismiss.",
-                                        fontSize = 11.sp,
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = TextSecondary
                                     )
                                 }
@@ -210,7 +203,7 @@ fun LogsScreen(
                                 title = "All systems fully aligned",
                                 subtitle = "OpenDroid's Repair Engine has not encountered any unrecognized commands.",
                                 icon = Icons.Default.CheckCircle,
-                                iconColor = AccentCyan
+                                iconColor = AccentNeonGreen
                             )
                         }
                     }
@@ -288,25 +281,31 @@ fun EmptyStateView(
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = iconColor,
-                modifier = Modifier.size(48.dp)
-            )
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(AppTheme.colors.accentContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = iconColor,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = title,
                 color = TextPrimary,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold
+                style = MaterialTheme.typography.headlineSmall
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = subtitle,
                 color = TextSecondary,
-                fontSize = 12.sp,
-                fontFamily = FontFamily.Monospace,
+                style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(horizontal = 24.dp),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
@@ -320,10 +319,10 @@ fun UnknownActionCard(error: UnknownActionEntity) {
     val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()) }
 
     val statusColor = when (error.fixStatus) {
-        "AUTO_FIXED" -> AccentCyan
-        "REPLANNED" -> AccentCyan
+        "AUTO_FIXED" -> AppTheme.colors.success
+        "REPLANNED" -> AppTheme.colors.accentInfo
         "FAILED" -> AccentRed
-        else -> AccentCyan
+        else -> AccentNeonGreen
     }
 
     val statusText = when (error.fixStatus) {
@@ -346,7 +345,7 @@ fun UnknownActionCard(error: UnknownActionEntity) {
             .border(
                 1.dp,
                 statusColor.copy(alpha = 0.25f),
-                RoundedCornerShape(12.dp)
+                RoundedCornerShape(18.dp)
             ),
         colors = CardDefaults.cardColors(containerColor = CardBackground)
     ) {
@@ -379,7 +378,7 @@ fun UnknownActionCard(error: UnknownActionEntity) {
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
                         color = statusColor,
-                        fontFamily = FontFamily.Monospace
+                        fontFamily = JetBrainsMonoFamily
                     )
                 }
 
@@ -387,7 +386,7 @@ fun UnknownActionCard(error: UnknownActionEntity) {
                     text = dateFormat.format(Date(error.timestamp)),
                     fontSize = 10.sp,
                     color = TextSecondary,
-                    fontFamily = FontFamily.Monospace
+                    fontFamily = JetBrainsMonoFamily
                 )
             }
 
@@ -395,10 +394,10 @@ fun UnknownActionCard(error: UnknownActionEntity) {
             
             Text(
                 text = "Unrecognized: ${error.attemptedAction}",
-                fontFamily = FontFamily.Monospace,
+                fontFamily = JetBrainsMonoFamily,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
-                color = AccentPurple
+                color = AccentNeonGreen
             )
             
             Spacer(modifier = Modifier.height(6.dp))
@@ -424,11 +423,11 @@ fun UnknownActionCard(error: UnknownActionEntity) {
                         text = explanation,
                         fontSize = 12.sp,
                         color = statusColor,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = JetBrainsMonoFamily,
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(6.dp))
-                            .background(DarkBackground)
+                            .background(AppTheme.colors.surfaceSunken)
                             .padding(8.dp)
                     )
                 }

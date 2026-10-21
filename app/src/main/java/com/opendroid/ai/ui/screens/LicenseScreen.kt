@@ -12,10 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.opendroid.ai.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -29,11 +26,8 @@ fun LicenseScreen(
                 title = {
                     Text(
                         text = "LICENSE",
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary,
-                        fontSize = 20.sp,
-                        letterSpacing = 2.sp
+                        style = MaterialTheme.typography.titleLarge,
+                        color = TextPrimary
                     )
                 },
                 navigationIcon = {
@@ -54,7 +48,7 @@ fun LicenseScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(bottom = 32.dp)
         ) {
@@ -63,8 +57,9 @@ fun LicenseScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, AccentPurple.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
-                    colors = CardDefaults.cardColors(containerColor = CardBackground)
+                        .border(1.dp, BorderColor, RoundedCornerShape(18.dp)),
+                    colors = CardDefaults.cardColors(containerColor = CardBackground),
+                    shape = RoundedCornerShape(18.dp)
                 ) {
                     Row(
                         modifier = Modifier
@@ -75,21 +70,20 @@ fun LicenseScreen(
                         Icon(
                             imageVector = Icons.Default.Code,
                             contentDescription = "License",
-                            tint = AccentPurple,
+                            tint = AccentNeonGreen,
                             modifier = Modifier.size(32.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
                                 text = "Open Source License",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium,
                                 color = TextPrimary
                             )
                             Text(
                                 text = "Apache License 2.0",
-                                fontSize = 12.sp,
-                                color = AccentPurple
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
                             )
                         }
                     }
@@ -145,7 +139,7 @@ fun LicenseScreen(
             item {
                 PolicySection(
                     title = "ATTRIBUTION",
-                    content = "OpenDroid is built with ❤\uFE0F by the open-source community.\n\n" +
+                    content = "OpenDroid is built by the open-source community.\n\n" +
                             "Special thanks to all contributors who have helped make this project possible. " +
                             "Full contributor list is available on the GitHub repository."
                 )

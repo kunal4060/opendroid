@@ -16,6 +16,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -37,6 +38,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -54,12 +56,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -88,7 +88,9 @@ import com.opendroid.ai.core.permissions.runtimePermissions
 import com.opendroid.ai.core.permissions.summaryHasBlocked
 import com.opendroid.ai.core.permissions.summaryLine
 import com.opendroid.ai.core.permissions.visibleCards
+import com.opendroid.ai.ui.theme.AccentGreenButton
 import com.opendroid.ai.ui.theme.AccentRed
+import com.opendroid.ai.ui.theme.OnAccent
 import com.opendroid.ai.ui.theme.BorderColor
 import com.opendroid.ai.ui.theme.CardBackground
 import com.opendroid.ai.ui.theme.DarkBackground
@@ -106,11 +108,8 @@ fun PermissionsScreen(
                 title = {
                     Text(
                         text = "PERMISSIONS",
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleLarge,
                         color = TextPrimary,
-                        fontSize = 20.sp,
-                        letterSpacing = 2.sp,
                     )
                 },
                 navigationIcon = {
@@ -331,14 +330,13 @@ private fun PermissionsPanelContent(
     ) {
         Text(
             text = "Required Permissions",
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.headlineSmall,
             color = TextPrimary,
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = "Configure permissions below to enable full autonomous features.",
-            fontSize = 13.sp,
+            style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary,
         )
         Spacer(modifier = Modifier.height(16.dp))
@@ -350,12 +348,12 @@ private fun PermissionsPanelContent(
                 .fillMaxWidth()
                 .heightIn(min = 50.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = TextPrimary,
-                contentColor = DarkBackground,
+                containerColor = AccentGreenButton,
+                contentColor = OnAccent,
                 disabledContainerColor = BorderColor,
                 disabledContentColor = TextSecondary,
             ),
-            shape = RoundedCornerShape(8.dp),
+            shape = androidx.compose.foundation.shape.CircleShape,
         ) {
             Text(
                 text = grantAll.label,
@@ -427,11 +425,11 @@ private fun PermissionsPanelContent(
                     .fillMaxWidth()
                     .height(50.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (allRequirementsHeld) TextPrimary else CardBackground,
-                    contentColor = if (allRequirementsHeld) DarkBackground else TextPrimary,
+                    containerColor = if (allRequirementsHeld) AccentGreenButton else CardBackground,
+                    contentColor = if (allRequirementsHeld) OnAccent else TextPrimary,
                 ),
                 border = if (allRequirementsHeld) null else BorderStroke(1.dp, BorderColor),
-                shape = RoundedCornerShape(8.dp),
+                shape = androidx.compose.foundation.shape.CircleShape,
             ) {
                 Text(
                     text = "Proceed to OpenDroid Agent",
@@ -448,10 +446,7 @@ private fun ManualSettingsHeader() {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = "NEEDS A TRIP TO SETTINGS",
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.Bold,
-            fontSize = 12.sp,
-            letterSpacing = 1.sp,
+            style = MaterialTheme.typography.titleSmall,
             color = TextPrimary,
         )
         Spacer(modifier = Modifier.height(4.dp))
@@ -486,8 +481,9 @@ private fun PermissionCard(
         modifier = Modifier
             .fillMaxWidth()
             .then(semanticsModifier)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(18.dp))
             .background(CardBackground)
+            .border(1.dp, BorderColor, RoundedCornerShape(18.dp))
             .padding(16.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
@@ -495,14 +491,13 @@ private fun PermissionCard(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleMedium,
                 color = TextPrimary,
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = description,
-                fontSize = 12.sp,
+                style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary,
             )
             if (statusLine.isNotBlank()) {
@@ -520,12 +515,12 @@ private fun PermissionCard(
             onClick = onAction,
             enabled = buttonEnabled,
             colors = ButtonDefaults.buttonColors(
-                containerColor = if (buttonHasError) AccentRed else TextPrimary,
-                contentColor = if (buttonHasError) Color.White else DarkBackground,
+                containerColor = if (buttonHasError) AccentRed else AccentGreenButton,
+                contentColor = if (buttonHasError) TextPrimary else OnAccent,
                 disabledContainerColor = BorderColor,
                 disabledContentColor = TextSecondary,
             ),
-            shape = RoundedCornerShape(8.dp),
+            shape = androidx.compose.foundation.shape.CircleShape,
         ) {
             Text(
                 text = buttonLabel,

@@ -56,10 +56,12 @@ import androidx.compose.ui.unit.sp
 import com.opendroid.ai.data.models.Persona
 import com.opendroid.ai.data.models.PersonaKind
 import com.opendroid.ai.data.models.PersonaValidation
-import com.opendroid.ai.ui.theme.AccentCyan
+import com.opendroid.ai.ui.theme.AccentGreenButton
+import com.opendroid.ai.ui.theme.AccentNeonGreen
 import com.opendroid.ai.ui.theme.AccentRed
 import com.opendroid.ai.ui.theme.BorderColor
 import com.opendroid.ai.ui.theme.CardBackground
+import com.opendroid.ai.ui.theme.OnAccent
 import com.opendroid.ai.ui.theme.DarkBackground
 import com.opendroid.ai.ui.theme.DarkSurface
 import com.opendroid.ai.ui.theme.TextPrimary
@@ -158,8 +160,8 @@ fun PersonasScreen(
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { creating = true },
-                containerColor = AccentCyan,
-                contentColor = DarkBackground
+                containerColor = AccentGreenButton,
+                contentColor = OnAccent
             ) {
                 Icon(imageVector = Icons.Default.Add, contentDescription = "New persona or command")
             }
@@ -326,7 +328,7 @@ fun PersonasScreen(
                     },
                     enabled = importText.isNotBlank()
                 ) {
-                    Text("Import", color = AccentCyan)
+                    Text("Import", color = AccentNeonGreen)
                 }
             },
             dismissButton = {
@@ -345,7 +347,7 @@ private fun LibrarySectionHeader(title: String) {
         fontSize = 11.sp,
         fontFamily = FontFamily.Monospace,
         fontWeight = FontWeight.Bold,
-        color = AccentCyan,
+        color = AccentNeonGreen,
         modifier = Modifier.padding(top = 10.dp, bottom = 2.dp)
     )
 }
@@ -387,7 +389,7 @@ private fun PersonaLibraryRow(
                             fontSize = 9.sp,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
-                            color = AccentCyan
+                            color = AccentNeonGreen
                         )
                     }
                 }
@@ -403,7 +405,7 @@ private fun PersonaLibraryRow(
                     Text(
                         text = usageLabel,
                         fontSize = 11.sp,
-                        color = AccentCyan
+                        color = AccentNeonGreen
                     )
                 }
             }
@@ -511,7 +513,7 @@ private fun PersonaEditorDialog(
                 onClick = { onSave(name, prompt, kind) },
                 enabled = canSave
             ) {
-                Text("Save", color = AccentCyan)
+                Text("Save", color = AccentNeonGreen)
             }
         },
         dismissButton = {

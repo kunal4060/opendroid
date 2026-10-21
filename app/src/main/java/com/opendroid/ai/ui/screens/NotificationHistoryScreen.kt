@@ -10,7 +10,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -88,9 +94,9 @@ fun NotificationHistoryScreen(
                     .padding(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                StatChip("📋 $totalCount", "Total", themeColors, Modifier.weight(1f))
-                StatChip("💬 $messageCount", "Messages", themeColors, Modifier.weight(1f))
-                StatChip("🤖 $repliedCount", "Replied", themeColors, Modifier.weight(1f))
+                StatChip(Icons.Default.Notifications, "$totalCount", "Total", themeColors, Modifier.weight(1f))
+                StatChip(Icons.Default.Chat, "$messageCount", "Messages", themeColors, Modifier.weight(1f))
+                StatChip(Icons.Default.SmartToy, "$repliedCount", "Replied", themeColors, Modifier.weight(1f))
             }
 
             Row(
@@ -137,7 +143,20 @@ fun NotificationHistoryScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("🔔", fontSize = 48.sp)
+                        Box(
+                            modifier = Modifier
+                                .size(64.dp)
+                                .clip(RoundedCornerShape(32.dp))
+                                .background(themeColors.accentContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Notifications,
+                                contentDescription = null,
+                                tint = themeColors.onAccentContainer,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
                             "No notifications captured yet",
@@ -169,20 +188,28 @@ fun NotificationHistoryScreen(
 
 @Composable
 private fun StatChip(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     value: String,
     label: String,
     themeColors: com.opendroid.ai.ui.theme.OpenDroidColors,
     modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = modifier.border(1.dp, themeColors.borderColor, RoundedCornerShape(12.dp)),
-        shape = RoundedCornerShape(12.dp),
+        modifier = modifier.border(1.dp, themeColors.borderColor, RoundedCornerShape(18.dp)),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = themeColors.cardBackground)
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = themeColors.accentNeonGreen,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.height(4.dp))
             Text(value, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = themeColors.textPrimary)
             Text(label, fontSize = 11.sp, color = themeColors.textSecondary)
         }
@@ -197,20 +224,20 @@ private fun NotificationCard(
     val dateFormat = remember { java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.getDefault()) }
     val timeText = dateFormat.format(java.util.Date(notification.timestamp))
 
-    val categoryEmoji = when (notification.category) {
-        "MESSAGE" -> "💬"
-        "EMAIL" -> "📧"
-        "SOCIAL" -> "👥"
-        "SYSTEM" -> "⚙️"
-        else -> "🔔"
+    val categoryIcon = when (notification.category) {
+        "MESSAGE" -> Icons.Default.Chat
+        "EMAIL" -> Icons.Default.Email
+        "SOCIAL" -> Icons.Default.People
+        "SYSTEM" -> Icons.Default.Settings
+        else -> Icons.Default.Notifications
     }
 
     Card(
-        modifier = Modifier.fillMaxWidth().border(1.dp, themeColors.borderColor, RoundedCornerShape(14.dp)),
-        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth().border(1.dp, themeColors.borderColor, RoundedCornerShape(18.dp)),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (notification.isAutoReplied) {
-                themeColors.accentPurple.copy(alpha = 0.08f)
+                themeColors.accentContainer
             } else {
                 themeColors.cardBackground
             }
@@ -223,13 +250,18 @@ private fun NotificationCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(categoryEmoji, fontSize = 18.sp)
+                    Icon(
+                        imageVector = categoryIcon,
+                        contentDescription = notification.category,
+                        tint = themeColors.accentNeonGreen,
+                        modifier = Modifier.size(18.dp)
+                    )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         notification.appName,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = themeColors.accentPurple
+                        color = themeColors.accentNeonGreen
                     )
                 }
                 Text(
@@ -262,14 +294,20 @@ private fun NotificationCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
-                        .background(themeColors.accentPurple.copy(alpha = 0.15f))
+                        .background(themeColors.accentContainer)
                         .padding(8.dp)
                 ) {
-                    Text("🤖 ", fontSize = 13.sp)
+                    Icon(
+                        imageVector = Icons.Default.SmartToy,
+                        contentDescription = null,
+                        tint = themeColors.onAccentContainer,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         notification.autoReplyText,
                         fontSize = 13.sp,
-                        color = themeColors.accentPurple,
+                        color = themeColors.onAccentContainer,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )

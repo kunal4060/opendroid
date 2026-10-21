@@ -44,7 +44,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.opendroid.ai.core.backup.BackupCrypto
 import com.opendroid.ai.data.backup.BackupSummary
-import com.opendroid.ai.ui.theme.AccentCyan
+import com.opendroid.ai.ui.theme.AccentNeonGreen
 import com.opendroid.ai.ui.theme.AccentRed
 import com.opendroid.ai.ui.theme.BorderColor
 import com.opendroid.ai.ui.theme.CardBackground
@@ -108,7 +108,7 @@ fun BackupRestoreSection(viewModel: BackupRestoreViewModel = hiltViewModel()) {
                 Icon(
                     imageVector = Icons.Default.Backup,
                     contentDescription = "Backup and Restore",
-                    tint = AccentCyan,
+                    tint = AccentNeonGreen,
                     modifier = Modifier.size(24.dp)
                 )
                 Spacer(modifier = Modifier.width(12.dp))
@@ -117,7 +117,7 @@ fun BackupRestoreSection(viewModel: BackupRestoreViewModel = hiltViewModel()) {
                         text = "BACKUP & RESTORE",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = AccentCyan
+                        color = AccentNeonGreen
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(

@@ -100,7 +100,7 @@ fun UnknownActionsScreen(
                         title = "No unknown actions recorded",
                         subtitle = "When the model invents an action OpenDroid doesn't have, it is recorded here for review.",
                         icon = Icons.Default.CheckCircle,
-                        iconColor = AccentCyan
+                        iconColor = AccentNeonGreen
                     )
                 }
             } else {
@@ -195,7 +195,7 @@ private fun UnknownActionGroupCard(
     val stateColor = when (ui.state) {
         UnknownActionReviewState.PENDING -> AccentOrange
         UnknownActionReviewState.DISMISSED -> TextSecondary
-        UnknownActionReviewState.CONVERTED -> AccentCyan
+        UnknownActionReviewState.CONVERTED -> AppTheme.colors.success
     }
     val stateText = when (ui.state) {
         UnknownActionReviewState.PENDING -> "TO REVIEW"
@@ -249,7 +249,7 @@ private fun UnknownActionGroupCard(
                 fontFamily = FontFamily.Monospace,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
-                color = AccentPurple
+                color = AccentNeonGreen
             )
 
             if (group.sampleGoal.isNotBlank()) {
@@ -281,7 +281,7 @@ private fun UnknownActionGroupCard(
                         LearnedActionMapping.Kind.DISMISSED -> "Dismissed — matching steps are skipped quietly."
                     },
                     fontSize = 12.sp,
-                    color = AccentCyan,
+                    color = AccentNeonGreen,
                     fontFamily = FontFamily.Monospace
                 )
             }
@@ -312,11 +312,11 @@ private fun UnknownActionGroupCard(
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Button(
                                         onClick = { teachMode = TeachMode.ACTION },
-                                        colors = ButtonDefaults.buttonColors(containerColor = AccentPurple)
+                                        colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton, contentColor = OnAccent)
                                     ) { Text("Map to action", fontSize = 11.sp) }
                                     Button(
                                         onClick = { teachMode = TeachMode.MACRO },
-                                        colors = ButtonDefaults.buttonColors(containerColor = AccentPurple)
+                                        colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton, contentColor = OnAccent)
                                     ) { Text("Create macro", fontSize = 11.sp) }
                                 }
                                 Spacer(modifier = Modifier.height(8.dp))
@@ -405,7 +405,7 @@ private fun ActionMapEditor(
             Text(
                 text = selectedAction ?: "Choose an existing action…",
                 fontSize = 12.sp,
-                color = if (selectedAction != null) AccentCyan else TextSecondary,
+                color = if (selectedAction != null) AccentNeonGreen else TextSecondary,
                 fontFamily = FontFamily.Monospace
             )
         }
@@ -435,8 +435,8 @@ private fun ActionMapEditor(
                     onDone()
                 },
                 enabled = selectedAction != null,
-                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
-            ) { Text("Save teaching", fontSize = 11.sp, color = DarkBackground) }
+                colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton, contentColor = OnAccent)
+            ) { Text("Save teaching", fontSize = 11.sp, color = OnAccent) }
             TextButton(onClick = onDone) { Text("Cancel", fontSize = 11.sp, color = TextSecondary) }
         }
     }
@@ -513,7 +513,7 @@ private fun MacroMapEditor(
                     Text(
                         text = step.action.ifBlank { "Choose an action…" },
                         fontSize = 12.sp,
-                        color = if (step.action.isNotBlank()) AccentCyan else TextSecondary,
+                        color = if (step.action.isNotBlank()) AccentNeonGreen else TextSecondary,
                         fontFamily = FontFamily.Monospace
                     )
                 }
@@ -548,7 +548,7 @@ private fun MacroMapEditor(
         TextButton(onClick = { steps = steps + MacroStepDraft(action = "") }) {
             Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(modifier = Modifier.width(4.dp))
-            Text("Add step", fontSize = 11.sp, color = AccentCyan)
+            Text("Add step", fontSize = 11.sp, color = AccentNeonGreen)
         }
 
         error?.let {
@@ -564,8 +564,8 @@ private fun MacroMapEditor(
                     }
                 },
                 enabled = macroName.isNotBlank() && steps.all { it.action.isNotBlank() },
-                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
-            ) { Text("Create macro & teach", fontSize = 11.sp, color = DarkBackground) }
+                colors = ButtonDefaults.buttonColors(containerColor = AccentGreenButton, contentColor = OnAccent)
+            ) { Text("Create macro & teach", fontSize = 11.sp, color = OnAccent) }
             TextButton(onClick = onDone) { Text("Cancel", fontSize = 11.sp, color = TextSecondary) }
         }
     }
@@ -606,7 +606,7 @@ private fun ParamFields(
                     Text(
                         text = values[param.name] ?: param.defaultValue?.toString() ?: "Choose…",
                         fontSize = 12.sp,
-                        color = AccentCyan,
+                        color = AccentNeonGreen,
                         fontFamily = FontFamily.Monospace
                     )
                 }

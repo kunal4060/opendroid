@@ -28,7 +28,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.opendroid.ai.ui.theme.AccentCyan
+import com.opendroid.ai.ui.theme.AccentNeonGreen
 import com.opendroid.ai.ui.theme.BorderColor
 import com.opendroid.ai.ui.theme.CardBackground
 import com.opendroid.ai.ui.theme.TextPrimary
@@ -63,7 +63,7 @@ fun AccessibilitySettingsSection(viewModel: SettingsViewModel) {
                 Icon(
                     imageVector = Icons.Default.Accessibility,
                     contentDescription = "Accessibility",
-                    tint = AccentCyan,
+                    tint = AccentNeonGreen,
                     modifier = Modifier.size(24.dp)
                 )
                 Spacer(modifier = Modifier.width(12.dp))
@@ -73,7 +73,7 @@ fun AccessibilitySettingsSection(viewModel: SettingsViewModel) {
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace,
-                        color = AccentCyan
+                        color = AccentNeonGreen
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(

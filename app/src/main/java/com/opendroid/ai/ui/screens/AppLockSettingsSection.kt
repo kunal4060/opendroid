@@ -46,7 +46,7 @@ import com.opendroid.ai.core.security.AppLockManager
 import com.opendroid.ai.core.security.PinHasher
 import com.opendroid.ai.ui.lock.BiometricAuth
 import com.opendroid.ai.ui.lock.findFragmentActivity
-import com.opendroid.ai.ui.theme.AccentCyan
+import com.opendroid.ai.ui.theme.AccentNeonGreen
 import com.opendroid.ai.ui.theme.AccentRed
 import com.opendroid.ai.ui.theme.BorderColor
 import com.opendroid.ai.ui.theme.CardBackground
@@ -139,7 +139,7 @@ fun AppLockSettingsSection(viewModel: SettingsViewModel) {
                 Icon(
                     imageVector = Icons.Default.Security,
                     contentDescription = "App Lock",
-                    tint = AccentCyan,
+                    tint = AccentNeonGreen,
                     modifier = Modifier.size(24.dp)
                 )
                 Spacer(modifier = Modifier.width(12.dp))
@@ -149,7 +149,7 @@ fun AppLockSettingsSection(viewModel: SettingsViewModel) {
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace,
-                        color = AccentCyan
+                        color = AccentNeonGreen
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
