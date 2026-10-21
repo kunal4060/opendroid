@@ -33,6 +33,7 @@ import java.util.Locale
 @Composable
 fun LogsScreen(
     viewModel: HistoryViewModel,
+    onNavigateToActionLearning: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -146,23 +147,68 @@ fun LogsScreen(
                         }
                     )
                 } else {
-                    if (actionErrors.isNotEmpty()) {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                            contentPadding = PaddingValues(bottom = 24.dp)
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        // B5: the learning loop lives one tap from the raw log.
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, AccentOrange.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                                .clickable { onNavigateToActionLearning() },
+                            colors = CardDefaults.cardColors(containerColor = CardBackground)
                         ) {
-                            items(actionErrors) { error ->
-                                UnknownActionCard(error = error)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Build,
+                                    contentDescription = "Action Learning",
+                                    tint = AccentOrange,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "ACTION LEARNING",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = AccentOrange
+                                    )
+                                    Text(
+                                        text = "Review these invented actions — teach what each should do, convert to a macro, or dismiss.",
+                                        fontSize = 11.sp,
+                                        color = TextSecondary
+                                    )
+                                }
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowRight,
+                                    contentDescription = "Open Action Learning",
+                                    tint = TextSecondary
+                                )
                             }
                         }
-                    } else {
-                        EmptyStateView(
-                            title = "All systems fully aligned",
-                            subtitle = "OpenDroid's Repair Engine has not encountered any unrecognized commands.",
-                            icon = Icons.Default.CheckCircle,
-                            iconColor = AccentCyan
-                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        if (actionErrors.isNotEmpty()) {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                                contentPadding = PaddingValues(bottom = 24.dp)
+                            ) {
+                                items(actionErrors) { error ->
+                                    UnknownActionCard(error = error)
+                                }
+                            }
+                        } else {
+                            EmptyStateView(
+                                title = "All systems fully aligned",
+                                subtitle = "OpenDroid's Repair Engine has not encountered any unrecognized commands.",
+                                icon = Icons.Default.CheckCircle,
+                                iconColor = AccentCyan
+                            )
+                        }
                     }
                 }
             }
