@@ -63,6 +63,16 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -461,7 +471,8 @@ fun ChatScreen(
                             fontWeight = FontWeight.Bold,
                             color = TextPrimary,
                             fontSize = 20.sp,
-                            letterSpacing = 2.sp
+                            letterSpacing = 2.sp,
+                            modifier = Modifier.semantics { heading() }
                         )
                         AgentStatusSubtitle(visibleAgentState, runningElsewhere)
                         RoutingBadge(routingStatus)
@@ -479,7 +490,9 @@ fun ChatScreen(
                         border = BorderStroke(1.dp, chipColor.copy(alpha = 0.6f)),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = chipColor),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                        modifier = Modifier.height(28.dp)
+                        // min-height, not fixed: the mode label must never be
+                        // clipped at large font scales (D8).
+                        modifier = Modifier.heightIn(min = 28.dp)
                     ) {
                         Text(
                             text = when (autoMode) {
@@ -997,7 +1010,14 @@ fun ChatScreen(
                                     singleLine = true,
                                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                                     keyboardActions = KeyboardActions(onSend = { submitInput() }),
-                                    modifier = Modifier.fillMaxWidth()
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .semantics {
+                                            // Accessible name for the composer —
+                                            // the placeholder alone is not a
+                                            // label once text is entered (D8).
+                                            contentDescription = "Message OpenDroid"
+                                        }
                                 )
                             }
                         }
@@ -1350,7 +1370,10 @@ fun AgentStatusSubtitle(state: AgentState, runningElsewhere: Boolean = false) {
         text = text,
         fontSize = 11.sp,
         color = color,
-        fontFamily = FontFamily.SansSerif
+        fontFamily = FontFamily.SansSerif,
+        // D8: agent state changes (Thinking / Executing / approval needed)
+        // are announced to TalkBack without stealing focus.
+        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
     )
 }
 
@@ -1521,6 +1544,59 @@ fun ChatBubble(
                         )
                     )
                     .padding(14.dp)
+                    .semantics(mergeDescendants = true) {
+                        // D8: one TalkBack stop per message — badge, body and
+                        // time read as a single unit. The A3 long-press
+                        // actions can't be reached by gesture in TalkBack,
+                        // so they are re-exposed as custom actions (the
+                        // in-bubble edit icon is merged away and covered by
+                        // its action too).
+                        if (isBeingSpoken) {
+                            stateDescription = "Being read aloud"
+                        }
+                        customActions = buildList {
+                            add(CustomAccessibilityAction("Copy message") {
+                                clipboardManager.setText(AnnotatedString(message.text))
+                                true
+                            })
+                            if (viewModel != null) {
+                                add(
+                                    CustomAccessibilityAction(
+                                        if (isBeingSpoken) "Stop reading" else "Read aloud"
+                                    ) {
+                                        if (isBeingSpoken) {
+                                            viewModel.stopSpeaking()
+                                        } else {
+                                            viewModel.speakMessage(message)
+                                        }
+                                        true
+                                    }
+                                )
+                            }
+                            add(CustomAccessibilityAction("Share message") {
+                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_TEXT, message.text)
+                                }
+                                localContext.startActivity(
+                                    Intent.createChooser(shareIntent, "Share message")
+                                )
+                                true
+                            })
+                            if (isAgent && viewModel != null && context != null) {
+                                add(CustomAccessibilityAction("Regenerate response") {
+                                    viewModel.regenerate(message.id, context)
+                                    true
+                                })
+                            }
+                            if (!isAgent && onEditRequested != null) {
+                                add(CustomAccessibilityAction("Edit message") {
+                                    onEditRequested(message)
+                                    true
+                                })
+                            }
+                        }
+                    }
             ) {
                 if (isAgent && message.modelBadge != null) {
                     val displayName = when (message.modelBadge) {
@@ -1661,6 +1737,8 @@ fun ChatBubble(
 
 @Composable
 fun ThinkingBubble() {
+    // D8 reduce motion: dots rest at fixed opacities instead of pulsing.
+    val reduceMotion = LocalReduceMotion.current
     val transition = rememberInfiniteTransition(label = "thinking")
     val dot1 by transition.animateFloat(
         initialValue = 0.25f,
@@ -1693,11 +1771,16 @@ fun ThinkingBubble() {
                 .background(CardBackground)
                 .border(1.dp, BorderColor, RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 4.dp, bottomEnd = 16.dp))
                 .padding(horizontal = 14.dp, vertical = 12.dp)
+                .semantics(mergeDescendants = true) {
+                    // The dots are visual-only; say what they mean (D8).
+                    liveRegion = LiveRegionMode.Polite
+                    contentDescription = "OpenDroid is thinking"
+                }
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(TextPrimary.copy(alpha = dot1)))
-                Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(TextPrimary.copy(alpha = dot2)))
-                Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(TextPrimary.copy(alpha = dot3)))
+                Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(TextPrimary.copy(alpha = if (reduceMotion) 0.95f else dot1)))
+                Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(TextPrimary.copy(alpha = if (reduceMotion) 0.65f else dot2)))
+                Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(TextPrimary.copy(alpha = if (reduceMotion) 0.4f else dot3)))
             }
         }
     }
@@ -1722,7 +1805,12 @@ fun ProposedPlanPrompt(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp)
-            .border(1.dp, AccentCyan, RoundedCornerShape(16.dp)),
+            .border(1.dp, AccentCyan, RoundedCornerShape(16.dp))
+            .semantics {
+                // D8: an approval request interrupts — it is the one chat
+                // surface announced assertively.
+                liveRegion = LiveRegionMode.Assertive
+            },
         colors = CardDefaults.cardColors(containerColor = DarkSurface),
         shape = RoundedCornerShape(16.dp)
     ) {
@@ -1740,7 +1828,8 @@ fun ProposedPlanPrompt(
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
-                    color = AccentCyan
+                    color = AccentCyan,
+                    modifier = Modifier.semantics { heading() }
                 )
             }
             Spacer(modifier = Modifier.height(12.dp))
@@ -1846,7 +1935,15 @@ fun FloatingOrb(
         label = "color"
     )
 
-    val shadowSize = if (isListening || agentState !is AgentState.Idle) pulseScale else 1f
+    // D8 reduce motion: the orb rests at scale 1 — the pulse is not rendered.
+    val reduceMotion = LocalReduceMotion.current
+    val shadowSize = if (reduceMotion) {
+        1f
+    } else if (isListening || agentState !is AgentState.Idle) {
+        pulseScale
+    } else {
+        1f
+    }
 
     Box(
         modifier = Modifier
@@ -1860,6 +1957,19 @@ fun FloatingOrb(
                 )
             )
             .clickable { onClick() }
+            .semantics {
+                // The orb is a raw clickable Box — without this it is an
+                // unlabelled control for TalkBack (D8).
+                role = Role.Button
+                contentDescription = if (isListening) "Stop voice input" else "Voice input"
+                stateDescription = when {
+                    isListening -> "Listening"
+                    agentState is AgentState.Thinking -> "Thinking"
+                    agentState is AgentState.ExecutingPlan -> "Executing plan"
+                    agentState is AgentState.Speaking -> "Speaking"
+                    else -> "Idle"
+                }
+            }
             .padding(6.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -1887,6 +1997,8 @@ fun FloatingOrb(
 
 @Composable
 fun VoiceWaveform(text: String, modifier: Modifier = Modifier) {
+    // D8 reduce motion: bars rest at a fixed height instead of bouncing.
+    val reduceMotion = LocalReduceMotion.current
     val infiniteTransition = rememberInfiniteTransition(label = "waveform")
     val heightScale1 by infiniteTransition.animateFloat(
         initialValue = 4f,
@@ -1917,7 +2029,12 @@ fun VoiceWaveform(text: String, modifier: Modifier = Modifier) {
     )
 
     Row(
-        modifier = modifier,
+        modifier = modifier.semantics(mergeDescendants = true) {
+            // The bars are visual-only; the live transcript is the content,
+            // announced politely as it updates (D8).
+            liveRegion = LiveRegionMode.Polite
+            contentDescription = if (text.isBlank()) "Listening" else "Listening: $text"
+        },
         verticalAlignment = Alignment.Top
     ) {
         Row(
@@ -1925,11 +2042,11 @@ fun VoiceWaveform(text: String, modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(modifier = Modifier.width(4.dp).height(heightScale1.dp).clip(CircleShape).background(AccentRed))
-            Box(modifier = Modifier.width(4.dp).height(heightScale2.dp).clip(CircleShape).background(AccentRed))
-            Box(modifier = Modifier.width(4.dp).height(heightScale3.dp).clip(CircleShape).background(AccentRed))
-            Box(modifier = Modifier.width(4.dp).height(heightScale2.dp).clip(CircleShape).background(AccentRed))
-            Box(modifier = Modifier.width(4.dp).height(heightScale1.dp).clip(CircleShape).background(AccentRed))
+            Box(modifier = Modifier.width(4.dp).height((if (reduceMotion) 18f else heightScale1).dp).clip(CircleShape).background(AccentRed))
+            Box(modifier = Modifier.width(4.dp).height((if (reduceMotion) 24f else heightScale2).dp).clip(CircleShape).background(AccentRed))
+            Box(modifier = Modifier.width(4.dp).height((if (reduceMotion) 30f else heightScale3).dp).clip(CircleShape).background(AccentRed))
+            Box(modifier = Modifier.width(4.dp).height((if (reduceMotion) 24f else heightScale2).dp).clip(CircleShape).background(AccentRed))
+            Box(modifier = Modifier.width(4.dp).height((if (reduceMotion) 18f else heightScale1).dp).clip(CircleShape).background(AccentRed))
         }
         Spacer(modifier = Modifier.width(8.dp))
         // No maxLines cap - long dictation wraps across multiple lines and the container
@@ -1987,7 +2104,11 @@ private fun ChatErrorRecoveryCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, AccentRed.copy(alpha = 0.5f), RoundedCornerShape(12.dp)),
+            .border(1.dp, AccentRed.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+            .semantics {
+                // D8: errors are announced assertively, like approval asks.
+                liveRegion = LiveRegionMode.Assertive
+            },
         colors = CardDefaults.cardColors(containerColor = CardBackground),
         shape = RoundedCornerShape(12.dp)
     ) {
