@@ -36,9 +36,13 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -57,6 +61,7 @@ import com.opendroid.ai.core.llm.error.LLMError
 import com.opendroid.ai.core.security.ProviderCredentialRecoveryState
 import com.opendroid.ai.data.repository.ProviderCredentialPersistenceState
 import com.google.mlkit.genai.prompt.*
+import com.google.mlkit.genai.common.DownloadStatus
 import com.google.mlkit.genai.common.FeatureStatus
 import com.opendroid.ai.core.privacy.WipeStepResult
 import com.opendroid.ai.ui.theme.*
@@ -134,6 +139,20 @@ fun SettingsScreen(
     var showForgetEverythingConfirm by remember { mutableStateOf(false) }
     var forgetEverythingUnderstood by remember { mutableStateOf(false) }
     var providerDropdownExpanded by remember { mutableStateOf(false) }
+    // Active-model field edit state. The field used to bind directly to
+    // config.activeModel and commit on EVERY keystroke, so
+    // updateActiveModel's coercion (resolveClaudeModelId / blank→default)
+    // snapped partially typed or cleared text straight back to the default
+    // while typing. Now the text is local and commits on blur / IME Done;
+    // external changes (dropdown pick, provider switch) re-sync the text
+    // only while the field is not focused.
+    var activeModelText by remember { mutableStateOf(config.activeModel) }
+    var activeModelFieldFocused by remember { mutableStateOf(false) }
+    LaunchedEffect(config.activeModel) {
+        if (!activeModelFieldFocused) {
+            activeModelText = config.activeModel
+        }
+    }
     var keysSectionExpanded by remember { mutableStateOf(false) }
     var voiceSectionExpanded by remember { mutableStateOf(false) }
     var planningSectionExpanded by remember { mutableStateOf(false) }
@@ -460,10 +479,14 @@ fun SettingsScreen(
 
                         Box(modifier = Modifier.fillMaxWidth()) {
                             OutlinedTextField(
-                                value = config.activeModel,
-                                onValueChange = { viewModel.updateActiveModel(it) },
+                                value = activeModelText,
+                                onValueChange = { activeModelText = it },
                                 label = { Text("Active LLM Model", style = MaterialTheme.typography.labelMedium) },
                                 singleLine = true,
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                keyboardActions = KeyboardActions(
+                                    onDone = { viewModel.updateActiveModel(activeModelText) }
+                                ),
                                 trailingIcon = {
                                     IconButton(onClick = { modelDropdownExpanded = !modelDropdownExpanded }) {
                                         Icon(
@@ -479,7 +502,15 @@ fun SettingsScreen(
                                     focusedTextColor = TextPrimary,
                                     unfocusedTextColor = TextPrimary
                                 ),
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .onFocusChanged { focusState ->
+                                        if (activeModelFieldFocused && !focusState.isFocused) {
+                                            // Blur commit.
+                                            viewModel.updateActiveModel(activeModelText)
+                                        }
+                                        activeModelFieldFocused = focusState.isFocused
+                                    }
                             )
 
                         if (fetchedModels.isNotEmpty()) {
@@ -564,6 +595,7 @@ fun SettingsScreen(
                                             },
                                             onClick = {
                                                 viewModel.updateActiveModel(model.id)
+                                                activeModelText = model.id
                                                 modelDropdownExpanded = false
                                             }
                                         )
@@ -921,8 +953,33 @@ fun SettingsScreen(
                                                 val client = Generation.getClient()
                                                 gemma4Status = "Downloading..."
                                                 showGemma4Download = false
-                                                client.download().collect { }
-                                                gemma4Status = "Download complete"
+                                                // ML Kit reports failure as a DownloadFailed
+                                                // flow VALUE, not an exception — collecting
+                                                // and discarding statuses used to report
+                                                // failed downloads as "Download complete"
+                                                // with no retry button left.
+                                                var failureMessage: String? = null
+                                                var completed = false
+                                                client.download().collect { status ->
+                                                    when (status) {
+                                                        is DownloadStatus.DownloadFailed ->
+                                                            failureMessage = status.e.localizedMessage
+                                                                ?: "Download failed"
+                                                        DownloadStatus.DownloadCompleted -> completed = true
+                                                        else -> Unit // Started / Progress: still downloading
+                                                    }
+                                                }
+                                                when {
+                                                    failureMessage != null -> {
+                                                        gemma4Status = "Download failed: $failureMessage"
+                                                        showGemma4Download = true
+                                                    }
+                                                    completed -> gemma4Status = "Download complete"
+                                                    else -> {
+                                                        gemma4Status = "Download did not complete"
+                                                        showGemma4Download = true
+                                                    }
+                                                }
                                             } catch (e: Exception) {
                                                 gemma4Status = "Download failed: ${e.localizedMessage}"
                                                 showGemma4Download = true
@@ -966,8 +1023,30 @@ fun SettingsScreen(
                                                 val client3n = Generation.getClient(previewConfig)
                                                 gemma3nStatus = "Downloading..."
                                                 showGemma3nDownload = false
-                                                client3n.download().collect { }
-                                                gemma3nStatus = "Download complete"
+                                                // Same status-aware handling as the Gemma 4
+                                                // row: DownloadFailed arrives as a value.
+                                                var failureMessage: String? = null
+                                                var completed = false
+                                                client3n.download().collect { status ->
+                                                    when (status) {
+                                                        is DownloadStatus.DownloadFailed ->
+                                                            failureMessage = status.e.localizedMessage
+                                                                ?: "Download failed"
+                                                        DownloadStatus.DownloadCompleted -> completed = true
+                                                        else -> Unit // Started / Progress: still downloading
+                                                    }
+                                                }
+                                                when {
+                                                    failureMessage != null -> {
+                                                        gemma3nStatus = "Download failed: $failureMessage"
+                                                        showGemma3nDownload = true
+                                                    }
+                                                    completed -> gemma3nStatus = "Download complete"
+                                                    else -> {
+                                                        gemma3nStatus = "Download did not complete"
+                                                        showGemma3nDownload = true
+                                                    }
+                                                }
                                             } catch (e: Exception) {
                                                 gemma3nStatus = "Download failed: ${e.localizedMessage}"
                                                 showGemma3nDownload = true
@@ -1070,7 +1149,12 @@ fun SettingsScreen(
                                             }
 
                                             TextButton(
-                                                onClick = { viewModel.updateHuggingFaceToken("") },
+                                                // removeHuggingFaceToken, not update(""):
+                                                // Clear must also drop the persisted
+                                                // last-verified timestamp, which kept
+                                                // showing "Last Verified: …" for a
+                                                // token that no longer exists.
+                                                onClick = { viewModel.removeHuggingFaceToken() },
                                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                                             ) {
                                                 Icon(
@@ -1172,6 +1256,7 @@ fun SettingsScreen(
                                 val eta = modelEntity?.etaString ?: ""
                                 
                                 var expanded by remember { mutableStateOf(false) }
+                                var showModelInfo by remember { mutableStateOf(false) }
                                 val isApiCompatible = android.os.Build.VERSION.SDK_INT >= spec.minSdk
                                 val managedDownloadAvailable = spec.isManagedDownloadAvailable
                                 // A9: this row's fit assessment on this device — drives the fit
@@ -1543,14 +1628,51 @@ fun SettingsScreen(
                                                     }
                                                     
                                                     Button(
-                                                        onClick = {
-                                                            // Info clicked (No-op or log details)
-                                                        },
+                                                        onClick = { showModelInfo = !showModelInfo },
                                                         colors = ButtonDefaults.buttonColors(containerColor = BorderColor),
                                                         modifier = Modifier.height(32.dp),
                                                         contentPadding = PaddingValues(horizontal = 8.dp)
                                                     ) {
                                                         Icon(Icons.Default.Info, contentDescription = "Info", modifier = Modifier.size(14.dp), tint = TextSecondary)
+                                                    }
+                                                }
+
+                                                // Info details — this button used to be a
+                                                // no-op; it now toggles the model's
+                                                // registry facts for this row.
+                                                AnimatedVisibility(visible = showModelInfo) {
+                                                    Column {
+                                                        Spacer(modifier = Modifier.height(8.dp))
+                                                        Text(
+                                                            text = "Model ID: ${spec.id}",
+                                                            fontSize = 10.sp,
+                                                            fontFamily = FontFamily.Monospace,
+                                                            color = TextSecondary
+                                                        )
+                                                        Text(
+                                                            text = "Family: ${spec.family} · Size: ${spec.sizeLabel} · Version: ${spec.version}",
+                                                            fontSize = 10.sp,
+                                                            color = TextSecondary
+                                                        )
+                                                        Text(
+                                                            text = "Backend: ${spec.backend.name} · Status: ${status.name}",
+                                                            fontSize = 10.sp,
+                                                            color = TextSecondary
+                                                        )
+                                                        if (spec.modelFilename.isNotBlank()) {
+                                                            Text(
+                                                                text = "File: ${spec.modelFilename}",
+                                                                fontSize = 10.sp,
+                                                                color = TextSecondary
+                                                            )
+                                                        }
+                                                        if (spec.licenseUrl.isNotEmpty()) {
+                                                            Text(
+                                                                text = "License: ${spec.licenseUrl}",
+                                                                fontSize = 10.sp,
+                                                                color = TextSecondary
+                                                            )
+                                                        }
                                                     }
                                                 }
                                             }
