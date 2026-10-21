@@ -203,6 +203,18 @@ class TextToSpeechEngine(
                         notifyCompletion(utteranceId)
                     }
                 }
+                // Without an error listener a failed playback leaves the
+                // player in the Error state — where stop() throws — and
+                // no completion ever fires. Report the error as this
+                // utterance's completion (the platform's own fallback
+                // when no listener is installed) so listeners advance
+                // and the player leaves the error path handled.
+                setOnErrorListener { _, _, _ ->
+                    mainHandler.post {
+                        notifyCompletion(utteranceId)
+                    }
+                    true
+                }
                 start()
             }
             return true
@@ -211,7 +223,19 @@ class TextToSpeechEngine(
 
     fun stop() {
         tts?.stop()
-        mediaPlayer?.stop()
+        // MediaPlayer.stop() is illegal outside the Prepared/Started/
+        // Paused/PlaybackCompleted states: the field can still reference
+        // the player released just before a failed re-creation, or one a
+        // failed playback left in the Error state. Barge-in and session
+        // stop call this on the main thread — an unguarded stop() turns
+        // one bad cloud-TTS download into a crash (finding #4). A player
+        // in one of those states is not playing anything stop() could
+        // silence, so the exception is safe to swallow.
+        try {
+            mediaPlayer?.stop()
+        } catch (_: IllegalStateException) {
+            // Player already released or in the Error state: nothing to stop.
+        }
     }
 
     companion object {
