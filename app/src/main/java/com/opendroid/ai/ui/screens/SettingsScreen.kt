@@ -40,6 +40,10 @@ import com.opendroid.ai.data.models.effectiveGrantedActions
 import com.opendroid.ai.data.models.resolvedAutoMode
 import com.opendroid.ai.core.llm.OnDeviceModelRegistry
 import com.opendroid.ai.core.llm.OnDeviceBackend
+import com.opendroid.ai.core.llm.ModelDownloadGate
+import com.opendroid.ai.core.llm.ModelFitAssessment
+import com.opendroid.ai.core.llm.ModelFitPolicy
+import com.opendroid.ai.core.llm.ModelFitVerdict
 import com.opendroid.ai.core.llm.ConnectionTestState
 import com.opendroid.ai.core.llm.error.LLMError
 import com.opendroid.ai.core.security.ProviderCredentialRecoveryState
@@ -123,6 +127,13 @@ fun SettingsScreen(
     var licenseUrlForDialog by remember { mutableStateOf("") }
     var showCellularWarningDialog by remember { mutableStateOf<String?>(null) }
     var pendingCellularResumeModelId by remember { mutableStateOf<String?>(null) }
+    // A9 fit-gate dialog state: a tight-storage model asks for confirmation (with the
+    // real numbers) before its download starts; a model that cannot fit is blocked.
+    var fitConfirmationRequest by remember { mutableStateOf<FitConfirmationRequest?>(null) }
+    var fitBlockedInfo by remember { mutableStateOf<Pair<String, ModelFitAssessment>?>(null) }
+    var cellularDownloadFitConfirmed by remember { mutableStateOf(false) }
+    var cellularResumeFitConfirmed by remember { mutableStateOf(false) }
+    val deviceTotalRamBytes = remember { viewModel.deviceTotalRamBytes() }
     var activeImportModelId by remember { mutableStateOf<String?>(null) }
     var importAsCustomModel by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
@@ -139,6 +150,43 @@ fun SettingsScreen(
         activeImportModelId = null
         importAsCustomModel = false
     }
+
+    // A9 download flow: the fit gate runs first (fresh numbers from the repository);
+    // only after it passes do the pre-existing auth-token and cellular checks run,
+    // and the fit confirmation is carried through them to the repository funnel.
+    val beginModelDownload: (com.opendroid.ai.core.llm.OnDeviceModelSpec, Boolean, Boolean) -> Unit =
+        { spec, isResume, fitConfirmed ->
+            when {
+                isResume -> {
+                    if (viewModel.isCellularNetwork()) {
+                        cellularResumeFitConfirmed = fitConfirmed
+                        pendingCellularResumeModelId = spec.id
+                    } else {
+                        viewModel.resumeDownload(spec.id, fitConfirmed)
+                    }
+                }
+                spec.authRequired && hfToken.isBlank() -> {
+                    showAuthRequiredDialog = spec.displayName
+                    licenseUrlForDialog = spec.licenseUrl
+                }
+                viewModel.isCellularNetwork() -> {
+                    cellularDownloadFitConfirmed = fitConfirmed
+                    showCellularWarningDialog = spec.id
+                }
+                else -> viewModel.downloadModel(spec.id, fitConfirmed)
+            }
+        }
+
+    val requestModelDownload: (com.opendroid.ai.core.llm.OnDeviceModelSpec, Boolean) -> Unit =
+        { spec, isResume ->
+            when (val gate = viewModel.downloadGate(spec.id)) {
+                is ModelDownloadGate.Blocked ->
+                    fitBlockedInfo = spec.displayName to gate.assessment
+                is ModelDownloadGate.NeedsConfirmation ->
+                    fitConfirmationRequest = FitConfirmationRequest(spec.id, gate.assessment, isResume)
+                ModelDownloadGate.Proceed, null -> beginModelDownload(spec, isResume, false)
+            }
+        }
 
     Scaffold(
         topBar = {
@@ -684,6 +732,11 @@ fun SettingsScreen(
                                 fontFamily = FontFamily.Monospace,
                                 color = AccentCyan
                             )
+                            Text(
+                                text = "Managed by Android AI Core — these models are downloaded and sized by Google Play services, not by OpenDroid, so no download size applies.",
+                                fontSize = 10.sp,
+                                color = TextSecondary
+                            )
                             Spacer(modifier = Modifier.height(4.dp))
                             
                             var gemma4Status by remember { mutableStateOf("Checking...") }
@@ -995,6 +1048,27 @@ fun SettingsScreen(
                                 var expanded by remember { mutableStateOf(false) }
                                 val isApiCompatible = android.os.Build.VERSION.SDK_INT >= spec.minSdk
                                 val managedDownloadAvailable = spec.isManagedDownloadAvailable
+                                // A9: this row's fit assessment on this device — drives the fit
+                                // chip in the header and disables Download when the model
+                                // cannot fit. Free/total come from the same storage flow the
+                                // Storage section renders; size is the worker-enforced bytes.
+                                val bytesToFetch = if (status == ModelStatus.PAUSED) {
+                                    (totalSize - downloadedSize).coerceAtLeast(0L)
+                                } else {
+                                    totalSize
+                                }
+                                val fitAssessment = remember(
+                                    spec.id, storageInfo.freeBytes, storageInfo.totalBytes,
+                                    status, downloadedSize, totalSize
+                                ) {
+                                    ModelFitPolicy.assess(
+                                        modelBytes = bytesToFetch,
+                                        freeBytes = storageInfo.freeBytes,
+                                        totalStorageBytes = storageInfo.totalBytes,
+                                        requiredRamBytes = OnDeviceModelRegistry.requiredRamBytes(spec),
+                                        totalRamBytes = deviceTotalRamBytes
+                                    )
+                                }
                                 
                                 Card(
                                     modifier = Modifier
@@ -1070,6 +1144,80 @@ fun SettingsScreen(
                                                     fontSize = 10.sp,
                                                     color = TextSecondary
                                                 )
+                                                // ── A9: real size · format · quant guidance ──
+                                                // Size is modelEntity.size / spec.expectedSize — the
+                                                // exact byte count ModelDownloadWorker enforces.
+                                                Text(
+                                                    text = buildString {
+                                                        append(formatBytes(totalSize))
+                                                        append(" · ")
+                                                        append(spec.formatLabel)
+                                                        if (spec.quantLabel.isNotBlank()) {
+                                                            append(" · ")
+                                                            append(spec.quantLabel)
+                                                        }
+                                                    },
+                                                    fontSize = 10.sp,
+                                                    color = TextSecondary
+                                                )
+                                                if (managedDownloadAvailable &&
+                                                    (status == ModelStatus.NOT_DOWNLOADED ||
+                                                        status == ModelStatus.FAILED ||
+                                                        status == ModelStatus.PAUSED)
+                                                ) {
+                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        val chipText: String
+                                                        val chipColor: Color
+                                                        when (fitAssessment.verdict) {
+                                                            ModelFitVerdict.OK -> {
+                                                                chipText = "FITS · ${formatBytes(fitAssessment.freeBytes)} FREE"
+                                                                chipColor = AccentCyan
+                                                            }
+                                                            ModelFitVerdict.WARN -> {
+                                                                chipText = "TIGHT · LEAVES ${formatBytes(fitAssessment.remainingAfterBytes)}"
+                                                                chipColor = Color(0xFFFF9800)
+                                                            }
+                                                            ModelFitVerdict.BLOCK -> {
+                                                                chipText = "WON'T FIT · NEEDS ${formatBytes(totalSize)}"
+                                                                chipColor = Color.Red
+                                                            }
+                                                        }
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .background(chipColor.copy(alpha = 0.12f), RoundedCornerShape(4.dp))
+                                                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                                                        ) {
+                                                            Text(
+                                                                text = chipText,
+                                                                color = chipColor,
+                                                                fontSize = 8.sp,
+                                                                fontWeight = FontWeight.Bold
+                                                            )
+                                                        }
+                                                        if (!fitAssessment.ramSufficient) {
+                                                            Spacer(modifier = Modifier.width(6.dp))
+                                                            Text(
+                                                                text = "LOW RAM",
+                                                                color = Color.Red,
+                                                                fontSize = 8.sp,
+                                                                fontWeight = FontWeight.Bold
+                                                            )
+                                                        }
+                                                    }
+                                                    if (fitAssessment.requiredRamBytes > 0L) {
+                                                        Text(
+                                                            text = "Needs ~${formatRamGb(fitAssessment.requiredRamBytes)} RAM" +
+                                                                if (deviceTotalRamBytes > 0L) {
+                                                                    " · your device ${formatRamGb(deviceTotalRamBytes)}"
+                                                                } else {
+                                                                    ""
+                                                                },
+                                                            fontSize = 9.sp,
+                                                            color = if (fitAssessment.ramSufficient) TextSecondary else Color.Red
+                                                        )
+                                                    }
+                                                }
                                             }
                                             
                                             val badgeColor = when (status) {
@@ -1151,13 +1299,8 @@ fun SettingsScreen(
                                                     }
                                                 } else if (status == ModelStatus.PAUSED) {
                                                     Button(
-                                                        onClick = {
-                                                            if (viewModel.isCellularNetwork()) {
-                                                                pendingCellularResumeModelId = spec.id
-                                                            } else {
-                                                                viewModel.resumeDownload(spec.id)
-                                                            }
-                                                        },
+                                                        onClick = { requestModelDownload(spec, true) },
+                                                        enabled = fitAssessment.verdict != ModelFitVerdict.BLOCK,
                                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800)),
                                                         modifier = Modifier.height(28.dp).padding(horizontal = 4.dp),
                                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
@@ -1215,22 +1358,17 @@ fun SettingsScreen(
                                                     if (status == ModelStatus.NOT_DOWNLOADED || status == ModelStatus.FAILED) {
                                                         if (managedDownloadAvailable) {
                                                             Button(
-                                                                onClick = {
-                                                                    val hfTokenVal = hfToken
-                                                                    if (spec.authRequired && hfTokenVal.isBlank()) {
-                                                                        showAuthRequiredDialog = spec.displayName
-                                                                        licenseUrlForDialog = spec.licenseUrl
-                                                                    } else if (viewModel.isCellularNetwork()) {
-                                                                        showCellularWarningDialog = spec.id
-                                                                    } else {
-                                                                        viewModel.downloadModel(spec.id)
-                                                                    }
-                                                                },
+                                                                onClick = { requestModelDownload(spec, false) },
+                                                                enabled = fitAssessment.verdict != ModelFitVerdict.BLOCK,
                                                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800)),
                                                                 modifier = Modifier.weight(1f).height(32.dp),
                                                                 contentPadding = PaddingValues(horizontal = 4.dp)
                                                             ) {
-                                                                Text("Download", fontSize = 11.sp, color = DarkBackground)
+                                                                Text(
+                                                                    if (fitAssessment.verdict == ModelFitVerdict.BLOCK) "Won't Fit" else "Download",
+                                                                    fontSize = 11.sp,
+                                                                    color = DarkBackground
+                                                                )
                                                             }
                                                         }
 
@@ -1362,7 +1500,17 @@ fun SettingsScreen(
                                                     fontWeight = FontWeight.SemiBold
                                                 )
                                                 Text(
-                                                    text = "Custom LiteRT · ${formatBytes(entity.size)} · no token",
+                                                    text = buildString {
+                                                        append("Custom LiteRT · ")
+                                                        append(formatBytes(entity.size))
+                                                        val quant = OnDeviceModelRegistry
+                                                            .quantLabelFromFilename(entity.name)
+                                                        if (quant.isNotBlank()) {
+                                                            append(" · ")
+                                                            append(quant)
+                                                        }
+                                                        append(" · no token")
+                                                    },
                                                     fontSize = 10.sp,
                                                     color = TextSecondary
                                                 )
@@ -2789,7 +2937,8 @@ fun SettingsScreen(
                 Button(
                     onClick = {
                         showCellularWarningDialog = null
-                        viewModel.downloadModel(modelIdToDownload)
+                        viewModel.downloadModel(modelIdToDownload, cellularDownloadFitConfirmed)
+                        cellularDownloadFitConfirmed = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
                 ) {
@@ -2822,7 +2971,8 @@ fun SettingsScreen(
                 Button(
                     onClick = {
                         pendingCellularResumeModelId = null
-                        viewModel.resumeDownload(modelIdToResume)
+                        viewModel.resumeDownload(modelIdToResume, cellularResumeFitConfirmed)
+                        cellularResumeFitConfirmed = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
                 ) {
@@ -2832,6 +2982,79 @@ fun SettingsScreen(
             dismissButton = {
                 TextButton(onClick = { pendingCellularResumeModelId = null }) {
                     Text("Cancel", color = TextSecondary)
+                }
+            },
+            containerColor = CardBackground,
+            titleContentColor = TextPrimary,
+            textContentColor = TextSecondary
+        )
+    }
+
+    if (fitConfirmationRequest != null) {
+        val request = fitConfirmationRequest!!
+        val a = request.assessment
+        val specForFit = OnDeviceModelRegistry.findById(request.modelId)
+        AlertDialog(
+            onDismissRequest = { fitConfirmationRequest = null },
+            title = { Text("Storage Is Tight", color = TextPrimary) },
+            text = {
+                Text(
+                    text = buildString {
+                        append("This model is ${formatBytes(a.modelBytes)}. You have ")
+                        append("${formatBytes(a.freeBytes)} free; only ")
+                        append("${formatBytes(a.remainingAfterBytes)} will remain after the download.\n\n")
+                        append("Continue anyway?")
+                        if (!a.ramSufficient) {
+                            append("\n\nNote: this model needs about ${formatRamGb(a.requiredRamBytes)} of RAM ")
+                            append("and your device has ${formatRamGb(a.totalRamBytes)}, so it may not run well.")
+                        }
+                    },
+                    color = TextSecondary
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        fitConfirmationRequest = null
+                        if (specForFit != null) {
+                            beginModelDownload(specForFit, request.isResume, true)
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
+                ) {
+                    Text("Download Anyway", color = DarkBackground)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { fitConfirmationRequest = null }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            },
+            containerColor = CardBackground,
+            titleContentColor = TextPrimary,
+            textContentColor = TextSecondary
+        )
+    }
+
+    if (fitBlockedInfo != null) {
+        val (blockedName, blockedAssessment) = fitBlockedInfo!!
+        AlertDialog(
+            onDismissRequest = { fitBlockedInfo = null },
+            title = { Text("Not Enough Storage", color = TextPrimary) },
+            text = {
+                Text(
+                    text = "$blockedName needs ${formatBytes(blockedAssessment.modelBytes)} to download, " +
+                        "but only ${formatBytes(blockedAssessment.freeBytes)} is free on this device. " +
+                        "Free up space or pick a smaller model.",
+                    color = TextSecondary
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { fitBlockedInfo = null },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
+                ) {
+                    Text("OK", color = DarkBackground)
                 }
             },
             containerColor = CardBackground,
@@ -2968,6 +3191,17 @@ private fun WipeStepRow(step: WipeStepResult) {
         }
     }
 }
+
+/** A9: whole-GB label for RAM figures ("6 GB"), matching how devices are sold. */
+private fun formatRamGb(bytes: Long): String =
+    "${Math.round(bytes.toDouble() / (1024.0 * 1024.0 * 1024.0))} GB"
+
+/** A9: a pending tight-storage confirmation for one model download/resume. */
+private data class FitConfirmationRequest(
+    val modelId: String,
+    val assessment: ModelFitAssessment,
+    val isResume: Boolean
+)
 
 @Composable
 private fun SecureApiKeyField(
