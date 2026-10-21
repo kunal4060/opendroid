@@ -81,7 +81,8 @@ class ChatViewModel @Inject constructor(
     private val habitRoutineEngine: com.opendroid.ai.core.routine.HabitRoutineEngine,
     private val pendingAssistantCommand: com.opendroid.ai.core.assistant.PendingAssistantCommand,
     private val researchChatRunner: com.opendroid.ai.core.research.ResearchChatRunner,
-    private val researchRepository: com.opendroid.ai.core.research.ResearchRepository
+    private val researchRepository: com.opendroid.ai.core.research.ResearchRepository,
+    private val voiceSessionStateStore: com.opendroid.ai.core.voice.VoiceSessionStateStore
 ) : ViewModel() {
 
     val llmConfig: StateFlow<LLMConfig> = settingsRepository.llmConfig
@@ -1043,6 +1044,29 @@ class ChatViewModel @Inject constructor(
     /** Clears the replayed voice request once ChatScreen has acted on it. */
     fun onVoiceInputRequestHandled() {
         _voiceInputRequests.resetReplayCache()
+    }
+
+    // ── Continuous voice conversation (D2) ────────────────────────────
+    // The session itself lives in OpenDroidService (it owns the mic/TTS
+    // engines); this is the UI's read model + start/stop/interrupt
+    // commands, forwarded as service intents — the same pattern as the
+    // one-shot ACTION_TRIGGER_RECORD path.
+
+    /** Live D2 session state for the chat session bar (inactive when no session runs). */
+    val voiceSessionUiState: StateFlow<com.opendroid.ai.core.voice.VoiceSessionStateStore.UiState> =
+        voiceSessionStateStore.uiState
+
+    fun startVoiceSession(context: Context) {
+        com.opendroid.ai.core.service.OpenDroidService.startVoiceSession(context)
+    }
+
+    fun stopVoiceSession(context: Context) {
+        com.opendroid.ai.core.service.OpenDroidService.stopVoiceSession(context)
+    }
+
+    /** Barge-in from the session bar: stop the current speech and listen. */
+    fun interruptVoiceSession(context: Context) {
+        com.opendroid.ai.core.service.OpenDroidService.interruptVoiceSession(context)
     }
 
     /**
