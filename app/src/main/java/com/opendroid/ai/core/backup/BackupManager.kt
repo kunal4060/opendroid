@@ -311,14 +311,41 @@ class BackupManager @Inject constructor(
         // Replace semantics (see the class doc): both stores are cleared
         // BEFORE the backup's values are written. This still runs in the
         // abort-early phase — credentials are applied first, before any
-        // user data — so a clear failure aborts with nothing touched, and
-        // a credential the backup does not carry (e.g. a compromised key
-        // the user is restoring specifically to evict) cannot silently
-        // survive, as it did when restore was merge-only.
-        clearCredentialStores(previous)
+        // user data — and a credential the backup does not carry (e.g. a
+        // compromised key the user is restoring specifically to evict)
+        // cannot silently survive, as it did when restore was merge-only.
+        try {
+            clearCredentialStores(previous.providerApiKeys.keys)
+        } catch (clearFailure: BackupRestoreException) {
+            // The clear removes entries one by one, so a failure part-way
+            // can already have removed some of the user's credentials
+            // (audit2-4 #3). Write the snapshot back before reporting, so
+            // the abort leaves the stores as they were; only if the
+            // write-back itself fails is the user told credentials may be
+            // missing.
+            val rollbackFailures = try {
+                writeCredentials(previous)
+            } catch (_: Exception) {
+                listOf("your existing credentials")
+            }
+            if (rollbackFailures.isEmpty()) throw clearFailure
+            throw BackupRestoreException(
+                "Your existing credentials could not be cleared, and putting them back " +
+                    "also failed (${rollbackFailures.joinToString()}). Some credentials " +
+                    "may be missing — re-enter them in Settings. Nothing else was restored.",
+                clearFailure
+            )
+        }
         val failures = writeCredentials(credentials)
         if (failures.isNotEmpty()) {
-            runCatching { clearCredentialStores(previous) }
+            // The rollback clear must name the backup's providers as well
+            // as the snapshot's (audit2-4 #3): the stores currently hold
+            // the backup's partially written values, and a provider key
+            // that exists only in the backup would otherwise survive the
+            // "rollback" and stay live after a failed restore.
+            runCatching {
+                clearCredentialStores(previous.providerApiKeys.keys + credentials.providerApiKeys.keys)
+            }
             runCatching { writeCredentials(previous) }
             throw BackupRestoreException(
                 "Your credentials could not be restored (${failures.joinToString()}). " +
@@ -347,13 +374,17 @@ class BackupManager @Inject constructor(
     }
 
     /**
-     * Removes everything [current] names from both credential stores, plus
-     * the two fixed credentials. Throws before any backup value is written
-     * when a removal fails, so the restore aborts with the stores intact.
+     * Removes every provider key named in [providers] from the credential
+     * store, plus the two fixed credentials and all sensitive memories.
+     * Every removal is attempted even after a failure; the failures are
+     * then reported together. Because removals take effect as they go, a
+     * throw does NOT mean the stores are untouched — callers that need
+     * the pre-clear contents preserved must write their snapshot back
+     * (as [restoreCredentials] does).
      */
-    private fun clearCredentialStores(current: CredentialsBackup) {
+    private fun clearCredentialStores(providers: Set<String>) {
         val failures = ArrayList<String>()
-        for (provider in current.providerApiKeys.keys) {
+        for (provider in providers) {
             val id = runCatching { ProviderCredentialId.ApiKey(provider) }.getOrNull()
             if (id == null || providerCredentialStore.remove(id) !is CredentialStoreResult.Success) {
                 failures += provider
