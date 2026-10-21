@@ -691,7 +691,12 @@ class CalendarActions @Inject constructor(
 
             return try {
                 val extractedInfo = visionEngine.get().extractAndStructureScreenInfo(topic)
-                if (extractedInfo.isBlank() || extractedInfo.startsWith("Could not capture") || extractedInfo.startsWith("Please ensure the Accessibility")) {
+                // Loop-2 Area2 #8: guard on ALL of VisionEngine's failure
+                // strings, not just the capture ones — the extraction
+                // failures ("...couldn't extract the details: ...") used to
+                // pass this check and be saved into memory as if they were
+                // the extracted notes.
+                if (extractedInfo.isBlank() || VisionEngine.isFailureResult(extractedInfo)) {
                     return ActionResult(false, null, extractedInfo)
                 }
 
