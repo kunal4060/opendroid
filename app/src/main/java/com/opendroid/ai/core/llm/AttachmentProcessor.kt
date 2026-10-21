@@ -332,19 +332,23 @@ fun trimToTokenBudget(
     maxTokens: Int = AttachmentProcessor.MAX_FILE_TEXT_TOKENS
 ): String {
     if (PromptBudget.estimateTokens(text) <= maxTokens) return text
+    val note = "\n[Attachment truncated to fit the message size limit.]"
+    // The note itself spends tokens; trim the body to what's left of the
+    // budget so the returned text (body + note) stays within it.
+    val bodyBudget = maxTokens - PromptBudget.estimateTokens(note) - 1
     // Proportional cut by the chars-per-token estimate, then walk down until
     // the estimator agrees (bounded iterations; the estimate is linear in
     // length, so the first cut is already close).
-    var end = (text.length.toLong() * maxTokens /
+    var end = (text.length.toLong() * bodyBudget /
         PromptBudget.estimateTokens(text)).toInt().coerceIn(1, text.length)
     var candidate = text.substring(0, end)
     var guard = 0
-    while (PromptBudget.estimateTokens(candidate) > maxTokens && guard < 8) {
+    while (PromptBudget.estimateTokens(candidate) > bodyBudget && guard < 8) {
         end = (end * 0.9).toInt().coerceAtLeast(1)
         candidate = text.substring(0, end)
         guard++
     }
-    return candidate.trimEnd() + "\n[Attachment truncated to fit the message size limit.]"
+    return candidate.trimEnd() + note
 }
 
 /** The fenced block extracted file text is inlined as, headed by its name. */
