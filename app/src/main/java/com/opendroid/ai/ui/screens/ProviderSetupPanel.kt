@@ -216,7 +216,8 @@ private fun OnDeviceCard(state: ProviderSetupUiState, viewModel: OnboardingViewM
                 DownloadFit.FitsWithLowSpaceWarning -> {
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "It fits, but would leave less than 1 GB free on this device.",
+                        text = "It fits, but would leave very little free space on this device. " +
+                            "Downloading anyway counts as confirmation.",
                         fontSize = 12.sp,
                         color = AccentOrange
                     )
