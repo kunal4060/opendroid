@@ -50,6 +50,19 @@ data class LLMConfig(
     val copilotUrl: String = "",
     val multiAgentModeEnabled: Boolean = false,
     val showFloatingButton: Boolean = true,
+    /**
+     * Wake-word engine selection (D1) — a `WakeEngineKind` settings id
+     * ("OFFLINE" / "LEGACY") stored as a plain string, like [accentTheme],
+     * so a future rename can never break decoding; unknown ids resolve to
+     * the offline engine. The offline engine is sherpa-onnx keyword
+     * spotting, fully on-device; "LEGACY" is the old system
+     * SpeechRecognizer loop (network-dependent on most devices).
+     */
+    val wakeWordEngine: String = "OFFLINE",
+    /** Wake phrase for the offline spotter (any English phrase the bundled pronunciation lexicon knows) and the legacy matcher. */
+    val wakeWordKeyword: String = "Open Droid",
+    /** Wake-word sensitivity 0 (strict) … 1 (eager); mapped to the spotter's detection threshold. */
+    val wakeWordSensitivity: Float = 0.5f,
     val isDarkMode: Boolean = true,
     /**
      * Accent preset id — an `AccentTheme` enum name (ui.theme). Stored as a

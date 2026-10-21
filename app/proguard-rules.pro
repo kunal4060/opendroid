@@ -12,6 +12,11 @@
 # Keep action schema (used by reflection/serialization)
 -keep class com.opendroid.ai.actions.** { *; }
 
+# ── sherpa-onnx (D1, vendored AAR) ──
+# JNI-bound API classes: native code looks them up by name, and the AAR's
+# own consumer rules are empty, so keep the whole API surface intact.
+-keep class com.k2fsa.sherpa.onnx.** { *; }
+
 # ── Room Database ──
 -keep class * extends androidx.room.RoomDatabase
 -keep @androidx.room.Entity class *

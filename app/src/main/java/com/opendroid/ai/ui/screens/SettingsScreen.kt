@@ -2590,6 +2590,12 @@ fun SettingsScreen(
                 AssistantSettingsSection()
             }
 
+            // Wake word (D1): offline sherpa-onnx keyword spotting —
+            // engine choice, wake phrase, sensitivity, live status
+            item {
+                WakeWordSettingsSection(viewModel = viewModel)
+            }
+
             // External automation (C7): Tasker/ADB intent API toggle + token
             item {
                 ExternalAutomationSettingsSection()

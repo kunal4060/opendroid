@@ -99,6 +99,13 @@ class OpenDroidService : Service() {
         serviceScope.launch {
             settingsRepository.llmConfig.collectLatest { config ->
                 showFloatingButton = config.showFloatingButton
+                // D1: forward the wake-word engine/keyword/sensitivity; the
+                // detector restarts its engine only when these actually change.
+                wakeWordDetector.applySettings(
+                    engineId = config.wakeWordEngine,
+                    keywordPhrase = config.wakeWordKeyword,
+                    sensitivity = config.wakeWordSensitivity
+                )
                 if (showFloatingButton) {
                     wakeWordDetector.stopListening()
                 } else {
