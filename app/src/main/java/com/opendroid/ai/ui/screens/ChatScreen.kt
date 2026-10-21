@@ -103,7 +103,8 @@ import java.util.Locale
 fun ChatScreen(
     viewModel: ChatViewModel,
     modifier: Modifier = Modifier,
-    onNavigateToProviderSetup: () -> Unit = {}
+    onNavigateToProviderSetup: () -> Unit = {},
+    onNavigateToPersonas: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -129,6 +130,11 @@ fun ChatScreen(
     val effectiveProviderModel by viewModel.effectiveProviderModel.collectAsState()
     val modelPickerState by viewModel.modelPickerState.collectAsState()
     var showModelPicker by remember { mutableStateOf(false) }
+    // Per-chat persona (B6): the library for the picker sheet and the
+    // persona bound to this chat (null = default prompt).
+    val personas by viewModel.personas.collectAsState()
+    val activePersona by viewModel.activePersona.collectAsState()
+    var showPersonaPicker by remember { mutableStateOf(false) }
     // A10 limited state: no usable provider configured (e.g. onboarding's
     // provider stage was skipped) — the banner stays until setup exists.
     val providerSetupNeeded by viewModel.providerSetupNeeded.collectAsState()
@@ -555,6 +561,14 @@ fun ChatScreen(
                         effective = effectiveProviderModel,
                         onClick = { showModelPicker = true }
                     )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    // Persona chip (B6): the persona bound to this chat;
+                    // tapping opens the picker (apply / clear / quick
+                    // commands / manage library).
+                    com.opendroid.ai.ui.components.PersonaChip(
+                        activePersona = activePersona,
+                        onClick = { showPersonaPicker = true }
+                    )
                 }
 
                 // A10 limited-state banner: shown until a usable provider
@@ -936,6 +950,36 @@ fun ChatScreen(
             },
             onExpandProvider = { provider -> viewModel.ensureModelsFetched(provider) },
             onDismiss = { showModelPicker = false }
+        )
+    }
+
+    if (showPersonaPicker) {
+        com.opendroid.ai.ui.components.PersonaPickerSheet(
+            personas = personas,
+            activePersonaId = activePersona?.id,
+            onSelectPersona = { persona ->
+                viewModel.setSessionPersona(persona.id)
+                showPersonaPicker = false
+            },
+            onClearPersona = {
+                viewModel.setSessionPersona(null)
+                showPersonaPicker = false
+            },
+            onPickQuickCommand = { command ->
+                // Insert into the composer only — the user reviews and
+                // sends it themselves; nothing is auto-sent (B6).
+                inputQuery = if (inputQuery.isBlank()) {
+                    command.prompt
+                } else {
+                    inputQuery.trimEnd() + " " + command.prompt.trimStart()
+                }
+                showPersonaPicker = false
+            },
+            onManagePersonas = {
+                showPersonaPicker = false
+                onNavigateToPersonas()
+            },
+            onDismiss = { showPersonaPicker = false }
         )
     }
 

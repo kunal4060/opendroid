@@ -24,6 +24,7 @@ import com.opendroid.ai.core.service.McpConfigStore
 import com.opendroid.ai.core.service.OpenDroidService
 import com.opendroid.ai.core.settings.AndroidAppSettingsStore
 import com.opendroid.ai.data.db.OpenDroidDatabase
+import com.opendroid.ai.data.repository.PersonaRepository
 import com.opendroid.ai.data.repository.SettingsRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
@@ -55,6 +56,7 @@ class ForgetEverythingUseCase @Inject constructor(
     @ApplicationContext private val context: Context,
     private val database: OpenDroidDatabase,
     private val settingsRepository: SettingsRepository,
+    private val personaRepository: PersonaRepository,
     private val providerCredentialStore: ProviderCredentialStore,
     private val userProfileStore: UserProfileStore,
     private val sensitiveMemoryStore: SensitiveMemoryStore,
@@ -120,6 +122,12 @@ class ForgetEverythingUseCase @Inject constructor(
             title = "Action Learning teachings",
             remainingDescription = "Your taught meanings for invented actions are still stored on this device.",
             clear = { learnedActionStore.clearAll() }
+        ),
+        WipeTarget(
+            id = "persona-library",
+            title = "Personas & quick commands",
+            remainingDescription = "Your saved personas and quick commands are still stored on this device.",
+            clear = { personaRepository.clearAllPersonas() }
         ),
         WipeTarget(
             id = "sensitive-memory",
