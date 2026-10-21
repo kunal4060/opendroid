@@ -40,10 +40,27 @@ object NextFireCalculator {
             val cron = task.cronExpression?.let { CronExpression.parse(it) } ?: return null
             return cron.nextFireAfter(afterMillis, zone)
         }
+        if (task.recurrence == ScheduleRecurrence.ONCE) {
+            // Derived directly from the stored date: a one-shot months
+            // ahead still has a next fire (a fixed day-scan window would
+            // return null for it and nothing would ever be armed).
+            val epochDay = task.dateEpochDay ?: return null
+            val candidate = fireInstantOn(task, LocalDate.ofEpochDay(epochDay), zone)
+            return candidate.takeIf { it > afterMillis }
+        }
         val afterDate = Instant.ofEpochMilli(afterMillis).atZone(zone).toLocalDate()
-        // Weekly is the sparsest preset: 8 days of headroom always finds it.
-        for (offset in 0..SEARCH_BACK_DAYS + 1) {
-            val date = afterDate.plusDays(offset)
+        if (task.recurrence == ScheduleRecurrence.WEEKLY) {
+            // Jump straight to the next matching weekday (this week, or
+            // next week when today's slot has already passed).
+            val dow = task.dayOfWeek ?: return null
+            val daysAhead = (dow - afterDate.dayOfWeek.value + 7) % 7
+            val thisWeek = fireInstantOn(task, afterDate.plusDays(daysAhead.toLong()), zone)
+            if (thisWeek > afterMillis) return thisWeek
+            return fireInstantOn(task, afterDate.plusDays(daysAhead + 7L), zone)
+        }
+        // DAILY / WEEKDAYS: a matching day is never more than a week out.
+        for (offset in 0..7) {
+            val date = afterDate.plusDays(offset.toLong())
             if (!dayMatches(task, date)) continue
             val candidate = fireInstantOn(task, date, zone)
             if (candidate > afterMillis) return candidate
@@ -67,6 +84,14 @@ object NextFireCalculator {
                 cursor = next
             }
             return last
+        }
+        if (task.recurrence == ScheduleRecurrence.ONCE) {
+            // Derived directly from the stored date, regardless of age:
+            // a one-shot missed while the phone was off for weeks must
+            // still be found here, or it can never be marked missed.
+            val epochDay = task.dateEpochDay ?: return null
+            val candidate = fireInstantOn(task, LocalDate.ofEpochDay(epochDay), zone)
+            return candidate.takeIf { it <= atMillis }
         }
         val atDate = Instant.ofEpochMilli(atMillis).atZone(zone).toLocalDate()
         for (offset in 0..SEARCH_BACK_DAYS) {

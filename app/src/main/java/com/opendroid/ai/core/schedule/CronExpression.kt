@@ -37,41 +37,58 @@ class CronExpression private constructor(
     fun matches(dateTime: ZonedDateTime): Boolean {
         if (dateTime.minute !in minutes) return false
         if (dateTime.hour !in hours) return false
+        return dayMatches(dateTime)
+    }
+
+    /** Month + day matching only (the Vixie dom/dow rule); time-of-day ignored. */
+    private fun dayMatches(dateTime: ZonedDateTime): Boolean {
         if (dateTime.monthValue !in months) return false
         val domMatch = dateTime.dayOfMonth in daysOfMonth
         // java.time: Monday=1..Sunday=7. Cron: Sunday=0, Monday=1..Saturday=6.
         val cronDow = dateTime.dayOfWeek.value % 7
         val dowMatch = cronDow in daysOfWeek
-        val dayMatch = when {
+        return when {
             domRestricted && dowRestricted -> domMatch || dowMatch
             domRestricted -> domMatch
             dowRestricted -> dowMatch
             else -> true
         }
-        return dayMatch
     }
 
     /**
      * The next fire instant strictly after [afterMillis], or null if none
-     * exists within a year (e.g. an impossible date like Feb 31 combined
-     * with restrictions that never line up). Steps minute by minute; the
-     * expressions this app produces are coarse (hour-level), so the scan
-     * is short in practice.
+     * exists within the search horizon (e.g. an impossible date like
+     * Feb 31). Scans day by day — a minute-by-minute scan capped at one
+     * year would miss a leap-day cron (`0 9 29 2 *`) created more than a
+     * year before its next Feb 29 — and only walks the hour/minute sets
+     * on days that match. The horizon covers the longest possible
+     * Feb-29 gap (8 years across a non-leap century year).
      */
     fun nextFireAfter(afterMillis: Long, zone: ZoneId): Long? {
-        var cursor = LocalDateTime.ofInstant(Instant.ofEpochMilli(afterMillis), zone)
-            .withSecond(0).withNano(0).plusMinutes(1)
-        val deadline = cursor.plusYears(1)
-        while (cursor.isBefore(deadline)) {
-            if (matches(cursor.atZone(zone))) {
-                return cursor.atZone(zone).toInstant().toEpochMilli()
+        val after = LocalDateTime.ofInstant(Instant.ofEpochMilli(afterMillis), zone)
+        val afterMinute = after.withSecond(0).withNano(0)
+        val sortedHours = hours.sorted()
+        val sortedMinutes = minutes.sorted()
+        val startDate = after.toLocalDate()
+        for (dayOffset in 0..SEARCH_HORIZON_DAYS) {
+            val date = startDate.plusDays(dayOffset.toLong())
+            if (!dayMatches(date.atStartOfDay(zone))) continue
+            for (hour in sortedHours) {
+                for (minute in sortedMinutes) {
+                    val candidate = date.atTime(hour, minute)
+                    if (!candidate.isAfter(afterMinute)) continue
+                    val zoned = candidate.atZone(zone)
+                    if (matches(zoned)) return zoned.toInstant().toEpochMilli()
+                }
             }
-            cursor = cursor.plusMinutes(1)
         }
         return null
     }
 
     companion object {
+        /** Day-scan horizon for [nextFireAfter]: ~8 years, the longest Feb-29 gap. */
+        private const val SEARCH_HORIZON_DAYS: Long = 366L * 8 + 2
+
         /** Parses [expression]; returns null for anything malformed or out of range. */
         fun parse(expression: String): CronExpression? {
             val fields = expression.trim().split(Regex("\\s+"))
@@ -118,7 +135,10 @@ class CronExpression private constructor(
                     }
                     else -> {
                         val single = rangePart.toIntOrNull() ?: return null
-                        single..single
+                        // Standard cron: a step on a single base means
+                        // base..max stepped ("5/20" in the minute field is
+                        // {5, 25, 45}), not the singleton {5}.
+                        if (stepParts.size == 2) single..max else single..single
                     }
                 }
                 if (range.first < min || range.last > max) return null
