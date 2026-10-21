@@ -43,9 +43,20 @@ class SocialAnalyticsEngine @Inject constructor(
             .values.mapNotNull { list -> list.maxByOrNull { it.timestamp }?.followersCount }
             .sum()
 
-        val totalReach = currentSnapshots.sumOf { it.reach ?: 0 }
-        val prevReach = prevSnapshots.sumOf { it.reach ?: 0 }
-        val totalImpressions = currentSnapshots.sumOf { it.impressions ?: 0 }
+        // Reach/impressions are point-in-time account metrics, exactly
+        // like followers above: one snapshot row is stored per sync, so
+        // summing every snapshot in the window would multiply the true
+        // figure by the number of syncs. Take the LATEST snapshot per
+        // platform, as the followers computation already does.
+        val totalReach = currentSnapshots.groupBy { it.platform }
+            .values.mapNotNull { list -> list.maxByOrNull { it.timestamp }?.reach }
+            .sum()
+        val prevReach = prevSnapshots.groupBy { it.platform }
+            .values.mapNotNull { list -> list.maxByOrNull { it.timestamp }?.reach }
+            .sum()
+        val totalImpressions = currentSnapshots.groupBy { it.platform }
+            .values.mapNotNull { list -> list.maxByOrNull { it.timestamp }?.impressions }
+            .sum()
 
         val nonZeroEngagements = currentSnapshots.mapNotNull { it.engagementRate }.filter { it > 0f }
         val avgEngagement = if (nonZeroEngagements.isNotEmpty()) nonZeroEngagements.average().toFloat() else 0f
