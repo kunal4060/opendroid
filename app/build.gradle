@@ -338,7 +338,10 @@ dependencies {
     // PdfBox-Android (B1): extracts text from PDF attachments for providers
     // without native PDF support. Android's PdfRenderer only rasterises
     // pages - it cannot extract text. Apache-2.0.
-    implementation 'com.tom-roush:pdfbox-android:1.8.10.0'
+    // Version note (end-build fix): 1.8.10.0 does not exist on Maven Central
+    // (the 1.8 line there is only 1.8.10.3, then 2.0.x). 1.8.10.3 is the same
+    // 1.8 API line B1/D4 coded against.
+    implementation 'com.tom-roush:pdfbox-android:1.8.10.3'
     // Web research (D3): on-device page-text extraction for the snippet-only
     // search providers (Brave, SearXNG). MIT-licensed.
     implementation 'org.jsoup:jsoup:1.18.3'
