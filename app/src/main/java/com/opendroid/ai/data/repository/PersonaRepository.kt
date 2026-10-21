@@ -125,6 +125,18 @@ class PersonaRepository internal constructor(
                     }
                 }
             )
+            // An entry edited away from PERSONA kind is no longer a
+            // persona at all: strip chat bindings pointing at it, the
+            // same cleanup deletePersona performs. Without this the
+            // stale bindings keep the entry in PersonasScreen's
+            // "in use" counts and bind logic forever, since bindings
+            // are otherwise only validated at bind time.
+            if (kind != PersonaKind.PERSONA) {
+                val bindings = decodeBindings(preferences)
+                if (bindings.values.any { it == id }) {
+                    preferences.writeBindings(bindings.filterValues { it != id })
+                }
+            }
         }
     }
 

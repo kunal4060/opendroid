@@ -46,6 +46,49 @@ fun LogsScreen(
     var selectedPlanForMacro by remember { mutableStateOf<String?>(null) }
     var macroName by remember { mutableStateOf("") }
     var macroSaveError by remember { mutableStateOf<String?>(null) }
+    var showClearConfirmation by remember { mutableStateOf(false) }
+
+    if (showClearConfirmation) {
+        // The trash icon used to wipe with a single tap: one accidental
+        // touch permanently deleted the entire audit log — the trust
+        // record this screen exists to show. Confirm first, naming
+        // exactly what the active tab will lose (CrashLogScreen's
+        // pattern for the same action).
+        val clearingAuditLog = selectedTab == 0
+        AlertDialog(
+            onDismissRequest = { showClearConfirmation = false },
+            title = {
+                Text(if (clearingAuditLog) "Delete the entire audit log?" else "Delete all action errors?")
+            },
+            text = {
+                Text(
+                    if (clearingAuditLog) {
+                        "This removes every task-history entry from this device. It cannot be undone."
+                    } else {
+                        "This removes every recorded action error from this device. It cannot be undone."
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (clearingAuditLog) {
+                        viewModel.clearTaskHistory()
+                    } else {
+                        viewModel.clearUnknownActions()
+                    }
+                    showClearConfirmation = false
+                }) {
+                    Text("Delete", color = AccentRed)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearConfirmation = false }) { Text("Cancel") }
+            },
+            containerColor = CardBackground,
+            titleContentColor = TextPrimary,
+            textContentColor = TextSecondary
+        )
+    }
 
     val saveableLogIds = remember(history) {
         history.groupBy { it.planId }
@@ -73,13 +116,7 @@ fun LogsScreen(
                     val hasLogs = if (selectedTab == 0) history.isNotEmpty() else actionErrors.isNotEmpty()
                     if (hasLogs) {
                         IconButton(
-                            onClick = {
-                                if (selectedTab == 0) {
-                                    viewModel.clearTaskHistory()
-                                } else {
-                                    viewModel.clearUnknownActions()
-                                }
-                            }
+                            onClick = { showClearConfirmation = true }
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Delete,

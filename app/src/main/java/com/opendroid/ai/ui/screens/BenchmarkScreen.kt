@@ -35,8 +35,13 @@ fun BenchmarkScreen(
     val batchProgress by viewModel.connectionBatchProgress.collectAsState()
     var showConfirm by remember { mutableStateOf(false) }
 
+    // No filtering: the confirm dialog's count and testAllConfigured's
+    // batch both use configuredProviders(config), which is derived
+    // from this same unfiltered list. Filtering "Custom OpenAI
+    // Compatible" out of the rows alone meant a Custom-only user was
+    // told N providers would be tested/charged and the batch ran it,
+    // yet no row ever showed its result.
     val providers = ConnectionTestPlanner.cloudProviders()
-        .filter { it != "Custom OpenAI Compatible" }
 
     Scaffold(
         topBar = {

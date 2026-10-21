@@ -68,9 +68,16 @@ fun AutoReplySettingsScreen(
     }
 
     var dbWriteJob by remember { mutableStateOf<Job?>(null) }
+    // The config whose debounced write has not landed yet. The debounce
+    // job runs on the composition scope, so leaving the screen within
+    // the debounce window used to cancel it and silently lose the edit
+    // (the custom reply prompt is the debounced field). Flushed on
+    // dispose below.
+    var pendingConfig by remember { mutableStateOf<AutoReplyConfig?>(null) }
 
     fun saveConfig(newConfig: AutoReplyConfig, debounce: Boolean = false) {
         config = newConfig
+        pendingConfig = newConfig
         dbWriteJob?.cancel()
         dbWriteJob = scope.launch {
             if (debounce) {
@@ -78,8 +85,28 @@ fun AutoReplySettingsScreen(
             }
             try {
                 settingsRepository.updateAutoReplyConfig(newConfig)
+                if (pendingConfig == newConfig) pendingConfig = null
             } catch (e: Exception) {
                 android.util.Log.e("AutoReplySettings", "Failed to save config: ${e.message}", e)
+            }
+        }
+    }
+
+    // Flush any pending debounced write when the screen goes away: the
+    // write runs on a fresh scope because the composition scope is
+    // cancelled on dispose — the exact cancellation that lost the edit.
+    DisposableEffect(Unit) {
+        onDispose {
+            pendingConfig?.let { toFlush ->
+                kotlinx.coroutines.CoroutineScope(
+                    kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO
+                ).launch {
+                    try {
+                        settingsRepository.updateAutoReplyConfig(toFlush)
+                    } catch (e: Exception) {
+                        android.util.Log.e("AutoReplySettings", "Failed to flush config on dispose: ${e.message}", e)
+                    }
+                }
             }
         }
     }

@@ -54,6 +54,14 @@ data class UsageDashboardState(
 ) {
     val totalTokens: Long get() = totalPromptTokens + totalCompletionTokens + totalUnsplitTokens
     val hasData: Boolean get() = rows.isNotEmpty()
+    /**
+     * Paid (non-free) rows with no known price. Their usage is silently
+     * absent from [totalCostUsd], so when this is > 0 the headline total
+     * understates the spend and must be labelled partial — free local
+     * rows are the exception: they genuinely cost nothing.
+     */
+    val unpricedPaidRowCount: Int get() = rows.count { !it.isFreeLocal && it.costUsd == null }
+    val hasUnpricedPaidRows: Boolean get() = unpricedPaidRowCount > 0
 }
 
 /**
