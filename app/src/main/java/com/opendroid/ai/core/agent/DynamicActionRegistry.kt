@@ -47,8 +47,11 @@ object DynamicActionRegistry {
      */
     fun replaceForOwner(owner: String, entries: Map<String, Pair<ActionDefinition, Action>>) {
         synchronized(this) {
-            removeForOwnerLocked(owner)
-            if (entries.isEmpty()) return
+            val removed = removeForOwnerLocked(owner)
+            if (entries.isEmpty()) {
+                if (removed) _revision.value += 1
+                return
+            }
             val names = mutableSetOf<String>()
             entries.forEach { (actionName, entry) ->
                 definitions[actionName] = entry.first
