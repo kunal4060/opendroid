@@ -62,7 +62,10 @@ fun ExternalAutomationSettingsSection(
     val tokenHint by viewModel.tokenHint.collectAsState()
     val lastRun by viewModel.lastRun.collectAsState()
 
-    var newlyGeneratedToken by remember { mutableStateOf<String?>(null) }
+    // The one-time plaintext token lives in the ViewModel until dismissed:
+    // in remember state, an activity recreation with the token dialog open
+    // destroyed the only copy (only its hash persists).
+    val newlyGeneratedToken by viewModel.newlyGeneratedToken.collectAsState()
     var confirmRevoke by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { viewModel.refresh() }
@@ -122,7 +125,7 @@ fun ExternalAutomationSettingsSection(
                         color = TextPrimary
                     )
                     Row {
-                        TextButton(onClick = { newlyGeneratedToken = viewModel.generateToken() }) {
+                        TextButton(onClick = { viewModel.generateToken() }) {
                             Text("Regenerate token")
                         }
                         TextButton(onClick = { confirmRevoke = true }) {
@@ -136,7 +139,7 @@ fun ExternalAutomationSettingsSection(
                         fontSize = 12.sp,
                         color = TextSecondary
                     )
-                    TextButton(onClick = { newlyGeneratedToken = viewModel.generateToken() }) {
+                    TextButton(onClick = { viewModel.generateToken() }) {
                         Text("Generate token")
                     }
                 }
@@ -173,7 +176,7 @@ fun ExternalAutomationSettingsSection(
 
     newlyGeneratedToken?.let { token ->
         AlertDialog(
-            onDismissRequest = { newlyGeneratedToken = null },
+            onDismissRequest = { viewModel.dismissNewlyGeneratedToken() },
             title = { Text("Your API token") },
             text = {
                 Column {
@@ -198,13 +201,13 @@ fun ExternalAutomationSettingsSection(
                         context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     clipboard.setPrimaryClip(ClipData.newPlainText("OpenDroid API token", token))
                     Toast.makeText(context, "Token copied", Toast.LENGTH_SHORT).show()
-                    newlyGeneratedToken = null
+                    viewModel.dismissNewlyGeneratedToken()
                 }) {
                     Text("Copy & close")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { newlyGeneratedToken = null }) {
+                TextButton(onClick = { viewModel.dismissNewlyGeneratedToken() }) {
                     Text("Close")
                 }
             }
