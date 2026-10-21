@@ -154,11 +154,17 @@ class ChatViewModel @Inject constructor(
                 buildOnDevicePickerModels(canonical, entitiesById, downloadedModels, downloadedStates)
             } else {
                 val cached = config.modelCache[canonical].orEmpty()
+                // Cloud models carry no download state: `available` is false
+                // only for on-device models that are not downloaded (see
+                // PickerModelOption); provider-level gating lives in
+                // isConfigured above and in the send-time resolver.
                 val options = if (cached.isNotEmpty()) {
-                    cached.map { PickerModelOption(id = it.id, displayName = it.displayName) }
+                    cached.map {
+                        PickerModelOption(id = it.id, displayName = it.displayName, available = true)
+                    }
                 } else {
                     val seed = ProviderCatalog.defaultModel(canonical)
-                    listOf(PickerModelOption(id = seed, displayName = seed))
+                    listOf(PickerModelOption(id = seed, displayName = seed, available = true))
                 }
                 // The model this provider would actually answer with must
                 // always be listed, even before/without a live fetch.
@@ -166,7 +172,9 @@ class ChatViewModel @Inject constructor(
                 if (options.any { it.id == selected }) {
                     options
                 } else {
-                    listOf(PickerModelOption(id = selected, displayName = selected)) + options
+                    listOf(
+                        PickerModelOption(id = selected, displayName = selected, available = true)
+                    ) + options
                 }
             }
             PickerProviderOption(
@@ -227,7 +235,19 @@ class ChatViewModel @Inject constructor(
         return if (options.any { it.id == selected }) {
             options
         } else {
-            listOf(PickerModelOption(id = selected, displayName = selected)) + options
+            // Neither a registry spec nor a downloaded import: the persisted
+            // selection's real state is whatever the models table holds for
+            // it (no row = not on this device), rendered exactly like any
+            // other not-downloaded on-device model.
+            val selectedDownloaded = entitiesById[selected]?.status in downloadedStates
+            listOf(
+                PickerModelOption(
+                    id = selected,
+                    displayName = selected,
+                    available = selectedDownloaded,
+                    availabilityLabel = if (selectedDownloaded) null else "Not downloaded"
+                )
+            ) + options
         }
     }
 
