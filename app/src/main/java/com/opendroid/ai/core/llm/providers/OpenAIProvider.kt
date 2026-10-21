@@ -82,17 +82,41 @@ class OpenAIProvider @Inject constructor(
 
         val selectedModel = request.model?.takeIf { it.isNotBlank() } ?: "gpt-4o"
 
-        // Build messages payload
+        // Build messages payload. Reasoning models (o1/o3) reject the
+        // system role (o1-preview), so the system prompt is delivered as a
+        // user turn for that model instead.
         val messagesList = request.messages.toOpenAIMessages(request.systemPrompt, visionCapable = VisionSupport.supportsImage(name, selectedModel))
+            .let { messages ->
+                if (selectedModel == "o1-preview") {
+                    messages.map { message ->
+                        if (message["role"] == "system") {
+                            mapOf("role" to "user", "content" to (message["content"] ?: ""))
+                        } else {
+                            message
+                        }
+                    }
+                } else {
+                    messages
+                }
+            }
 
         val requestBodyMap = mutableMapOf<String, Any>(
             "model" to selectedModel,
-            "messages" to messagesList,
-            "temperature" to request.temperature,
-            "max_tokens" to request.maxTokens
+            "messages" to messagesList
         )
+        if (isReasoningModel(selectedModel)) {
+            // Reasoning models reject max_tokens (max_completion_tokens is
+            // required) and reject any non-default temperature, so both
+            // sampling fields are omitted rather than sent at values the
+            // API refuses.
+            requestBodyMap["max_completion_tokens"] = request.maxTokens
+        } else {
+            requestBodyMap["temperature"] = request.temperature
+            requestBodyMap["max_tokens"] = request.maxTokens
+        }
 
-        if (request.responseFormat == ResponseFormat.JSON) {
+        // o1-preview also rejects response_format; o3-mini accepts it.
+        if (request.responseFormat == ResponseFormat.JSON && selectedModel != "o1-preview") {
             requestBodyMap["response_format"] = mapOf("type" to "json_object")
         }
 
@@ -157,4 +181,7 @@ class OpenAIProvider @Inject constructor(
         val config = settingsRepository.llmConfig.first()
         return !config.apiKeys[name].isNullOrBlank()
     }
+
+    private fun isReasoningModel(model: String): Boolean =
+        model == "o1" || model.startsWith("o1-") || model.startsWith("o3-")
 }
